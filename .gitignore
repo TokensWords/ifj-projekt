@@ -1,0 +1,7 @@
+build/
+dist/
+ifj26compiler
+*.o
+*.out
+*.log
+.DS_Store

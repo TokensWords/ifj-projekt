@@ -1,0 +1,5 @@
+// AI-authored integration fixture.
+import ifj26.*
+
+def helper(): Unit =
+  ()

@@ -1,0 +1,3 @@
+// AI-authored integration fixture.
+@main def main(): Unit =
+  ()
