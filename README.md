@@ -32,21 +32,21 @@ stdin
   |
   v
 Lexical analyzer --Token--> Syntax analyzer --SourceProgram--> Semantic analyzer
-                                            |
-                                            | typed SourceProgram
-                                            v
-                                      Intermediate-code generator
-                                            |
-                                            | IntermediateProgram
-                                            v
-                                       Optimizer
-                                            |
-                                            | IntermediateProgram
-                                            v
-                                     IFJcode26 generator
-                                            |
-                                            v
-                                          stdout
+                                                                      |
+                                                                      | typed SourceProgram
+                                                                      v
+                                                                Intermediate-code generator
+                                                                      |
+                                                                      | IntermediateProgram
+                                                                      v
+                                                                 Optimizer
+                                                                      |
+                                                                      | IntermediateProgram
+                                                                      v
+                                                               IFJcode26 generator
+                                                                      |
+                                                                      v
+                                                                    stdout
 
 Semantic analyzer <--> Symbol table
 All blocks ---------> Common types and allocation helpers
