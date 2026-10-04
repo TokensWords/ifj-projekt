@@ -17,6 +17,7 @@ typedef struct {
     IntermediateProgram *program;
     size_t temporaryCounter;
     size_t labelCounter;
+    IntermediateProgram *functionDeclarations;
 } IntermediateGenerator;
 
 static void intermediateOperandClear(IntermediateOperand *operand) {
@@ -156,12 +157,34 @@ char *generateStringName(const char *type, size_t number) {
     return name;
 }
 
-static CompilerStatus generateTemporary(IntermediateGenerator *generator, IntermediateOperand *operand) {
+static CompilerStatus appendVariableDeclaration(IntermediateGenerator *generator, const IntermediateOperand *operand, SourceLocation origin) {
     if (generator == NULL || operand == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
-    char *name = generateStringName("temporary", generator->temporaryCounter);
+    if (generator->functionDeclarations == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    if (operand->kind != INTERMEDIATE_OPERAND_VARIABLE || operand->text == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateInstruction instruction = {0};
+    instruction.opcode = INTERMEDIATE_DEFINE_VARIABLE;
+    instruction.operandCount = 1;
+    instruction.operands[0] = *operand;
+    instruction.origin = origin;
+
+    return intermediateProgramAppend(generator->functionDeclarations, &instruction);
+}
+
+static CompilerStatus generateTemporary(IntermediateGenerator *generator, IntermediateOperand *operand, SourceLocation origin) {
+    if (generator == NULL || operand == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    char *name = generateStringName("$temporary", generator->temporaryCounter);
     if (name == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -169,6 +192,12 @@ static CompilerStatus generateTemporary(IntermediateGenerator *generator, Interm
     operand->kind = INTERMEDIATE_OPERAND_VARIABLE;
     operand->text = name;
     operand->value.intValue = 0;
+
+    CompilerStatus status = appendVariableDeclaration(generator, operand, origin);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(operand);
+        return status;
+    }
 
     generator->temporaryCounter++;
 
@@ -180,7 +209,7 @@ static CompilerStatus generateLabel(IntermediateGenerator *generator, Intermedia
         return COMPILER_INTERNAL_ERROR;
     }
 
-    char *name = generateStringName("label", generator->labelCounter);
+    char *name = generateStringName("$label", generator->labelCounter);
     if (name == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -190,6 +219,40 @@ static CompilerStatus generateLabel(IntermediateGenerator *generator, Intermedia
     operand->value.intValue = 0;
 
     generator->labelCounter++;
+
+    return COMPILER_OK;
+}
+
+static bool isNumericType(DataType dataType) {
+    return dataType == DATA_TYPE_INT || dataType == DATA_TYPE_DOUBLE;
+}
+
+static CompilerStatus convertIntToDouble(IntermediateGenerator *generator, IntermediateOperand *operand, SourceLocation origin) {
+    if (generator == NULL || operand == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateOperand convertedOperand = {0};
+    CompilerStatus status = generateTemporary(generator, &convertedOperand, origin);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    IntermediateInstruction instruction = {0};
+    instruction.opcode = INTERMEDIATE_CONVERT_INT_TO_DOUBLE;
+    instruction.operandCount = 2;
+    instruction.operands[0] = convertedOperand;
+    instruction.operands[1] = *operand;
+    instruction.origin = origin;
+
+    status = intermediateProgramAppend(generator->program, &instruction);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&convertedOperand);
+        return status;
+    }
+
+    intermediateOperandClear(operand);
+    *operand = convertedOperand;
 
     return COMPILER_OK;
 }
@@ -266,8 +329,29 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         }
         DataType rightType = node->children[1]->inferredType;
 
+        if (leftType == DATA_TYPE_STRING && rightType == DATA_TYPE_STRING && operationCode == INTERMEDIATE_ADD) {
+            operationCode = INTERMEDIATE_CONCATENATE;
+        } else if (!isNumericType(leftType) || !isNumericType(rightType)) {
+            intermediateOperandClear(&leftOperand);
+            intermediateOperandClear(&rightOperand);
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (leftType != rightType) {
+            IntermediateOperand *integerOperand = leftType == DATA_TYPE_INT ? &leftOperand : &rightOperand;
+            status = convertIntToDouble(generator, integerOperand, node->location);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&leftOperand);
+                intermediateOperandClear(&rightOperand);
+                return status;
+            }
+
+            leftType = DATA_TYPE_DOUBLE;
+            rightType = DATA_TYPE_DOUBLE;
+        }
+
         IntermediateOperand resultOperand = {0};
-        status = generateTemporary(generator, &resultOperand);
+        status = generateTemporary(generator, &resultOperand, node->location);
         if (status != COMPILER_OK) {
             intermediateOperandClear(&leftOperand);
             intermediateOperandClear(&rightOperand);
@@ -288,11 +372,10 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             intermediateOperandClear(&rightOperand);
             intermediateOperandClear(&resultOperand);
             return status;
-        } else {
-            intermediateOperandClear(&leftOperand);
-            intermediateOperandClear(&rightOperand);
         }
 
+        intermediateOperandClear(&leftOperand);
+        intermediateOperandClear(&rightOperand);
         *operand = resultOperand;
 
         break;
@@ -304,11 +387,351 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
     return COMPILER_OK;
 }
 
+static CompilerStatus generateStatement(IntermediateGenerator *generator, const AbstractSyntaxNode *node) {
+    if (generator == NULL || node == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    switch (node->kind) {
+    case ABSTRACT_SYNTAX_BLOCK: {
+        if (node->childCount > 0 && node->children == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        size_t counter = 0;
+        CompilerStatus status = {0};
+
+        while (counter < node->childCount) {
+            status = generateStatement(generator, node->children[counter]);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+
+            counter++;
+        }
+
+        return COMPILER_OK;
+    }
+    case ABSTRACT_SYNTAX_VARIABLE_DECLARATION: {
+        if (node->text == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (node->childCount != 1) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (node->children == NULL || node->children[0] == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        IntermediateOperand initializerOperand = {0};
+        CompilerStatus status = {0};
+
+        status = generateExpression(generator, &initializerOperand, node->children[0]);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        IntermediateOperand variableOperand = {0};
+        variableOperand.kind = INTERMEDIATE_OPERAND_VARIABLE;
+
+        size_t stringLength = strlen(node->text);
+        variableOperand.text = malloc((stringLength + 1) * sizeof(char));
+        if (variableOperand.text == NULL) {
+            intermediateOperandClear(&initializerOperand);
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        strcpy(variableOperand.text, node->text);
+
+        status = appendVariableDeclaration(generator, &variableOperand, node->location);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&variableOperand);
+            intermediateOperandClear(&initializerOperand);
+            return status;
+        }
+
+        IntermediateInstruction instruction = {0};
+        instruction.opcode = INTERMEDIATE_MOVE;
+        instruction.operandCount = 2;
+        instruction.operands[0] = variableOperand;
+        instruction.operands[1] = initializerOperand;
+        instruction.origin = node->location;
+
+        status = intermediateProgramAppend(generator->program, &instruction);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&variableOperand);
+            intermediateOperandClear(&initializerOperand);
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        intermediateOperandClear(&variableOperand);
+        intermediateOperandClear(&initializerOperand);
+
+        return status;
+    }
+    default:
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    return COMPILER_INTERNAL_ERROR;
+}
+
+static CompilerStatus appendProgramInstructions(IntermediateProgram *destination, const IntermediateProgram *source) {
+    if (destination == NULL || source == NULL || destination == source) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    if (source->count > 0) {
+        if (source->instructions == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+    }
+
+    size_t counter = 0;
+    CompilerStatus status = {0};
+
+    while (counter < source->count) {
+        status = intermediateProgramAppend(destination, &source->instructions[counter]);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        counter++;
+    }
+
+    return COMPILER_OK;
+}
+
+static char *createFunctionLabel(const char *functionName) {
+    if (functionName == NULL) {
+        return NULL;
+    }
+
+    size_t length = strlen(functionName);
+    length += strlen("$function_");
+    length++;
+
+    char *labelName = malloc(length * sizeof(char));
+    if (labelName == NULL) {
+        return NULL;
+    }
+
+    strcpy(labelName, "$function_");
+    strncat(labelName, functionName, (length - strlen("$function_")));
+
+    return labelName;
+}
+
+static CompilerStatus generateFunction(IntermediateGenerator *generator, const AbstractSyntaxNode *node) {
+    if (generator == NULL || node == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    if (node->kind != ABSTRACT_SYNTAX_FUNCTION || node->text == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    if (node->childCount == 0 || node->children == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    const AbstractSyntaxNode *body = node->children[node->childCount - 1];
+    if (body == NULL || body->kind != ABSTRACT_SYNTAX_BLOCK) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateProgram *functionDeclarations = intermediateProgramCreate();
+    if (functionDeclarations == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateProgram *functionBody = intermediateProgramCreate();
+    if (functionBody == NULL) {
+        intermediateProgramDestroy(functionDeclarations);
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateGenerator functionGenerator = *generator;
+    functionGenerator.program = functionBody;
+    functionGenerator.functionDeclarations = functionDeclarations;
+
+    CompilerStatus status = generateStatement(&functionGenerator, body);
+
+    generator->temporaryCounter = functionGenerator.temporaryCounter;
+    generator->labelCounter = functionGenerator.labelCounter;
+
+    if (status != COMPILER_OK) {
+        intermediateProgramDestroy(functionBody);
+        intermediateProgramDestroy(functionDeclarations);
+        return status;
+    }
+
+    IntermediateOperand functionLabel = {0};
+    functionLabel.kind = INTERMEDIATE_OPERAND_LABEL;
+    functionLabel.text = createFunctionLabel(node->text);
+    if (functionLabel.text == NULL) {
+        intermediateProgramDestroy(functionBody);
+        intermediateProgramDestroy(functionDeclarations);
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateInstruction labelInstruction = {0};
+    labelInstruction.opcode = INTERMEDIATE_LABEL;
+    labelInstruction.operandCount = 1;
+    labelInstruction.operands[0] = functionLabel;
+    labelInstruction.origin = node->location;
+
+    status = intermediateProgramAppend(generator->program, &labelInstruction);
+    intermediateOperandClear(&functionLabel);
+    if (status != COMPILER_OK) {
+        intermediateProgramDestroy(functionBody);
+        intermediateProgramDestroy(functionDeclarations);
+        return status;
+    }
+
+    IntermediateInstruction pushFrameInstruction = {0};
+    pushFrameInstruction.opcode = INTERMEDIATE_PUSH_FRAME;
+    pushFrameInstruction.origin = node->location;
+
+    status = intermediateProgramAppend(generator->program, &pushFrameInstruction);
+    if (status != COMPILER_OK) {
+        intermediateProgramDestroy(functionBody);
+        intermediateProgramDestroy(functionDeclarations);
+        return status;
+    }
+
+    status = appendProgramInstructions(generator->program, functionDeclarations);
+    intermediateProgramDestroy(functionDeclarations);
+    if (status != COMPILER_OK) {
+        intermediateProgramDestroy(functionBody);
+        return status;
+    }
+
+    status = appendProgramInstructions(generator->program, functionBody);
+    intermediateProgramDestroy(functionBody);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    IntermediateInstruction popFrameInstruction = {0};
+    popFrameInstruction.opcode = INTERMEDIATE_POP_FRAME;
+    popFrameInstruction.origin = node->location;
+
+    status = intermediateProgramAppend(generator->program, &popFrameInstruction);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    IntermediateInstruction returnInstruction = {0};
+    returnInstruction.opcode = INTERMEDIATE_RETURN;
+    returnInstruction.origin = node->location;
+
+    status = intermediateProgramAppend(generator->program, &returnInstruction);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    return COMPILER_OK;
+}
+
 CompilerStatus intermediateCodeGenerate(const SourceProgram *program, IntermediateProgram *outProgram) {
     if (program == NULL || outProgram == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
-    /* Team TODO: lower the typed tree into three-address instructions. */
-    return COMPILER_INTERNAL_ERROR;
+    if (program->root == NULL || program->root->kind != ABSTRACT_SYNTAX_PROGRAM) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    if (program->root->childCount > 0) {
+        if (program->root->children == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+    }
+
+    const AbstractSyntaxNode *entryFunction = NULL;
+    size_t counter = 0;
+
+    while (counter < program->root->childCount) {
+        const AbstractSyntaxNode *function = program->root->children[counter];
+
+        if (function == NULL ||
+            function->kind != ABSTRACT_SYNTAX_FUNCTION ||
+            function->text == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (function->isEntryFunction) {
+            if (entryFunction != NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            entryFunction = function;
+        }
+
+        counter++;
+    }
+
+    if (entryFunction == NULL || entryFunction->childCount != 1 || entryFunction->inferredType != DATA_TYPE_UNIT) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateGenerator generator = {0};
+    generator.program = outProgram;
+
+    IntermediateInstruction createFrameInstruction = {0};
+    createFrameInstruction.opcode = INTERMEDIATE_CREATE_FRAME;
+    createFrameInstruction.origin = entryFunction->location;
+
+    CompilerStatus status = intermediateProgramAppend(generator.program, &createFrameInstruction);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    IntermediateOperand entryLabel = {0};
+    entryLabel.kind = INTERMEDIATE_OPERAND_LABEL;
+    entryLabel.text = createFunctionLabel(entryFunction->text);
+    if (entryLabel.text == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateInstruction callInstruction = {0};
+    callInstruction.opcode = INTERMEDIATE_CALL;
+    callInstruction.operandCount = 1;
+    callInstruction.operands[0] = entryLabel;
+    callInstruction.origin = entryFunction->location;
+
+    status = intermediateProgramAppend(generator.program, &callInstruction);
+    intermediateOperandClear(&entryLabel);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    IntermediateInstruction exitInstruction = {0};
+    exitInstruction.opcode = INTERMEDIATE_EXIT;
+    exitInstruction.operandCount = 1;
+    exitInstruction.operands[0].kind = INTERMEDIATE_OPERAND_INT;
+    exitInstruction.operands[0].value.intValue = 0;
+    exitInstruction.origin = entryFunction->location;
+
+    status = intermediateProgramAppend(generator.program, &exitInstruction);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    counter = 0;
+
+    while (counter < program->root->childCount) {
+        CompilerStatus status = generateFunction(&generator, program->root->children[counter]);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        counter++;
+    }
+
+    return COMPILER_OK;
 }
+//Boeing

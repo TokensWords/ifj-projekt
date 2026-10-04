@@ -50,6 +50,7 @@ typedef struct AbstractSyntaxNode {
     struct AbstractSyntaxNode **children;
     size_t childCount;
     size_t childCapacity;
+    bool isEntryFunction;
 } AbstractSyntaxNode;
 
 typedef struct {

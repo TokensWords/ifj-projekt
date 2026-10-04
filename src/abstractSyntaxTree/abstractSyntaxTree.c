@@ -47,6 +47,7 @@ AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeKind kind, Source
     node->children = NULL;
     node->childCount = 0;
     node->childCapacity = 0;
+    node->isEntryFunction = false;
     return node;
 }
 
