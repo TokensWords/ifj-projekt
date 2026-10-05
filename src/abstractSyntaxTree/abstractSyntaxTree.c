@@ -41,12 +41,14 @@ AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeKind kind, Source
 
     node->kind = kind;
     node->location = location;
+    node->variableType = DATA_TYPE_UNKNOWN;
     node->inferredType = DATA_TYPE_UNKNOWN;
     node->text = NULL;
     node->value.intValue = 0;
     node->children = NULL;
     node->childCount = 0;
     node->childCapacity = 0;
+    node->variableId = 0;
     node->isEntryFunction = false;
     return node;
 }

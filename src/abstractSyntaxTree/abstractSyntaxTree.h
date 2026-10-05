@@ -45,11 +45,13 @@ typedef struct AbstractSyntaxNode {
     AbstractSyntaxNodeKind kind;
     SourceLocation location;
     DataType inferredType;
+    DataType variableType;
     char *text;
     AbstractSyntaxValue value;
     struct AbstractSyntaxNode **children;
     size_t childCount;
     size_t childCapacity;
+    size_t variableId;
     bool isEntryFunction;
 } AbstractSyntaxNode;
 

@@ -1,6 +1,6 @@
 /*
  * Project: IFJ26 compiler
- * Authors: TODO(team)
+ * Authors: xhajeka00
  * AI-assisted scaffold.
  * Prompt: Implement intermediate-code helpers and a generator boundary.
  */
@@ -94,7 +94,17 @@ CompilerStatus intermediateProgramAppend(IntermediateProgram *program, const Int
     return COMPILER_OK;
 }
 
-int numberLength(size_t number) {
+static IntermediateInstruction fillInstruction(IntermediateOpcode opcode, size_t operandCount, SourceLocation origin) {
+    IntermediateInstruction instruction = {0};
+
+    instruction.opcode = opcode;
+    instruction.operandCount = operandCount;
+    instruction.origin = origin;
+
+    return instruction;
+}
+
+static int numberLength(size_t number) {
     size_t counter = 0;
 
     if (number == 0) {
@@ -109,7 +119,7 @@ int numberLength(size_t number) {
     return counter;
 }
 
-char *numberToString(size_t number) {
+static char *numberToString(size_t number) {
     size_t counter = 0;
     int length = numberLength(number);
     char *string = malloc((length + 1) * sizeof(char));
@@ -133,7 +143,7 @@ char *numberToString(size_t number) {
     return string;
 }
 
-char *generateStringName(const char *type, size_t number) {
+static char *generateStringName(const char *type, size_t number) {
     if (type == NULL) {
         return NULL;
     }
@@ -170,11 +180,8 @@ static CompilerStatus appendVariableDeclaration(IntermediateGenerator *generator
         return COMPILER_INTERNAL_ERROR;
     }
 
-    IntermediateInstruction instruction = {0};
-    instruction.opcode = INTERMEDIATE_DEFINE_VARIABLE;
-    instruction.operandCount = 1;
+    IntermediateInstruction instruction = fillInstruction(INTERMEDIATE_DEFINE_VARIABLE, 1, origin);
     instruction.operands[0] = *operand;
-    instruction.origin = origin;
 
     return intermediateProgramAppend(generator->functionDeclarations, &instruction);
 }
@@ -223,6 +230,27 @@ static CompilerStatus generateLabel(IntermediateGenerator *generator, Intermedia
     return COMPILER_OK;
 }
 
+static CompilerStatus generateVariable(IntermediateOperand *operand, const AbstractSyntaxNode *node) {
+    if (operand == NULL || node == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    if (node->variableId == 0) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    char *name = generateStringName("$variable", node->variableId);
+    if (name == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    operand->kind = INTERMEDIATE_OPERAND_VARIABLE;
+    operand->text = name;
+    operand->value.dataType = 0;
+
+    return COMPILER_OK;
+}
+
 static bool isNumericType(DataType dataType) {
     return dataType == DATA_TYPE_INT || dataType == DATA_TYPE_DOUBLE;
 }
@@ -238,12 +266,9 @@ static CompilerStatus convertIntToDouble(IntermediateGenerator *generator, Inter
         return status;
     }
 
-    IntermediateInstruction instruction = {0};
-    instruction.opcode = INTERMEDIATE_CONVERT_INT_TO_DOUBLE;
-    instruction.operandCount = 2;
+    IntermediateInstruction instruction = fillInstruction(INTERMEDIATE_CONVERT_INT_TO_DOUBLE, 2, origin);
     instruction.operands[0] = convertedOperand;
     instruction.operands[1] = *operand;
-    instruction.origin = origin;
 
     status = intermediateProgramAppend(generator->program, &instruction);
     if (status != COMPILER_OK) {
@@ -358,13 +383,10 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             return status;
         }
 
-        IntermediateInstruction instruction = {0};
-        instruction.opcode = operationCode;
-        instruction.operandCount = 3;
+        IntermediateInstruction instruction = fillInstruction(operationCode, 3, node->location);
         instruction.operands[0] = resultOperand;
         instruction.operands[1] = leftOperand;
         instruction.operands[2] = rightOperand;
-        instruction.origin = node->location;
 
         status = intermediateProgramAppend(generator->program, &instruction);
         if (status != COMPILER_OK) {
@@ -377,6 +399,14 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         intermediateOperandClear(&leftOperand);
         intermediateOperandClear(&rightOperand);
         *operand = resultOperand;
+
+        break;
+    }
+    case ABSTRACT_SYNTAX_IDENTIFIER: {
+        CompilerStatus status = generateVariable(operand, node);
+        if (status != COMPILER_OK) {
+            return status;
+        }
 
         break;
     }
@@ -433,17 +463,20 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return status;
         }
 
-        IntermediateOperand variableOperand = {0};
-        variableOperand.kind = INTERMEDIATE_OPERAND_VARIABLE;
-
-        size_t stringLength = strlen(node->text);
-        variableOperand.text = malloc((stringLength + 1) * sizeof(char));
-        if (variableOperand.text == NULL) {
-            intermediateOperandClear(&initializerOperand);
-            return COMPILER_INTERNAL_ERROR;
+        if (node->variableType == DATA_TYPE_DOUBLE && node->children[0]->inferredType == DATA_TYPE_INT) {
+            status = convertIntToDouble(generator, &initializerOperand, node->location);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&initializerOperand);
+                return status;
+            }
         }
 
-        strcpy(variableOperand.text, node->text);
+        IntermediateOperand variableOperand = {0};
+        status = generateVariable(&variableOperand, node);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&initializerOperand);
+            return status;
+        }
 
         status = appendVariableDeclaration(generator, &variableOperand, node->location);
         if (status != COMPILER_OK) {
@@ -452,12 +485,9 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return status;
         }
 
-        IntermediateInstruction instruction = {0};
-        instruction.opcode = INTERMEDIATE_MOVE;
-        instruction.operandCount = 2;
+        IntermediateInstruction instruction = fillInstruction(INTERMEDIATE_MOVE, 2, node->location);
         instruction.operands[0] = variableOperand;
         instruction.operands[1] = initializerOperand;
-        instruction.origin = node->location;
 
         status = intermediateProgramAppend(generator->program, &instruction);
         if (status != COMPILER_OK) {
@@ -469,6 +499,42 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
         intermediateOperandClear(&variableOperand);
         intermediateOperandClear(&initializerOperand);
 
+        return status;
+    }
+    case ABSTRACT_SYNTAX_ASSIGNMENT: {
+        if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        IntermediateOperand valueOperand = {0};
+        CompilerStatus status = generateExpression(generator, &valueOperand, node->children[0]);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        if (node->variableType == DATA_TYPE_DOUBLE && node->children[0]->inferredType == DATA_TYPE_INT) {
+            status = convertIntToDouble(generator, &valueOperand, node->location);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&valueOperand);
+                return status;
+            }
+        }
+
+        IntermediateOperand variableOperand = {0};
+        status = generateVariable(&variableOperand, node);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&valueOperand);
+            return status;
+        }
+
+        IntermediateInstruction instruction = fillInstruction(INTERMEDIATE_MOVE, 2, node->location);
+        instruction.operands[0] = variableOperand;
+        instruction.operands[1] = valueOperand;
+
+        status = intermediateProgramAppend(generator->program, &instruction);
+
+        intermediateOperandClear(&variableOperand);
+        intermediateOperandClear(&valueOperand);
         return status;
     }
     default:
@@ -577,11 +643,8 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator, const A
         return COMPILER_INTERNAL_ERROR;
     }
 
-    IntermediateInstruction labelInstruction = {0};
-    labelInstruction.opcode = INTERMEDIATE_LABEL;
-    labelInstruction.operandCount = 1;
+    IntermediateInstruction labelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
     labelInstruction.operands[0] = functionLabel;
-    labelInstruction.origin = node->location;
 
     status = intermediateProgramAppend(generator->program, &labelInstruction);
     intermediateOperandClear(&functionLabel);
@@ -591,9 +654,7 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator, const A
         return status;
     }
 
-    IntermediateInstruction pushFrameInstruction = {0};
-    pushFrameInstruction.opcode = INTERMEDIATE_PUSH_FRAME;
-    pushFrameInstruction.origin = node->location;
+    IntermediateInstruction pushFrameInstruction = fillInstruction(INTERMEDIATE_PUSH_FRAME, 0, node->location);
 
     status = intermediateProgramAppend(generator->program, &pushFrameInstruction);
     if (status != COMPILER_OK) {
@@ -615,18 +676,14 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator, const A
         return status;
     }
 
-    IntermediateInstruction popFrameInstruction = {0};
-    popFrameInstruction.opcode = INTERMEDIATE_POP_FRAME;
-    popFrameInstruction.origin = node->location;
+    IntermediateInstruction popFrameInstruction = fillInstruction(INTERMEDIATE_POP_FRAME, 0, node->location);
 
     status = intermediateProgramAppend(generator->program, &popFrameInstruction);
     if (status != COMPILER_OK) {
         return status;
     }
 
-    IntermediateInstruction returnInstruction = {0};
-    returnInstruction.opcode = INTERMEDIATE_RETURN;
-    returnInstruction.origin = node->location;
+    IntermediateInstruction returnInstruction = fillInstruction(INTERMEDIATE_RETURN, 0, node->location);
 
     status = intermediateProgramAppend(generator->program, &returnInstruction);
     if (status != COMPILER_OK) {
@@ -681,9 +738,7 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program, Intermedia
     IntermediateGenerator generator = {0};
     generator.program = outProgram;
 
-    IntermediateInstruction createFrameInstruction = {0};
-    createFrameInstruction.opcode = INTERMEDIATE_CREATE_FRAME;
-    createFrameInstruction.origin = entryFunction->location;
+    IntermediateInstruction createFrameInstruction = fillInstruction(INTERMEDIATE_CREATE_FRAME, 0, entryFunction->location);
 
     CompilerStatus status = intermediateProgramAppend(generator.program, &createFrameInstruction);
     if (status != COMPILER_OK) {
@@ -697,11 +752,8 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program, Intermedia
         return COMPILER_INTERNAL_ERROR;
     }
 
-    IntermediateInstruction callInstruction = {0};
-    callInstruction.opcode = INTERMEDIATE_CALL;
-    callInstruction.operandCount = 1;
+    IntermediateInstruction callInstruction = fillInstruction(INTERMEDIATE_CALL, 1, entryFunction->location);
     callInstruction.operands[0] = entryLabel;
-    callInstruction.origin = entryFunction->location;
 
     status = intermediateProgramAppend(generator.program, &callInstruction);
     intermediateOperandClear(&entryLabel);
@@ -709,12 +761,9 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program, Intermedia
         return status;
     }
 
-    IntermediateInstruction exitInstruction = {0};
-    exitInstruction.opcode = INTERMEDIATE_EXIT;
-    exitInstruction.operandCount = 1;
+    IntermediateInstruction exitInstruction = fillInstruction(INTERMEDIATE_EXIT, 1, entryFunction->location);
     exitInstruction.operands[0].kind = INTERMEDIATE_OPERAND_INT;
     exitInstruction.operands[0].value.intValue = 0;
-    exitInstruction.origin = entryFunction->location;
 
     status = intermediateProgramAppend(generator.program, &exitInstruction);
     if (status != COMPILER_OK) {
@@ -734,4 +783,4 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program, Intermedia
 
     return COMPILER_OK;
 }
-//Boeing
+// Boeing

@@ -1,6 +1,6 @@
 /*
  * Project: IFJ26 compiler
- * Authors: TODO(team)
+ * Authors: xhajeka00
  * AI-assisted scaffold.
  * Prompt: Create an IFJcode26 code-generation integration stub.
  */
