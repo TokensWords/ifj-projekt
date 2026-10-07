@@ -1,6 +1,6 @@
 /*
  * Project: IFJ26 compiler
- * Authors: TODO(team)
+ * Authors: xkubanm00
  * AI-assisted scaffold.
  * Prompt: Implement token allocation and ownership helpers.
  */
