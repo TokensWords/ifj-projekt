@@ -282,6 +282,171 @@ static CompilerStatus convertIntToDouble(IntermediateGenerator *generator, Inter
     return COMPILER_OK;
 }
 
+static CompilerStatus generateIntegerDivision(IntermediateGenerator *generator, const IntermediateOperand *resultOperand, const IntermediateOperand *leftOperand, const IntermediateOperand *rightOperand, SourceLocation origin) {
+    if (generator == NULL || resultOperand == NULL || leftOperand == NULL || rightOperand == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateInstruction instruction = fillInstruction(INTERMEDIATE_INTEGER_DIVIDE, 3, origin);
+    instruction.operands[0] = *resultOperand;
+    instruction.operands[1] = *leftOperand;
+    instruction.operands[2] = *rightOperand;
+
+    CompilerStatus status = intermediateProgramAppend(generator->program, &instruction);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    IntermediateOperand negativeOperand = {0};
+    IntermediateOperand zeroOperand = {0};
+    zeroOperand.kind = INTERMEDIATE_OPERAND_INT;
+    zeroOperand.value.intValue = 0;
+    status = generateTemporary(generator, &negativeOperand, origin);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    IntermediateInstruction compareInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    compareInstruction.operands[0] = negativeOperand;
+    compareInstruction.operands[1] = *resultOperand;
+    compareInstruction.operands[2] = zeroOperand;
+
+    status = intermediateProgramAppend(generator->program, &compareInstruction);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&negativeOperand);
+        return status;
+    }
+
+    IntermediateOperand endLabelOperand = {0};
+    status = generateLabel(generator, &endLabelOperand);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&negativeOperand);
+        return status;
+    }
+
+    IntermediateOperand falseOperand = {0};
+    falseOperand.kind = INTERMEDIATE_OPERAND_BOOLEAN;
+    falseOperand.value.boolValue = false;
+
+    IntermediateInstruction jumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    jumpInstruction.operands[0] = endLabelOperand;
+    jumpInstruction.operands[1] = negativeOperand;
+    jumpInstruction.operands[2] = falseOperand;
+
+    status = intermediateProgramAppend(generator->program, &jumpInstruction);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&endLabelOperand);
+        intermediateOperandClear(&negativeOperand);
+        return status;
+    }
+
+    IntermediateOperand divisionCheckOperand = {0};
+    status = generateTemporary(generator, &divisionCheckOperand, origin);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&endLabelOperand);
+        intermediateOperandClear(&negativeOperand);
+        return status;
+    }
+
+    IntermediateOperand oneOperand = {0};
+    oneOperand.kind = INTERMEDIATE_OPERAND_INT;
+    oneOperand.value.intValue = 1;
+
+    IntermediateInstruction addInstruction = fillInstruction(INTERMEDIATE_ADD, 3, origin);
+    addInstruction.operands[0] = divisionCheckOperand;
+    addInstruction.operands[1] = *resultOperand;
+    addInstruction.operands[2] = oneOperand;
+
+    status = intermediateProgramAppend(generator->program, &addInstruction);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&divisionCheckOperand);
+        intermediateOperandClear(&endLabelOperand);
+        intermediateOperandClear(&negativeOperand);
+        return status;
+    }
+
+    IntermediateInstruction multiplyInstruction = fillInstruction(INTERMEDIATE_MULTIPLY, 3, origin);
+    multiplyInstruction.operands[0] = divisionCheckOperand;
+    multiplyInstruction.operands[1] = divisionCheckOperand;
+    multiplyInstruction.operands[2] = *rightOperand;
+
+    status = intermediateProgramAppend(generator->program, &multiplyInstruction);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&divisionCheckOperand);
+        intermediateOperandClear(&endLabelOperand);
+        intermediateOperandClear(&negativeOperand);
+        return status;
+    }
+
+    IntermediateInstruction subtractInstruction = fillInstruction(INTERMEDIATE_SUBTRACT, 3, origin);
+    subtractInstruction.operands[0] = divisionCheckOperand;
+    subtractInstruction.operands[1] = *leftOperand;
+    subtractInstruction.operands[2] = divisionCheckOperand;
+
+    status = intermediateProgramAppend(generator->program, &subtractInstruction);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&divisionCheckOperand);
+        intermediateOperandClear(&endLabelOperand);
+        intermediateOperandClear(&negativeOperand);
+        return status;
+    }
+
+    IntermediateInstruction checkAddInstruction = fillInstruction(INTERMEDIATE_ADD, 3, origin);
+    checkAddInstruction.operands[0] = divisionCheckOperand;
+    checkAddInstruction.operands[1] = divisionCheckOperand;
+    checkAddInstruction.operands[2] = *rightOperand;
+
+    status = intermediateProgramAppend(generator->program, &checkAddInstruction);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&divisionCheckOperand);
+        intermediateOperandClear(&endLabelOperand);
+        intermediateOperandClear(&negativeOperand);
+        return status;
+    }
+
+    IntermediateInstruction exactDivisionJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    exactDivisionJumpInstruction.operands[0] = endLabelOperand;
+    exactDivisionJumpInstruction.operands[1] = divisionCheckOperand;
+    exactDivisionJumpInstruction.operands[2] = zeroOperand;
+
+    status = intermediateProgramAppend(generator->program, &exactDivisionJumpInstruction);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&divisionCheckOperand);
+        intermediateOperandClear(&endLabelOperand);
+        intermediateOperandClear(&negativeOperand);
+        return status;
+    }
+
+    IntermediateInstruction correctionInstruction = fillInstruction(INTERMEDIATE_ADD, 3, origin);
+    correctionInstruction.operands[0] = *resultOperand;
+    correctionInstruction.operands[1] = *resultOperand;
+    correctionInstruction.operands[2] = oneOperand;
+
+    status = intermediateProgramAppend(generator->program, &correctionInstruction);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&divisionCheckOperand);
+        intermediateOperandClear(&endLabelOperand);
+        intermediateOperandClear(&negativeOperand);
+        return status;
+    }
+
+    IntermediateInstruction endLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, origin);
+    endLabelInstruction.operands[0] = endLabelOperand;
+    status = intermediateProgramAppend(generator->program, &endLabelInstruction);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&divisionCheckOperand);
+        intermediateOperandClear(&endLabelOperand);
+        intermediateOperandClear(&negativeOperand);
+        return status;
+    }
+
+    intermediateOperandClear(&divisionCheckOperand);
+    intermediateOperandClear(&endLabelOperand);
+    intermediateOperandClear(&negativeOperand);
+
+    return COMPILER_OK;
+}
+
 static CompilerStatus generateExpression(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
     if (generator == NULL || operand == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -335,6 +500,12 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             operationCode = INTERMEDIATE_SUBTRACT;
         } else if (strcmp(node->text, "*") == 0) {
             operationCode = INTERMEDIATE_MULTIPLY;
+        } else if (strcmp(node->text, "/") == 0) {
+            if (node->children[0]->inferredType == DATA_TYPE_INT && node->children[1]->inferredType == DATA_TYPE_INT) {
+                operationCode = INTERMEDIATE_INTEGER_DIVIDE;
+            } else {
+                operationCode = INTERMEDIATE_DIVIDE;
+            }
         } else {
             return COMPILER_INTERNAL_ERROR;
         }
@@ -383,22 +554,36 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             return status;
         }
 
-        IntermediateInstruction instruction = fillInstruction(operationCode, 3, node->location);
-        instruction.operands[0] = resultOperand;
-        instruction.operands[1] = leftOperand;
-        instruction.operands[2] = rightOperand;
+        if (operationCode == INTERMEDIATE_INTEGER_DIVIDE) {
+            status = generateIntegerDivision(generator, &resultOperand, &leftOperand, &rightOperand, node->location);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&leftOperand);
+                intermediateOperandClear(&rightOperand);
+                intermediateOperandClear(&resultOperand);
+                return status;
+            }
 
-        status = intermediateProgramAppend(generator->program, &instruction);
-        if (status != COMPILER_OK) {
             intermediateOperandClear(&leftOperand);
             intermediateOperandClear(&rightOperand);
-            intermediateOperandClear(&resultOperand);
-            return status;
-        }
+            *operand = resultOperand;
+        } else {
+            IntermediateInstruction instruction = fillInstruction(operationCode, 3, node->location);
+            instruction.operands[0] = resultOperand;
+            instruction.operands[1] = leftOperand;
+            instruction.operands[2] = rightOperand;
 
-        intermediateOperandClear(&leftOperand);
-        intermediateOperandClear(&rightOperand);
-        *operand = resultOperand;
+            status = intermediateProgramAppend(generator->program, &instruction);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&leftOperand);
+                intermediateOperandClear(&rightOperand);
+                intermediateOperandClear(&resultOperand);
+                return status;
+            }
+
+            intermediateOperandClear(&leftOperand);
+            intermediateOperandClear(&rightOperand);
+            *operand = resultOperand;
+        }
 
         break;
     }
@@ -407,6 +592,55 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         if (status != COMPILER_OK) {
             return status;
         }
+
+        break;
+    }
+    case ABSTRACT_SYNTAX_UNARY_EXPRESSION: {
+        if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL || node->text == NULL || strcmp(node->text, "-") != 0 || !isNumericType(node->children[0]->inferredType)) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        IntermediateOperand valueOperand = {0};
+        CompilerStatus status = generateExpression(generator, &valueOperand, node->children[0]);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        IntermediateOperand negativeOperand = {0};
+
+        if (node->children[0]->inferredType == DATA_TYPE_INT) {
+            negativeOperand.kind = INTERMEDIATE_OPERAND_INT;
+            negativeOperand.value.intValue = -1;
+        } else if (node->children[0]->inferredType == DATA_TYPE_DOUBLE) {
+            negativeOperand.kind = INTERMEDIATE_OPERAND_DOUBLE;
+            negativeOperand.value.doubleValue = -1.0;
+        } else {
+            intermediateOperandClear(&valueOperand);
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        IntermediateOperand resultOperand = {0};
+        status = generateTemporary(generator, &resultOperand, node->location);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&valueOperand);
+            return status;
+        }
+
+        IntermediateInstruction instruction = fillInstruction(INTERMEDIATE_MULTIPLY, 3, node->location);
+        instruction.operands[0] = resultOperand;
+        instruction.operands[1] = valueOperand;
+        instruction.operands[2] = negativeOperand;
+
+        status = intermediateProgramAppend(generator->program, &instruction);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&resultOperand);
+            intermediateOperandClear(&valueOperand);
+            return status;
+        }
+
+        *operand = resultOperand;
+
+        intermediateOperandClear(&valueOperand);
 
         break;
     }
