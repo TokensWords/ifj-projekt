@@ -494,6 +494,9 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         }
 
         IntermediateOpcode operationCode = 0;
+        bool negateResult = false;
+        bool includeEquality = false;
+
         if (strcmp(node->text, "+") == 0) {
             operationCode = INTERMEDIATE_ADD;
         } else if (strcmp(node->text, "-") == 0) {
@@ -506,6 +509,21 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             } else {
                 operationCode = INTERMEDIATE_DIVIDE;
             }
+        } else if (strcmp(node->text, "==") == 0) {
+            operationCode = INTERMEDIATE_COMPARE_EQUAL;
+        } else if (strcmp(node->text, "!=") == 0) {
+            operationCode = INTERMEDIATE_COMPARE_EQUAL;
+            negateResult = true;
+        } else if (strcmp(node->text, "<") == 0) {
+            operationCode = INTERMEDIATE_COMPARE_LESS;
+        } else if (strcmp(node->text, ">") == 0) {
+            operationCode = INTERMEDIATE_COMPARE_GREATER;
+        } else if (strcmp(node->text, "<=") == 0) {
+            operationCode = INTERMEDIATE_COMPARE_LESS;
+            includeEquality = true;
+        } else if (strcmp(node->text, ">=") == 0) {
+            operationCode = INTERMEDIATE_COMPARE_GREATER;
+            includeEquality = true;
         } else {
             return COMPILER_INTERNAL_ERROR;
         }
@@ -525,8 +543,16 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         }
         DataType rightType = node->children[1]->inferredType;
 
-        if (leftType == DATA_TYPE_STRING && rightType == DATA_TYPE_STRING && operationCode == INTERMEDIATE_ADD) {
-            operationCode = INTERMEDIATE_CONCATENATE;
+        bool isComparison = operationCode == INTERMEDIATE_COMPARE_EQUAL || operationCode == INTERMEDIATE_COMPARE_LESS || operationCode == INTERMEDIATE_COMPARE_GREATER;
+
+        if (leftType == DATA_TYPE_STRING && rightType == DATA_TYPE_STRING) {
+            if (operationCode == INTERMEDIATE_ADD) {
+                operationCode = INTERMEDIATE_CONCATENATE;
+            } else if (!isComparison) {
+                intermediateOperandClear(&leftOperand);
+                intermediateOperandClear(&rightOperand);
+                return COMPILER_INTERNAL_ERROR;
+            }
         } else if (!isNumericType(leftType) || !isNumericType(rightType)) {
             intermediateOperandClear(&leftOperand);
             intermediateOperandClear(&rightOperand);
@@ -578,6 +604,62 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 intermediateOperandClear(&rightOperand);
                 intermediateOperandClear(&resultOperand);
                 return status;
+            }
+
+            if (negateResult) {
+                IntermediateInstruction negateInstruction = fillInstruction(INTERMEDIATE_NOT, 2, node->location);
+                negateInstruction.operands[0] = resultOperand;
+                negateInstruction.operands[1] = resultOperand;
+
+                status = intermediateProgramAppend(generator->program, &negateInstruction);
+                if (status != COMPILER_OK) {
+                    intermediateOperandClear(&leftOperand);
+                    intermediateOperandClear(&rightOperand);
+                    intermediateOperandClear(&resultOperand);
+                    return status;
+                }
+            }
+
+            if (includeEquality) {
+                IntermediateOperand equalityOperand = {0};
+
+                status = generateTemporary(generator, &equalityOperand, node->location);
+                if (status != COMPILER_OK) {
+                    intermediateOperandClear(&leftOperand);
+                    intermediateOperandClear(&rightOperand);
+                    intermediateOperandClear(&resultOperand);
+                    return status;
+                }
+
+                IntermediateInstruction equalityInstruction = fillInstruction(INTERMEDIATE_COMPARE_EQUAL, 3, node->location);
+                equalityInstruction.operands[0] = equalityOperand;
+                equalityInstruction.operands[1] = leftOperand;
+                equalityInstruction.operands[2] = rightOperand;
+
+                status = intermediateProgramAppend(generator->program, &equalityInstruction);
+                if (status != COMPILER_OK) {
+                    intermediateOperandClear(&equalityOperand);
+                    intermediateOperandClear(&leftOperand);
+                    intermediateOperandClear(&rightOperand);
+                    intermediateOperandClear(&resultOperand);
+                    return status;
+                }
+
+                IntermediateInstruction orInstruction = fillInstruction(INTERMEDIATE_OR, 3, node->location);
+                orInstruction.operands[0] = resultOperand;
+                orInstruction.operands[1] = resultOperand;
+                orInstruction.operands[2] = equalityOperand;
+
+                status = intermediateProgramAppend(generator->program, &orInstruction);
+                if (status != COMPILER_OK) {
+                    intermediateOperandClear(&equalityOperand);
+                    intermediateOperandClear(&leftOperand);
+                    intermediateOperandClear(&rightOperand);
+                    intermediateOperandClear(&resultOperand);
+                    return status;
+                }
+
+                intermediateOperandClear(&equalityOperand);
             }
 
             intermediateOperandClear(&leftOperand);
