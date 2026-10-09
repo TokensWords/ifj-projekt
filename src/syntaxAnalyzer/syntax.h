@@ -26,4 +26,18 @@
 #define SYNTAX_PROLOG_NAME "ifj26"
 #define SYNTAX_ANNOTATION_MAIN "main"
 
+#define SYNTAX_OP_LEFT_PAREN "("
+#define SYNTAX_OP_ASSIGN "="
+#define SYNTAX_OP_PLUS "+"
+#define SYNTAX_OP_MINUS "-"
+#define SYNTAX_OP_MULTIPLY "*"
+#define SYNTAX_OP_DIVIDE "/"
+#define SYNTAX_OP_LESS "<"
+#define SYNTAX_OP_LESS_EQUAL "<="
+#define SYNTAX_OP_GREATER ">"
+#define SYNTAX_OP_GREATER_EQUAL ">="
+#define SYNTAX_OP_EQUAL "=="
+#define SYNTAX_OP_NOT_EQUAL "!="
+
+
 #endif
