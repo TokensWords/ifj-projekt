@@ -545,7 +545,13 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
 
         bool isComparison = operationCode == INTERMEDIATE_COMPARE_EQUAL || operationCode == INTERMEDIATE_COMPARE_LESS || operationCode == INTERMEDIATE_COMPARE_GREATER;
 
-        if (leftType == DATA_TYPE_STRING && rightType == DATA_TYPE_STRING) {
+        if (leftType == DATA_TYPE_UNIT || rightType == DATA_TYPE_UNIT) {
+            if (leftType != DATA_TYPE_UNIT || rightType != DATA_TYPE_UNIT || operationCode != INTERMEDIATE_COMPARE_EQUAL) {
+                intermediateOperandClear(&leftOperand);
+                intermediateOperandClear(&rightOperand);
+                return COMPILER_INTERNAL_ERROR;
+            }
+        } else if (leftType == DATA_TYPE_STRING && rightType == DATA_TYPE_STRING) {
             if (operationCode == INTERMEDIATE_ADD) {
                 operationCode = INTERMEDIATE_CONCATENATE;
             } else if (!isComparison) {
@@ -723,6 +729,13 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         *operand = resultOperand;
 
         intermediateOperandClear(&valueOperand);
+
+        break;
+    }
+    case ABSTRACT_SYNTAX_UNIT_LITERAL: {
+        operand->kind = INTERMEDIATE_OPERAND_UNIT;
+        operand->text = NULL;
+        operand->value = (IntermediateOperandValue){0};
 
         break;
     }
