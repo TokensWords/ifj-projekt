@@ -1,10 +1,12 @@
-#ifndef PARSER_EXPRESSION_H
-#define PARSER_EXPRESSION_H
+#ifndef PARSER_EXPRESSIONS_H
+#define PARSER_EXPRESSIONS_H
 
-#include "syntaxAnalyzer.h"
+#include "syntaxAnalyzerUtils.h"
 
-CompilerStatus parseExpression(SyntaxAnalyzer *syntaxAnalyzer,
+CompilerStatus analyzerExpressionsParse(SyntaxAnalyzer *syntaxAnalyzer,
                                         AbstractSyntaxNode **outNode);
 
+CompilerStatus analyzerExpressionsParseValueOrCall(SyntaxAnalyzer *syntaxAnalyzer,
+                                                   AbstractSyntaxNode **outNode);
 
 #endif
