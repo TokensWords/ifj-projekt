@@ -29,11 +29,16 @@ typedef enum {
     EXPR_TERMINAL_COUNT,
 } ExpressionTerminal;
 
+/** @brief Maps a supported binary operator token to its expression terminal. */
 bool syntaxOperatorFromToken(const Token *token, ExpressionTerminal *outTerminal);
 
+/** @brief Returns the spelling stored in the corresponding AST node. */
 const char *syntaxOperatorText(ExpressionTerminal terminal);
 
-PrecedenceRelation syntaxPrecedenceCompare(ExpressionTerminal stacked,
+/**
+ * @brief Looks up the relation between stacked and incoming terminals.
+ * @return The table relation: shift (<), equal (=), reduce (>), or error.
+ */
+PrecedenceRelation syntaxPrecedenceRelation(ExpressionTerminal stacked,
                                             ExpressionTerminal incoming);
-
 #endif

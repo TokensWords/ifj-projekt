@@ -111,3 +111,45 @@ static const PrecedenceRelation precedenceTable[EXPR_TERMINAL_COUNT][EXPR_TERMIN
         PRECEDENCE_ERROR, PRECEDENCE_ERROR
     }
 };
+
+
+static const OperatorDefinition *operatorDefinition(ExpressionTerminal terminal)
+{
+    for (size_t index = 0; index < sizeof(operators) / sizeof(operators[0]); index++) {
+        if (operators[index].terminal == terminal) {
+            return &operators[index];
+        }
+    }
+    return NULL;
+}
+
+bool syntaxOperatorFromToken(const Token *token, ExpressionTerminal *outTerminal)
+{
+    if (token == NULL || token->type != TOKEN_OPERATOR || token->lexeme == NULL ||
+        outTerminal == NULL) {
+        return false;
+    }
+
+    for (size_t index = 0; index < sizeof(operators) / sizeof(operators[0]); index++) {
+        if (strcmp(token->lexeme, operators[index].text) == 0) {
+            *outTerminal = operators[index].terminal;
+            return true;
+        }
+    }
+    return false;
+}
+
+const char *syntaxOperatorText(ExpressionTerminal terminal)
+{
+    const OperatorDefinition *definition = operatorDefinition(terminal);
+    return definition == NULL ? "" : definition->text;
+}
+
+PrecedenceRelation syntaxPrecedenceRelation(ExpressionTerminal stacked,
+                                            ExpressionTerminal incoming)
+{
+    if (stacked >= EXPR_TERMINAL_COUNT || incoming >= EXPR_TERMINAL_COUNT) {
+        return PRECEDENCE_ERROR;
+    }
+    return precedenceTable[stacked][incoming];
+}

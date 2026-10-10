@@ -1,7 +1,16 @@
 #include "parserExpressions.h"
 
-static CompilerStatus parseIdentifierNode(SyntaxAnalyzer *syntaxAnalyzer,
-                                          AbstractSyntaxNode **outNode)
+#include "syntaxAnalyzerUtils.h"
+
+#include "memory.h"
+#include "syntaxOperators.h"
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+CompilerStatus parseIdentifierNode(SyntaxAnalyzer *syntaxAnalyzer,
+                                   AbstractSyntaxNode **outNode)
 {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
@@ -35,7 +44,7 @@ cleanup:
 }
 
 CompilerStatus parseTerm(SyntaxAnalyzer *syntaxAnalyzer,
-                                AbstractSyntaxNode **outNode)
+                         AbstractSyntaxNode **outNode)
 {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
@@ -104,18 +113,8 @@ cleanup:
     return status;
 }
 
-CompilerStatus analyzerExpressionsParse(SyntaxAnalyzer *syntaxAnalyzer,
-                                       AbstractSyntaxNode **outNode)
-{
-    if (syntaxAnalyzer == NULL || outNode == NULL) {
-        return COMPILER_INTERNAL_ERROR;
-    }
-    *outNode = NULL;
-    return parseTerm(syntaxAnalyzer, outNode);
-}
-
 CompilerStatus parseFunctionCall(SyntaxAnalyzer *syntaxAnalyzer,
-                                        AbstractSyntaxNode **outNode)
+                                 AbstractSyntaxNode **outNode)
 {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
@@ -212,4 +211,345 @@ CompilerStatus analyzerExpressionsParseValueOrCall(SyntaxAnalyzer *syntaxAnalyze
         }
     }
     return analyzerExpressionsParse(syntaxAnalyzer, outNode);
+}
+
+typedef enum {
+    EXPRESSION_STACK_MARKER,
+    EXPRESSION_STACK_TERMINAL,
+    EXPRESSION_STACK_NONTERMINAL
+} ExpressionStackEntryKind;
+
+typedef struct {
+    ExpressionStackEntryKind kind;
+    ExpressionTerminal terminal;
+    SourceLocation location;
+    AbstractSyntaxNode *node;
+} ExpressionStackEntry;
+
+static CompilerStatus reserveExpressionStack(ExpressionStackEntry **stack,
+                                             size_t *capacity, size_t required)
+{
+    if (*capacity >= required) {
+        return COMPILER_OK;
+    }
+    size_t newCapacity = *capacity == 0 ? 8 : *capacity;
+    while (newCapacity < required) {
+        newCapacity *= 2;
+    }
+    ExpressionStackEntry *newStack = memoryResizeArray(*stack, newCapacity,
+                                                       sizeof(ExpressionStackEntry));
+    if (newStack == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    *stack = newStack;
+    *capacity = newCapacity;
+    return COMPILER_OK;
+}
+
+static CompilerStatus pushExpressionStack(ExpressionStackEntry **stack, size_t *count,
+                                          size_t *capacity, ExpressionStackEntry entry)
+{
+    CompilerStatus status = reserveExpressionStack(stack, capacity, *count + 1);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    (*stack)[(*count)++] = entry;
+    return COMPILER_OK;
+}
+
+static size_t topTerminalIndex(const ExpressionStackEntry *stack, size_t count)
+{
+    while (count > 0) {
+        size_t index = --count;
+        if (stack[index].kind == EXPRESSION_STACK_TERMINAL) {
+            return index;
+        }
+    }
+    return SIZE_MAX;
+}
+
+static bool hasOpenParenthesis(const ExpressionStackEntry *stack, size_t count)
+{
+    for (size_t index = 0; index < count; index++) {
+        if (stack[index].kind == EXPRESSION_STACK_TERMINAL &&
+            stack[index].terminal == EXPR_TERMINAL_LEFT_PAREN) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static ExpressionTerminal terminalForToken(const Token *token,
+                                           const ExpressionStackEntry *stack,
+                                           size_t stackCount)
+{
+    if (token == NULL) {
+        return EXPR_TERMINAL_END;
+    }
+    if (token->type == TOKEN_IDENTIFIER || token->type == TOKEN_INT_LITERAL ||
+        token->type == TOKEN_DOUBLE_LITERAL || token->type == TOKEN_STRING_LITERAL ||
+        token->type == TOKEN_UNIT_LITERAL) {
+        return EXPR_TERMINAL_OPERAND;
+    }
+    if (token->type == TOKEN_LEFT_PAREN) {
+        return EXPR_TERMINAL_LEFT_PAREN;
+    }
+    if (token->type == TOKEN_RIGHT_PAREN && hasOpenParenthesis(stack, stackCount)) {
+        return EXPR_TERMINAL_RIGHT_PAREN;
+    }
+    if (token->type == TOKEN_OPERATOR) {
+        ExpressionTerminal terminal;
+        if (syntaxOperatorFromToken(token, &terminal)) {
+            return terminal;
+        }
+    }
+    return EXPR_TERMINAL_END;
+}
+
+static void destroyExpressionStack(ExpressionStackEntry *stack, size_t count)
+{
+    for (size_t index = 0; index < count; index++) {
+        abstractSyntaxNodeDestroy(stack[index].node);
+    }
+    free(stack);
+}
+
+static CompilerStatus insertHandleMarker(ExpressionStackEntry **stack, size_t *count,
+                                         size_t *capacity, size_t terminalIndex)
+{
+    CompilerStatus status = reserveExpressionStack(stack, capacity, *count + 1);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    size_t insertionIndex = terminalIndex + 1;
+    for (size_t index = *count; index > insertionIndex; index--) {
+        (*stack)[index] = (*stack)[index - 1];
+    }
+    (*stack)[insertionIndex] = (ExpressionStackEntry){
+        .kind = EXPRESSION_STACK_MARKER
+    };
+    (*count)++;
+    return COMPILER_OK;
+}
+
+static CompilerStatus reduceExpressionHandle(ExpressionStackEntry *stack,
+                                             size_t *stackCount)
+{
+    size_t markerIndex = *stackCount;
+    while (markerIndex > 0) {
+        markerIndex--;
+        if (stack[markerIndex].kind == EXPRESSION_STACK_MARKER) {
+            break;
+        }
+    }
+    if (markerIndex >= *stackCount ||
+        stack[markerIndex].kind != EXPRESSION_STACK_MARKER) {
+        return COMPILER_SYNTAX_ERROR;
+    }
+
+    size_t handleStart = markerIndex + 1;
+    size_t handleLength = *stackCount - handleStart;
+    if (handleLength == 1 &&
+        stack[handleStart].kind == EXPRESSION_STACK_TERMINAL &&
+        stack[handleStart].terminal == EXPR_TERMINAL_OPERAND &&
+        stack[handleStart].node != NULL) {
+        stack[handleStart].kind = EXPRESSION_STACK_NONTERMINAL;
+        stack[markerIndex] = stack[handleStart];
+        *stackCount = markerIndex + 1;
+        return COMPILER_OK;
+    }
+
+    if (handleLength == 3 &&
+        stack[handleStart].kind == EXPRESSION_STACK_NONTERMINAL &&
+        stack[handleStart + 1].kind == EXPRESSION_STACK_TERMINAL &&
+        stack[handleStart + 1].terminal >= EXPR_TERMINAL_MULTIPLY &&
+        stack[handleStart + 1].terminal <= EXPR_TERMINAL_NOT_EQUAL &&
+        stack[handleStart + 2].kind == EXPRESSION_STACK_NONTERMINAL) {
+        AbstractSyntaxNode *left = stack[handleStart].node;
+        AbstractSyntaxNode *right = stack[handleStart + 2].node;
+        AbstractSyntaxNode *node = createNode(ABSTRACT_SYNTAX_EXPRESSION_BINARY,
+                                              stack[handleStart + 1].location);
+        if (node == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+        CompilerStatus status = setNodeText(
+            node, syntaxOperatorText(stack[handleStart + 1].terminal));
+        if (status != COMPILER_OK) {
+            abstractSyntaxNodeDestroy(node);
+            return status;
+        }
+
+        stack[handleStart].node = NULL;
+        status = appendOwnedChild(node, left);
+        if (status != COMPILER_OK) {
+            stack[handleStart + 2].node = NULL;
+            abstractSyntaxNodeDestroy(right);
+            abstractSyntaxNodeDestroy(node);
+            return status;
+        }
+        stack[handleStart + 2].node = NULL;
+        status = appendOwnedChild(node, right);
+        if (status != COMPILER_OK) {
+            abstractSyntaxNodeDestroy(node);
+            return status;
+        }
+        stack[markerIndex] = (ExpressionStackEntry){
+            .kind = EXPRESSION_STACK_NONTERMINAL,
+            .node = node
+        };
+        *stackCount = markerIndex + 1;
+        return COMPILER_OK;
+    }
+
+    if (handleLength == 3 &&
+        stack[handleStart].kind == EXPRESSION_STACK_TERMINAL &&
+        stack[handleStart].terminal == EXPR_TERMINAL_LEFT_PAREN &&
+        stack[handleStart + 1].kind == EXPRESSION_STACK_NONTERMINAL &&
+        stack[handleStart + 2].kind == EXPRESSION_STACK_TERMINAL &&
+        stack[handleStart + 2].terminal == EXPR_TERMINAL_RIGHT_PAREN) {
+        stack[markerIndex] = stack[handleStart + 1];
+        *stackCount = markerIndex + 1;
+        return COMPILER_OK;
+    }
+    return COMPILER_SYNTAX_ERROR;
+}
+
+static CompilerStatus shiftExpressionToken(SyntaxAnalyzer *syntaxAnalyzer,
+                                           ExpressionStackEntry **stack,
+                                           size_t *stackCount, size_t *stackCapacity,
+                                           ExpressionTerminal terminal)
+{
+    Token *token = syntaxAnalyzer->currentToken;
+    ExpressionStackEntry entry = {
+        .kind = EXPRESSION_STACK_TERMINAL,
+        .terminal = terminal,
+        .location = token->location
+    };
+    if (terminal == EXPR_TERMINAL_OPERAND) {
+        if (token->type == TOKEN_LEFT_PAREN) {
+            AbstractSyntaxNode *unit = createNode(ABSTRACT_SYNTAX_UNIT_LITERAL,
+                                                  token->location);
+            if (unit == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+            entry.node = unit;
+            CompilerStatus status = pushExpressionStack(stack, stackCount,
+                                                        stackCapacity, entry);
+            if (status != COMPILER_OK) {
+                abstractSyntaxNodeDestroy(unit);
+                return status;
+            }
+            status = advanceToken(syntaxAnalyzer);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+            return advanceToken(syntaxAnalyzer);
+        }
+        if (token->type == TOKEN_IDENTIFIER && syntaxAnalyzer->nextToken != NULL &&
+            syntaxAnalyzer->nextToken->type == TOKEN_LEFT_PAREN) {
+            return COMPILER_SYNTAX_ERROR;
+        }
+        CompilerStatus status = parseTerm(syntaxAnalyzer, &entry.node);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        status = pushExpressionStack(stack, stackCount, stackCapacity, entry);
+        if (status != COMPILER_OK) {
+            abstractSyntaxNodeDestroy(entry.node);
+        }
+        return status;
+    }
+
+    CompilerStatus status = pushExpressionStack(stack, stackCount, stackCapacity, entry);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    return advanceToken(syntaxAnalyzer);
+}
+
+
+CompilerStatus analyzerExpressionsParse(SyntaxAnalyzer *syntaxAnalyzer,
+                                        AbstractSyntaxNode **outNode)
+{
+    if (syntaxAnalyzer == NULL || outNode == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    *outNode = NULL;
+
+    ExpressionStackEntry *stack = NULL;
+    size_t stackCount = 0;
+    size_t stackCapacity = 0;
+    CompilerStatus status = pushExpressionStack(
+        &stack, &stackCount, &stackCapacity,
+        (ExpressionStackEntry){
+            .kind = EXPRESSION_STACK_TERMINAL,
+            .terminal = EXPR_TERMINAL_END
+        });
+    if (status != COMPILER_OK) {
+        destroyExpressionStack(stack, stackCount);
+        return status;
+    }
+    status = ensureCurrentToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    for (;;) {
+        Token *token = syntaxAnalyzer->currentToken;
+        bool emptyParentheses = false;
+        if (token != NULL && token->type == TOKEN_LEFT_PAREN) {
+            status = ensureNextToken(syntaxAnalyzer);
+            if (status != COMPILER_OK) {
+                goto cleanup;
+            }
+            emptyParentheses = syntaxAnalyzer->nextToken != NULL &&
+                               syntaxAnalyzer->nextToken->type == TOKEN_RIGHT_PAREN;
+        }
+
+        ExpressionTerminal incoming = terminalForToken(token, stack, stackCount);
+        if (emptyParentheses) {
+            incoming = EXPR_TERMINAL_OPERAND;
+        }
+        size_t stackedTerminalIndex = topTerminalIndex(stack, stackCount);
+        if (stackedTerminalIndex == SIZE_MAX) {
+            status = COMPILER_INTERNAL_ERROR;
+            goto cleanup;
+        }
+        ExpressionTerminal stacked = stack[stackedTerminalIndex].terminal;
+
+        if (incoming == EXPR_TERMINAL_END &&
+            stackCount == 2 && stack[1].kind == EXPRESSION_STACK_NONTERMINAL) {
+            *outNode = stack[1].node;
+            stack[1].node = NULL;
+            destroyExpressionStack(stack, stackCount);
+            return COMPILER_OK;
+        }
+
+        PrecedenceRelation relation = syntaxPrecedenceCompare(stacked, incoming);
+        if (relation == PRECEDENCE_ERROR) {
+            status = COMPILER_SYNTAX_ERROR;
+        } else if (relation == PRECEDENCE_REDUCE) {
+            status = reduceExpressionHandle(stack, &stackCount);
+        } else if (relation == PRECEDENCE_SHIFT) {
+            status = insertHandleMarker(&stack, &stackCount, &stackCapacity,
+                                        stackedTerminalIndex);
+            if (status != COMPILER_OK) {
+                goto cleanup;
+            }
+            status = shiftExpressionToken(syntaxAnalyzer, &stack, &stackCount,
+                                          &stackCapacity, incoming);
+        } else if (relation == PRECEDENCE_EQUAL) {
+            status = shiftExpressionToken(syntaxAnalyzer, &stack, &stackCount,
+                                          &stackCapacity, incoming);
+        } else {
+            status = COMPILER_INTERNAL_ERROR;
+        }
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    destroyExpressionStack(stack, stackCount);
+    return status;
 }
