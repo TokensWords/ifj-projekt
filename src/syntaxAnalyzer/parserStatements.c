@@ -228,7 +228,7 @@ CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer,
     return COMPILER_OK;
 }
 
-CompilerStatus analyzerStatementsParseBlock(SyntaxAnalyzer *syntaxAnalyzer,
+CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer,
                                             AbstractSyntaxNode **outNode)
 {
     if (syntaxAnalyzer == NULL || outNode == NULL) {
