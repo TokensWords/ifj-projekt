@@ -25,6 +25,7 @@
 
 #define SYNTAX_PROLOG_NAME "ifj26"
 #define SYNTAX_ANNOTATION_MAIN "main"
+#define SYNTAX_WILDCARD "*"
 
 #define SYNTAX_OP_LEFT_PAREN "("
 #define SYNTAX_OP_ASSIGN "="
