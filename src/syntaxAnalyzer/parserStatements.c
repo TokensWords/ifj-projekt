@@ -18,9 +18,12 @@ static CompilerStatus expectBlockHeaderEnd(SyntaxAnalyzer *syntaxAnalyzer)
         return COMPILER_SYNTAX_ERROR;
     }
     CompilerStatus status = advanceToken(syntaxAnalyzer);
-    if (status == COMPILER_OK) {
-        status = skipNewlines(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        return status;
     }
+
+    status = skipNewlines(syntaxAnalyzer);
+
     return status;
 }
 
@@ -36,55 +39,77 @@ CompilerStatus parseIf(SyntaxAnalyzer *syntaxAnalyzer,
     if (ifNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    status = advanceToken(syntaxAnalyzer);
+
     AbstractSyntaxNode *condition = NULL;
-    if (status == COMPILER_OK) {
-        status = analyzerExpressionsParse(syntaxAnalyzer, &condition);
-    }
-    if (status == COMPILER_OK) {
-        status = appendOwnedChild(ifNode, condition);
-    } else {
-        abstractSyntaxNodeDestroy(condition);
-    }
-    if (status == COMPILER_OK) {
-        status = expectWord(syntaxAnalyzer, SYNTAX_KW_THEN);
-    }
-    if (status == COMPILER_OK) {
-        status = expectBlockHeaderEnd(syntaxAnalyzer);
-    }
     AbstractSyntaxNode *thenBlock = NULL;
-    if (status == COMPILER_OK) {
-        status = analyzerStatementsParseBlock(syntaxAnalyzer, &thenBlock);
-    }
-    if (status == COMPILER_OK) {
-        status = appendOwnedChild(ifNode, thenBlock);
-    } else {
-        abstractSyntaxNodeDestroy(thenBlock);
-    }
-    if (status == COMPILER_OK) {
-        status = skipNewlines(syntaxAnalyzer);
-    }
-    if (status == COMPILER_OK) {
-        status = expectWord(syntaxAnalyzer, SYNTAX_KW_ELSE);
-    }
-    if (status == COMPILER_OK) {
-        status = expectBlockHeaderEnd(syntaxAnalyzer);
-    }
     AbstractSyntaxNode *elseBlock = NULL;
-    if (status == COMPILER_OK) {
-        status = analyzerStatementsParseBlock(syntaxAnalyzer, &elseBlock);
-    }
-    if (status == COMPILER_OK) {
-        status = appendOwnedChild(ifNode, elseBlock);
-    } else {
-        abstractSyntaxNodeDestroy(elseBlock);
-    }
+
+    status = advanceToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
-        abstractSyntaxNodeDestroy(ifNode);
-        return status;
+        goto cleanup;
     }
+
+    status = analyzerExpressionsParse(syntaxAnalyzer, &condition);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = appendOwnedChild(ifNode, condition);
+    condition = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    status = expectWord(syntaxAnalyzer, SYNTAX_KW_THEN);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = expectBlockHeaderEnd(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    status = analyzerStatementsParseBlock(syntaxAnalyzer, &thenBlock);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = appendOwnedChild(ifNode, thenBlock);
+    thenBlock = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    status = skipNewlines(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = expectWord(syntaxAnalyzer, SYNTAX_KW_ELSE);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = expectBlockHeaderEnd(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    status = analyzerStatementsParseBlock(syntaxAnalyzer, &elseBlock);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = appendOwnedChild(ifNode, elseBlock);
+    elseBlock = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
     *outNode = ifNode;
     return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(condition);
+    abstractSyntaxNodeDestroy(thenBlock);
+    abstractSyntaxNodeDestroy(elseBlock);
+    abstractSyntaxNodeDestroy(ifNode);
+    return status;
 }
 
 CompilerStatus parseWhile(SyntaxAnalyzer *syntaxAnalyzer,
@@ -99,37 +124,51 @@ CompilerStatus parseWhile(SyntaxAnalyzer *syntaxAnalyzer,
     if (whileNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    status = advanceToken(syntaxAnalyzer);
+
     AbstractSyntaxNode *condition = NULL;
-    if (status == COMPILER_OK) {
-        status = analyzerExpressionsParse(syntaxAnalyzer, &condition);
-    }
-    if (status == COMPILER_OK) {
-        status = appendOwnedChild(whileNode, condition);
-    } else {
-        abstractSyntaxNodeDestroy(condition);
-    }
-    if (status == COMPILER_OK) {
-        status = expectWord(syntaxAnalyzer, SYNTAX_KW_DO);
-    }
-    if (status == COMPILER_OK) {
-        status = expectBlockHeaderEnd(syntaxAnalyzer);
-    }
     AbstractSyntaxNode *body = NULL;
-    if (status == COMPILER_OK) {
-        status = analyzerStatementsParseBlock(syntaxAnalyzer, &body);
-    }
-    if (status == COMPILER_OK) {
-        status = appendOwnedChild(whileNode, body);
-    } else {
-        abstractSyntaxNodeDestroy(body);
-    }
+
+    status = advanceToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
-        abstractSyntaxNodeDestroy(whileNode);
-        return status;
+        goto cleanup;
+    }
+
+    status = analyzerExpressionsParse(syntaxAnalyzer, &condition);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = appendOwnedChild(whileNode, condition);
+    condition = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    status = expectWord(syntaxAnalyzer, SYNTAX_KW_DO);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = expectBlockHeaderEnd(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    status = analyzerStatementsParseBlock(syntaxAnalyzer, &body);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = appendOwnedChild(whileNode, body);
+    body = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
     }
     *outNode = whileNode;
     return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(condition);
+    abstractSyntaxNodeDestroy(body);
+    abstractSyntaxNodeDestroy(whileNode);
+    return status;
 }
 
 /* Statement dispatch and indentation-delimited blocks. */
