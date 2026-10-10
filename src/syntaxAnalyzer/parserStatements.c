@@ -228,4 +228,70 @@ CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer,
     return COMPILER_OK;
 }
 
-//TODO parse block
+CompilerStatus analyzerStatementsParseBlock(SyntaxAnalyzer *syntaxAnalyzer,
+                                            AbstractSyntaxNode **outNode)
+{
+    if (syntaxAnalyzer == NULL || outNode == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    *outNode = NULL;
+
+    CompilerStatus status = expectType(syntaxAnalyzer, TOKEN_INDENT);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    SourceLocation location = syntaxAnalyzer->currentToken->location;
+    AbstractSyntaxNode *block = createNode(ABSTRACT_SYNTAX_BLOCK, location);
+    if (block == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    AbstractSyntaxNode *statement = NULL;
+    status = skipNewlines(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    while (!currentIsType(syntaxAnalyzer, TOKEN_DEDENT) &&
+           !currentIsType(syntaxAnalyzer, TOKEN_EOF)) {
+        status = parseStatement(syntaxAnalyzer, &statement);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+
+        status = appendOwnedChild(block, statement);
+        statement = NULL;
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+
+        if (currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
+            status = skipNewlines(syntaxAnalyzer);
+            if (status != COMPILER_OK) {
+                goto cleanup;
+            }
+        } else if (!currentIsType(syntaxAnalyzer, TOKEN_DEDENT)) {
+            status = COMPILER_SYNTAX_ERROR;
+            goto cleanup;
+        }
+    }
+
+    if (block->childCount == 0) {
+        status = COMPILER_SYNTAX_ERROR;
+        goto cleanup;
+    }
+
+    status = expectType(syntaxAnalyzer, TOKEN_DEDENT);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    *outNode = block;
+    return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(statement);
+    abstractSyntaxNodeDestroy(block);
+    return status;
+}
