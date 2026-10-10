@@ -1,0 +1,15 @@
+#ifndef PARSER_STATEMENTS_H
+#define PARSER_STATEMENTS_H
+
+#include "syntaxAnalyzerUtils.h"
+
+/** @brief Parses an if statement and stores its AST node in outNode. */
+CompilerStatus parseIf(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
+
+/** @brief Parses a while statement and stores its AST node in outNode. */
+CompilerStatus parseWhile(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
+
+/** @brief Parses one statement and stores its AST node in outNode. */
+CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
+
+#endif
