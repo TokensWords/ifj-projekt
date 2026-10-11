@@ -12,14 +12,6 @@ CompilerStatus parseWhile(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **o
 /** @brief Parses one statement and stores its AST node in outNode. */
 CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
 
-/** @brief Parses a variable declaration. */
-CompilerStatus parseVariableDeclaration(SyntaxAnalyzer *syntaxAnalyzer,
-                                        AbstractSyntaxNode **outNode);
-
-/** @brief Parses a return statement. */
-CompilerStatus parseReturn(SyntaxAnalyzer *syntaxAnalyzer,
-                           AbstractSyntaxNode **outNode);
-
 /** @brief Parses an assignment. */
 CompilerStatus parseAssignment(SyntaxAnalyzer *syntaxAnalyzer,
                                AbstractSyntaxNode **outNode);
