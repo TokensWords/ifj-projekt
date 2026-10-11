@@ -44,52 +44,6 @@ void syntaxAnalyzerDestroy(SyntaxAnalyzer *syntaxAnalyzer)
     free(syntaxAnalyzer);
 }
 
-/* --- Function parsing --- */
-
-/**
- * @brief Consumes an annotation marker and leaves its name as the current token.
- * @param outName Receives a borrowed pointer to the annotation name.
- */
-static CompilerStatus parseMainAnnotation(SyntaxAnalyzer *syntaxAnalyzer)
-{
-    CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
-    if (status != COMPILER_OK) {
-        return status;
-    }
-    if (!currentIsType(syntaxAnalyzer, TOKEN_AT)) {
-        return COMPILER_SYNTAX_ERROR;
-    }
-
-    // we need to check if there is whitespace between the annotation marker and the name, which is not allowed
-    SourceLocation atLocation = syntaxAnalyzer->currentToken->location;
-    status = ensureNextToken(syntaxAnalyzer);
-    if (status != COMPILER_OK) {
-        return status;
-    }
-    if (syntaxAnalyzer->nextToken->lexeme == NULL ||
-        syntaxAnalyzer->nextToken->location.line != atLocation.line ||
-        syntaxAnalyzer->nextToken->location.column != atLocation.column + 1) {
-        return COMPILER_SYNTAX_ERROR;
-    }
-
-    status = advanceToken(syntaxAnalyzer);
-    if (status != COMPILER_OK) {
-        return status;
-    }
-
-    // @todo except type?
-    status = expectsWord(syntaxAnalyzer, SYNTAX_ANNOTATION_MAIN);
-    if (status != COMPILER_OK) {
-        return status;
-    }
-
-    status = expectType(syntaxAnalyzer, TOKEN_NEWLINE);
-    if (status != COMPILER_OK) {
-        return status;
-    }
-
-    return COMPILER_OK;
-}
 
 static CompilerStatus parsePrologue(SyntaxAnalyzer *syntaxAnalyzer)
 {
@@ -148,6 +102,7 @@ CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer, Source
     if (status != COMPILER_OK) {
         return status;
     }
+
 
     SourceProgram *program = sourceProgramCreate();
     if (program == NULL) {
