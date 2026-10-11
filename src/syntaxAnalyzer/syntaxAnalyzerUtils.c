@@ -80,7 +80,7 @@ CompilerStatus skipNewlines(SyntaxAnalyzer *syntaxAnalyzer)
 
 /* --- Current Token Validation Functions --- */
 
-static bool tokenHasText(const Token *token, const char *text)
+bool tokenHasText(const Token *token, const char *text)
 {
     return token != NULL && token->lexeme != NULL && strcmp(token->lexeme, text) == 0;
 }

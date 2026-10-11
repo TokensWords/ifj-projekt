@@ -7,6 +7,8 @@
  */
 
 #include "syntaxAnalyzer.h"
+#include "parserFunctions.h"
+#include "syntaxAnalyzerUtils.h"
 #include "syntax.h"
 
 #include "memory.h"
@@ -47,8 +49,6 @@ void syntaxAnalyzerDestroy(SyntaxAnalyzer *syntaxAnalyzer)
 
 static CompilerStatus parsePrologue(SyntaxAnalyzer *syntaxAnalyzer)
 {
-    CompilerStatus status = COMPILER_OK;
-
     CompilerStatus status = expectWord(syntaxAnalyzer, SYNTAX_KW_IMPORT);
     if (status != COMPILER_OK) {
         return status;
@@ -130,9 +130,8 @@ CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer, Source
             break;
         }
     
-        status = abstractSyntaxNodeAppendChild(program->root, functionNode);
+        status = appendOwnedChild(program->root, functionNode);
         if (status != COMPILER_OK) {
-            abstractSyntaxNodeDestroy(functionNode);
             break;
         }
     }

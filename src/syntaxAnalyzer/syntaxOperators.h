@@ -4,6 +4,8 @@
 
 #include "token.h"
 
+#include <stdbool.h>
+
 typedef enum {
     PRECEDENCE_ERROR,
     PRECEDENCE_SHIFT,

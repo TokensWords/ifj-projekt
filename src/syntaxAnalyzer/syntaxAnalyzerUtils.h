@@ -56,6 +56,9 @@ CompilerStatus expectType(SyntaxAnalyzer *syntaxAnalyzer, TokenType type);
 /** @brief Returns whether token is a valid identifier token with a lexeme. */
 bool isIdentifierToken(const Token *token);
 
+/** @brief Tests whether a token has the given lexeme. */
+bool tokenHasText(const Token *token, const char *text);
+
 /** @brief Tests whether token terminates an expression. */
 bool isExpressionTerminator(const Token *token);
 

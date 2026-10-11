@@ -10,6 +10,7 @@
 #include "syntaxAnalyzer.h"
 #include "syntaxAnalyzerUtils.h"
 #include "syntax.h"
+#include "parserExpressions.h"
 #include "parserStatements.h"
 
 #include <string.h>

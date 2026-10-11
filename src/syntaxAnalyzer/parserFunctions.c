@@ -1,5 +1,8 @@
 #include "parserFunctions.h"
 
+#include "parserExpressions.h"
+#include "parserStatements.h"
+#include "parserTypes.h"
 #include "syntax.h"
 #include "syntaxAnalyzerUtils.h"
 
@@ -193,7 +196,7 @@ CompilerStatus parseFunction(SyntaxAnalyzer *syntaxAnalyzer,
         if (status != COMPILER_OK) {
             goto cleanup;
         }
-        status = analyzerStatementsParseBlock(syntaxAnalyzer, &body);
+        status = parseBlock(syntaxAnalyzer, &body);
         if (status != COMPILER_OK) {
             goto cleanup;
         }
