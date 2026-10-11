@@ -1,3 +1,10 @@
+/**
+ * @file  syntaxOperators.c
+ *
+ * @project IFJ26 compiler
+ * @author Matúš Čík
+ */
+
 #include "syntaxOperators.h"
 
 #include "syntax.h"

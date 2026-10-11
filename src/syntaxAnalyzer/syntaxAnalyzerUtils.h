@@ -1,5 +1,6 @@
 /**
- * @file syntaxAnalyzer.h
+ * @file  syntaxAnalyzerUtils.h
+ *
  * @brief Collection of utility functions for the syntax analyzer (parser). Includes token management, AST node creation, and parsing helpers.
  *
  * @project IFJ26 compiler

@@ -1,3 +1,10 @@
+/**
+ * @file  parserExpressions.h
+ *
+ * @project IFJ26 compiler
+ * @author Matúš Čík
+ */
+
 #ifndef PARSER_EXPRESSIONS_H
 #define PARSER_EXPRESSIONS_H
 

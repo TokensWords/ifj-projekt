@@ -1,3 +1,10 @@
+/**
+ * @file  parserStatements.h
+ *
+ * @project IFJ26 compiler
+ * @author Matúš Čík
+ */
+
 #ifndef PARSER_STATEMENTS_H
 #define PARSER_STATEMENTS_H
 

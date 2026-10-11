@@ -1,7 +1,10 @@
 /**
- * PROJECT: IFJ26 compiler
- * AUTHORS: Matúš Čík
- * BRIEF: Defines MACROS for reserved syntax keywords and anotations for the parser
+ * @file  syntax.h
+ *
+ * @brief Defines MACROS for reserved syntax keywords and anotations for the parser
+ *
+ * @project IFJ26 compiler
+ * @author Matúš Čík
  */
 
 #ifndef SYNTAX_H

@@ -1,5 +1,6 @@
 /**
- * @file parserStatements.c
+ * @file  parserStatements.c
+ *
  * @brief Implements parsing of statements and blocks of statements.
  *
  * @project IFJ26 compiler

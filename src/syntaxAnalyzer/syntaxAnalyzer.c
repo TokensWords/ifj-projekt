@@ -1,5 +1,6 @@
 /**
- * @file syntaxAnalyzer.c
+ * @file  syntaxAnalyzer.c
+ *
  * @brief Implements the syntax analyzer (parser) interface and lifecycle.
  *
  * @project IFJ26 compiler

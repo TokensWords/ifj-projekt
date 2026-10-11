@@ -1,5 +1,6 @@
 /**
- * @file syntaxAnalyzer.c
+ * @file  syntaxAnalyzerUtils.c
+ *
  * @project IFJ26 compiler
  * @author Matúš Čík
  */

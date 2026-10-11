@@ -1,3 +1,9 @@
+/**
+ * @file  syntaxOperators.h
+ *
+ * @project IFJ26 compiler
+ * @author Matúš Čík
+ */
 
 #ifndef SYNTAX_OPERATORS_H
 #define SYNTAX_OPERATORS_H

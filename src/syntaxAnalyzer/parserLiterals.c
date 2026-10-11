@@ -1,3 +1,10 @@
+/**
+ * @file  parserLiterals.c
+ *
+ * @project IFJ26 compiler
+ * @author Matúš Čík
+ */
+
 #include "parserLiterals.h"
 #include "syntaxAnalyzerUtils.h"
 #include "syntax.h"
