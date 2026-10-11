@@ -1,5 +1,10 @@
 /**
- * @author Matúš Čík
+ * PROJECT: IFJ26 compiler
+ * AUTHORS: Matúš Čík
+ * BRIEF: Abstract syntax tree representation and ownership helpers
+ * 
+ * IDEA: Remove struct ASTNODE field isMutable and isEntryFunction by adding more ASTNODE types, example: ABSTRACT_SYNTAX_FUNCTION_ENTRY, ABSTRACT_SYNTAX_VARIABLE_DECLARATION_MUTABLE, ABSTRACT_SYNTAX_VARIABLE_DECLARATION_IMMUTABLE.
+ * IDEA: Make ASTNODE easier to work with by introducing funtions of getters/setter for node types.
  */
 
 #ifndef ABSTRACT_SYNTAX_TREE_H
@@ -94,6 +99,13 @@ typedef enum {
      */
     ABSTRACT_SYNTAX_EXPRESSION_BINARY,
 
+    /**
+     * Represents a unary expression
+     * @text - unary operator
+     * @children - operand
+     */
+    ABSTRACT_SYNTAX_UNARY_EXPRESSION,
+
     // --- values ---
 
     /**
@@ -139,7 +151,10 @@ typedef union {
 } AbstractSyntaxValue;
 
 typedef struct AbstractSyntaxNode {
-    AbstractSyntaxNodeType type;
+    union {
+        AbstractSyntaxNodeType type;
+        AbstractSyntaxNodeType kind;
+    };
     SourceLocation location;
     DataType inferredType;
     DataType variableType;
@@ -150,6 +165,7 @@ typedef struct AbstractSyntaxNode {
     size_t childCapacity;
     size_t variableId;
     bool isEntryFunction;
+    bool isMutable;
 } AbstractSyntaxNode;
 
 typedef struct {
@@ -160,5 +176,7 @@ SourceProgram *sourceProgramCreate(void);
 void sourceProgramDestroy(SourceProgram *program);
 AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType  type, SourceLocation location);
 void abstractSyntaxNodeDestroy(AbstractSyntaxNode *node);
+CompilerStatus abstractSyntaxNodeSetText(AbstractSyntaxNode *node, const char *text);
+CompilerStatus abstractSyntaxNodeAddChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *child);
 
 #endif

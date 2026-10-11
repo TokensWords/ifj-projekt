@@ -1,4 +1,5 @@
-/*
+
+/**
  * Project: IFJ26 compiler
  * Authors: TODO(team)
  * AI-assisted scaffold.
@@ -32,14 +33,14 @@ void sourceProgramDestroy(SourceProgram *program)
     free(program);
 }
 
-AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeKind kind, SourceLocation location)
+AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType type, SourceLocation location)
 {
     AbstractSyntaxNode *node = memoryAllocate(sizeof(AbstractSyntaxNode));
     if (node == NULL) {
         return NULL;
     }
 
-    node->kind = kind;
+    node->type = type;
     node->location = location;
     node->variableType = DATA_TYPE_UNKNOWN;
     node->inferredType = DATA_TYPE_UNKNOWN;
