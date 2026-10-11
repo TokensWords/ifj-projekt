@@ -1,9 +1,9 @@
-#ifndef ANALYZER_FUNCTION_H
-#define ANALYZER_FUNCTION_H
+#ifndef PARSER_FUNCTIONS_H
+#define PARSER_FUNCTIONS_H
 
 #include "syntaxAnalyzer.h"
 
 CompilerStatus parseFunction(SyntaxAnalyzer *syntaxAnalyzer,
-                                              AbstractSyntaxNode **outNode);
+                             AbstractSyntaxNode **outNode);
 
 #endif
