@@ -87,6 +87,123 @@ static CompilerStatus parseMainAnnotation(SyntaxAnalyzer *syntaxAnalyzer)
     return expectWord(syntaxAnalyzer, SYNTAX_ANNOTATION_MAIN);
 }
 
+static CompilerStatus parseFunctionParameters(SyntaxAnalyzer *syntaxAnalyzer,
+                                              AbstractSyntaxNode *function)
+{
+    CompilerStatus status = expectType(syntaxAnalyzer, TOKEN_LEFT_PAREN);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    while (!currentIsType(syntaxAnalyzer, TOKEN_RIGHT_PAREN)) {
+        AbstractSyntaxNode *parameter = NULL;
+        status = parseParameter(syntaxAnalyzer, &parameter);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        status = appendOwnedChild(function, parameter);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        if (!currentIsType(syntaxAnalyzer, TOKEN_COMMA)) {
+            break;
+        }
+
+        size_t commaLine = syntaxAnalyzer->currentToken->location.line;
+        status = advanceToken(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        if (currentIsType(syntaxAnalyzer, TOKEN_RIGHT_PAREN)) {
+            if (syntaxAnalyzer->currentToken->location.line <= commaLine) {
+                return COMPILER_SYNTAX_ERROR;
+            }
+            break;
+        }
+    }
+
+    return expectType(syntaxAnalyzer, TOKEN_RIGHT_PAREN);
+}
+
+static CompilerStatus parseFunctionReturnType(SyntaxAnalyzer *syntaxAnalyzer,
+                                              AbstractSyntaxNode *function)
+{
+    if (!currentIsType(syntaxAnalyzer, TOKEN_COLON)) {
+        return COMPILER_OK;
+    }
+
+    CompilerStatus status = advanceToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    return analyzerTypesParseDataType(syntaxAnalyzer, &function->variableType);
+}
+
+static CompilerStatus parseFunctionBody(SyntaxAnalyzer *syntaxAnalyzer,
+                                        AbstractSyntaxNode **outBody)
+{
+    *outBody = NULL;
+    if (currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
+        CompilerStatus status = advanceToken(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        status = skipNewlines(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        return parseBlock(syntaxAnalyzer, outBody);
+    }
+
+    AbstractSyntaxNode *bodyValue = NULL;
+    AbstractSyntaxNode *body = NULL;
+    AbstractSyntaxNode *statement = NULL;
+    CompilerStatus status = analyzerExpressionsParseValueOrCall(syntaxAnalyzer,
+                                                                &bodyValue);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    body = createNode(ABSTRACT_SYNTAX_BLOCK, bodyValue->location);
+    if (body == NULL) {
+        status = COMPILER_INTERNAL_ERROR;
+        goto cleanup;
+    }
+    if (bodyValue->kind == ABSTRACT_SYNTAX_FUNCTION_CALL) {
+        status = appendOwnedChild(body, bodyValue);
+        bodyValue = NULL;
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+    } else {
+        statement = createNode(ABSTRACT_SYNTAX_EXPRESSION_STATEMENT,
+                               bodyValue->location);
+        if (statement == NULL) {
+            status = COMPILER_INTERNAL_ERROR;
+            goto cleanup;
+        }
+        status = appendOwnedChild(statement, bodyValue);
+        bodyValue = NULL;
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        status = appendOwnedChild(body, statement);
+        statement = NULL;
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+    }
+
+    *outBody = body;
+    return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(statement);
+    abstractSyntaxNodeDestroy(bodyValue);
+    abstractSyntaxNodeDestroy(body);
+    return status;
+}
+
 CompilerStatus parseFunction(SyntaxAnalyzer *syntaxAnalyzer,
                              AbstractSyntaxNode **outNode)
 {
@@ -127,8 +244,6 @@ CompilerStatus parseFunction(SyntaxAnalyzer *syntaxAnalyzer,
     AbstractSyntaxNode *function = createNode(ABSTRACT_SYNTAX_FUNCTION,
                                               syntaxAnalyzer->currentToken->location);
     AbstractSyntaxNode *body = NULL;
-    AbstractSyntaxNode *bodyValue = NULL;
-    AbstractSyntaxNode *statement = NULL;
     if (function == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -142,106 +257,21 @@ CompilerStatus parseFunction(SyntaxAnalyzer *syntaxAnalyzer,
     if (status != COMPILER_OK) {
         goto cleanup;
     }
-    status = expectType(syntaxAnalyzer, TOKEN_LEFT_PAREN);
+    status = parseFunctionParameters(syntaxAnalyzer, function);
     if (status != COMPILER_OK) {
         goto cleanup;
     }
-
-    while (!currentIsType(syntaxAnalyzer, TOKEN_RIGHT_PAREN)) {
-        AbstractSyntaxNode *parameter = NULL;
-        status = parseParameter(syntaxAnalyzer, &parameter);
-        if (status != COMPILER_OK) {
-            goto cleanup;
-        }
-        status = appendOwnedChild(function, parameter);
-        if (status != COMPILER_OK) {
-            goto cleanup;
-        }
-        if (!currentIsType(syntaxAnalyzer, TOKEN_COMMA)) {
-            break;
-        }
-
-        size_t commaLine = syntaxAnalyzer->currentToken->location.line;
-        status = advanceToken(syntaxAnalyzer);
-        if (status != COMPILER_OK) {
-            goto cleanup;
-        }
-        if (currentIsType(syntaxAnalyzer, TOKEN_RIGHT_PAREN)) {
-            if (syntaxAnalyzer->currentToken->location.line <= commaLine) {
-                status = COMPILER_SYNTAX_ERROR;
-                goto cleanup;
-            }
-            break;
-        }
-    }
-
-    status = expectType(syntaxAnalyzer, TOKEN_RIGHT_PAREN);
+    status = parseFunctionReturnType(syntaxAnalyzer, function);
     if (status != COMPILER_OK) {
         goto cleanup;
     }
-    if (currentIsType(syntaxAnalyzer, TOKEN_COLON)) {
-        status = advanceToken(syntaxAnalyzer);
-        if (status != COMPILER_OK) {
-            goto cleanup;
-        }
-        status = analyzerTypesParseDataType(syntaxAnalyzer, &function->variableType);
-        if (status != COMPILER_OK) {
-            goto cleanup;
-        }
-    }
-
     status = expectWord(syntaxAnalyzer, SYNTAX_OP_ASSIGN);
     if (status != COMPILER_OK) {
         goto cleanup;
     }
-    if (currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
-        status = advanceToken(syntaxAnalyzer);
-        if (status != COMPILER_OK) {
-            goto cleanup;
-        }
-        status = skipNewlines(syntaxAnalyzer);
-        if (status != COMPILER_OK) {
-            goto cleanup;
-        }
-        status = parseBlock(syntaxAnalyzer, &body);
-        if (status != COMPILER_OK) {
-            goto cleanup;
-        }
-    } else {
-        status = analyzerExpressionsParseValueOrCall(syntaxAnalyzer, &bodyValue);
-        if (status != COMPILER_OK) {
-            goto cleanup;
-        }
-
-        body = createNode(ABSTRACT_SYNTAX_BLOCK, bodyValue->location);
-        if (body == NULL) {
-            status = COMPILER_INTERNAL_ERROR;
-            goto cleanup;
-        }
-        if (bodyValue->kind == ABSTRACT_SYNTAX_FUNCTION_CALL) {
-            status = appendOwnedChild(body, bodyValue);
-            bodyValue = NULL;
-            if (status != COMPILER_OK) {
-                goto cleanup;
-            }
-        } else {
-            statement = createNode(ABSTRACT_SYNTAX_EXPRESSION_STATEMENT,
-                                   bodyValue->location);
-            if (statement == NULL) {
-                status = COMPILER_INTERNAL_ERROR;
-                goto cleanup;
-            }
-            status = appendOwnedChild(statement, bodyValue);
-            bodyValue = NULL;
-            if (status != COMPILER_OK) {
-                goto cleanup;
-            }
-            status = appendOwnedChild(body, statement);
-            statement = NULL;
-            if (status != COMPILER_OK) {
-                goto cleanup;
-            }
-        }
+    status = parseFunctionBody(syntaxAnalyzer, &body);
+    if (status != COMPILER_OK) {
+        goto cleanup;
     }
 
     status = appendOwnedChild(function, body);
@@ -254,8 +284,6 @@ CompilerStatus parseFunction(SyntaxAnalyzer *syntaxAnalyzer,
     function = NULL;
 
 cleanup:
-    abstractSyntaxNodeDestroy(statement);
-    abstractSyntaxNodeDestroy(bodyValue);
     abstractSyntaxNodeDestroy(body);
     abstractSyntaxNodeDestroy(function);
     return status;
