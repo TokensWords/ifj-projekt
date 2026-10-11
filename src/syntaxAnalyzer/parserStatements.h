@@ -14,6 +14,6 @@ CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode
 
 /** @brief Parses block of statements. */
 CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer,
-                                            AbstractSyntaxNode **outNode);
+                          AbstractSyntaxNode **outNode);
 
 #endif

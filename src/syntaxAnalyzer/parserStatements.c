@@ -1,5 +1,5 @@
 /**
- * @file syntaxAnalyzer.c
+ * @file parserStatements.c
  * @brief Implements parsing of statements and blocks of statements.
  *
  * @project IFJ26 compiler
@@ -10,7 +10,9 @@
 #include "syntaxAnalyzer.h"
 #include "syntaxAnalyzerUtils.h"
 #include "syntax.h"
+#include "parserStatements.h"
 
+#include <string.h>
 
 static CompilerStatus expectBlockHeaderEnd(SyntaxAnalyzer *syntaxAnalyzer)
 {
@@ -22,13 +24,11 @@ static CompilerStatus expectBlockHeaderEnd(SyntaxAnalyzer *syntaxAnalyzer)
         return status;
     }
 
-    status = skipNewlines(syntaxAnalyzer);
-
-    return status;
+    return skipNewlines(syntaxAnalyzer);
 }
 
 CompilerStatus parseIf(SyntaxAnalyzer *syntaxAnalyzer,
-                              AbstractSyntaxNode **outNode)
+                       AbstractSyntaxNode **outNode)
 {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
@@ -68,7 +68,7 @@ CompilerStatus parseIf(SyntaxAnalyzer *syntaxAnalyzer,
         goto cleanup;
     }
 
-    status = analyzerStatementsParseBlock(syntaxAnalyzer, &thenBlock);
+    status = parseBlock(syntaxAnalyzer, &thenBlock);
     if (status != COMPILER_OK) {
         goto cleanup;
     }
@@ -91,7 +91,7 @@ CompilerStatus parseIf(SyntaxAnalyzer *syntaxAnalyzer,
         goto cleanup;
     }
 
-    status = analyzerStatementsParseBlock(syntaxAnalyzer, &elseBlock);
+    status = parseBlock(syntaxAnalyzer, &elseBlock);
     if (status != COMPILER_OK) {
         goto cleanup;
     }
@@ -113,7 +113,7 @@ cleanup:
 }
 
 CompilerStatus parseWhile(SyntaxAnalyzer *syntaxAnalyzer,
-                                 AbstractSyntaxNode **outNode)
+                          AbstractSyntaxNode **outNode)
 {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
@@ -152,7 +152,7 @@ CompilerStatus parseWhile(SyntaxAnalyzer *syntaxAnalyzer,
         goto cleanup;
     }
 
-    status = analyzerStatementsParseBlock(syntaxAnalyzer, &body);
+    status = parseBlock(syntaxAnalyzer, &body);
     if (status != COMPILER_OK) {
         goto cleanup;
     }
@@ -174,8 +174,13 @@ cleanup:
 /* Statement dispatch and indentation-delimited blocks. */
 
 CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer,
-                                     AbstractSyntaxNode **outNode)
+                              AbstractSyntaxNode **outNode)
 {
+    if (syntaxAnalyzer == NULL || outNode == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    *outNode = NULL;
+
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
         return status;
@@ -200,14 +205,21 @@ CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer,
             return status;
         }
         if (syntaxAnalyzer->nextToken != NULL &&
-            tokenHasText(syntaxAnalyzer->nextToken, SYNTAX_OP_ASSIGN)) {
+            syntaxAnalyzer->nextToken->lexeme != NULL &&
+            strcmp(syntaxAnalyzer->nextToken->lexeme, SYNTAX_OP_ASSIGN) == 0) {
             return parseAssignment(syntaxAnalyzer, outNode);
         }
     }
 
     status = analyzerExpressionsParseValueOrCall(syntaxAnalyzer, outNode);
-    if (status != COMPILER_OK || (*outNode)->kind == ABSTRACT_SYNTAX_FUNCTION_CALL) {
+    if (status != COMPILER_OK) {
         return status;
+    }
+    if (*outNode == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    if ((*outNode)->type == ABSTRACT_SYNTAX_FUNCTION_CALL) {
+        return COMPILER_OK;
     }
 
     AbstractSyntaxNode *expression = *outNode;
@@ -229,7 +241,7 @@ CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer,
 }
 
 CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer,
-                                            AbstractSyntaxNode **outNode)
+                          AbstractSyntaxNode **outNode)
 {
     if (syntaxAnalyzer == NULL || outNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
