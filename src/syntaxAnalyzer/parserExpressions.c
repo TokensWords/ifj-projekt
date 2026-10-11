@@ -525,7 +525,7 @@ CompilerStatus analyzerExpressionsParse(SyntaxAnalyzer *syntaxAnalyzer,
             return COMPILER_OK;
         }
 
-        PrecedenceRelation relation = syntaxPrecedenceCompare(stacked, incoming);
+        PrecedenceRelation relation = syntaxPrecedenceRelation(stacked, incoming);
         if (relation == PRECEDENCE_ERROR) {
             status = COMPILER_SYNTAX_ERROR;
         } else if (relation == PRECEDENCE_REDUCE) {
