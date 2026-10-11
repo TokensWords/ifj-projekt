@@ -54,6 +54,10 @@ static CompilerStatus parsePrologue(SyntaxAnalyzer *syntaxAnalyzer)
         return status;
     }
 
+    status = expectWord(syntaxAnalyzer, SYNTAX_PROLOG_NAME);
+    if (status != COMPILER_OK) {
+        return status;
+    }
     status = expectType(syntaxAnalyzer, TOKEN_DOT);
     if (status != COMPILER_OK) {
         return status;
@@ -116,6 +120,7 @@ CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer, Source
         return COMPILER_INTERNAL_ERROR;
     }
 
+    bool hasEntryFunction = false;
     while (status == COMPILER_OK && !currentIsType(syntaxAnalyzer, TOKEN_EOF)) {
         
         if (currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
@@ -129,6 +134,15 @@ CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer, Source
             abstractSyntaxNodeDestroy(functionNode);
             break;
         }
+
+        if (functionNode->isEntryFunction) {
+            if (hasEntryFunction) {
+                abstractSyntaxNodeDestroy(functionNode);
+                status = COMPILER_REDEFINITION_ERROR;
+                break;
+            }
+            hasEntryFunction = true;
+        }
     
         status = appendOwnedChild(program->root, functionNode);
         if (status != COMPILER_OK) {
@@ -136,6 +150,9 @@ CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer, Source
         }
     }
 
+    if (status == COMPILER_OK && !hasEntryFunction) {
+        status = COMPILER_UNDEFINED_SYMBOL_ERROR;
+    }
     if (status != COMPILER_OK) {
         sourceProgramDestroy(program);
         return status;

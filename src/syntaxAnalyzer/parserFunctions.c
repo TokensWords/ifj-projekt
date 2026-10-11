@@ -2,7 +2,7 @@
 
 #include "parserExpressions.h"
 #include "parserStatements.h"
-#include "parserTypes.h"
+#include "parserLiterals.h"
 #include "syntax.h"
 #include "syntaxAnalyzerUtils.h"
 

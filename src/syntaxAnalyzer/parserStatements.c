@@ -7,6 +7,7 @@
  */
 
 #include "parserExpressions.h"
+#include "parserLiterals.h"
 #include "parserStatements.h"
 #include "syntax.h"
 #include "syntaxAnalyzerUtils.h"
@@ -291,6 +292,60 @@ static CompilerStatus parseReturn(SyntaxAnalyzer *syntaxAnalyzer,
 cleanup:
     abstractSyntaxNodeDestroy(value);
     abstractSyntaxNodeDestroy(returnNode);
+    return status;
+}
+
+CompilerStatus parseAssignment(SyntaxAnalyzer *syntaxAnalyzer,
+                               AbstractSyntaxNode **outNode)
+{
+    if (syntaxAnalyzer == NULL || outNode == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    *outNode = NULL;
+
+    CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    if (!isIdentifierToken(syntaxAnalyzer->currentToken)) {
+        return COMPILER_SYNTAX_ERROR;
+    }
+
+    AbstractSyntaxNode *assignment = createNode(ABSTRACT_SYNTAX_ASSIGNMENT,
+                                                syntaxAnalyzer->currentToken->location);
+    AbstractSyntaxNode *value = NULL;
+    if (assignment == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    status = setNodeText(assignment, syntaxAnalyzer->currentToken->lexeme);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = advanceToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = expectWord(syntaxAnalyzer, SYNTAX_OP_ASSIGN);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = analyzerExpressionsParseValueOrCall(syntaxAnalyzer, &value);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = appendOwnedChild(assignment, value);
+    value = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    *outNode = assignment;
+    return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(value);
+    abstractSyntaxNodeDestroy(assignment);
     return status;
 }
 

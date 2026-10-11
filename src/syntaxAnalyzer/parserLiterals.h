@@ -1,5 +1,5 @@
-#ifndef PARSER_TYPES_H
-#define PARSER_TYPES_H
+#ifndef PARSER_LITERALS_H
+#define PARSER_LITERALS_H
 
 #include "syntaxAnalyzerUtils.h"
 
