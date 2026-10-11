@@ -18,6 +18,8 @@ typedef struct {
     size_t temporaryCounter;
     size_t labelCounter;
     IntermediateProgram *functionDeclarations;
+    const SourceProgram *sourceProgram;
+    DataType returnType;
 } IntermediateGenerator;
 
 static void intermediateOperandClear(IntermediateOperand *operand) {
@@ -447,6 +449,60 @@ static CompilerStatus generateIntegerDivision(IntermediateGenerator *generator, 
     return COMPILER_OK;
 }
 
+static char *createFunctionLabel(const char *functionName) {
+    if (functionName == NULL) {
+        return NULL;
+    }
+
+    size_t length = strlen(functionName);
+    length += strlen("$function_");
+    length++;
+
+    char *labelName = malloc(length * sizeof(char));
+    if (labelName == NULL) {
+        return NULL;
+    }
+
+    strcpy(labelName, "$function_");
+    strncat(labelName, functionName, (length - strlen("$function_")));
+
+    return labelName;
+}
+
+static const AbstractSyntaxNode *findFunction(const SourceProgram *program, const char *functionName) {
+    if (program == NULL || program->root == NULL || functionName == NULL) {
+        return NULL;
+    }
+
+    if (program->root->kind != ABSTRACT_SYNTAX_PROGRAM) {
+        return NULL;
+    }
+
+    if (program->root->childCount > 0) {
+        if (program->root->children == NULL) {
+            return NULL;
+        }
+
+        size_t counter = 0;
+
+        while (counter < program->root->childCount) {
+            const AbstractSyntaxNode *function = program->root->children[counter];
+
+            if (function == NULL || function->kind != ABSTRACT_SYNTAX_FUNCTION || function->text == NULL) {
+                return NULL;
+            }
+
+            if (strcmp(function->text, functionName) == 0) {
+                return function;
+            }
+
+            counter++;
+        }
+    }
+
+    return NULL;
+}
+
 static CompilerStatus generateExpression(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
     if (generator == NULL || operand == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -736,6 +792,135 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         operand->kind = INTERMEDIATE_OPERAND_UNIT;
         operand->text = NULL;
         operand->value = (IntermediateOperandValue){0};
+
+        break;
+    }
+    case ABSTRACT_SYNTAX_FUNCTION_CALL: {
+        if (node->text == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        const AbstractSyntaxNode *function = findFunction(generator->sourceProgram, node->text);
+        if (function == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (!(function->childCount > 0) || function->children == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (function->children[function->childCount - 1] == NULL || function->children[function->childCount - 1]->kind != ABSTRACT_SYNTAX_BLOCK) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        size_t parameterCount = function->childCount - 1;
+
+        if (node->childCount != parameterCount) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (node->childCount != 0) {
+            if (node->children == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+        }
+
+        size_t counter = 0;
+
+        while (counter < parameterCount) {
+            const AbstractSyntaxNode *parameter = function->children[counter];
+            const AbstractSyntaxNode *argument = node->children[counter];
+
+            if (parameter == NULL || argument == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            if (parameter->kind != ABSTRACT_SYNTAX_PARAMETER || parameter->variableId == 0) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            if (parameter->variableType != DATA_TYPE_INT && parameter->variableType != DATA_TYPE_DOUBLE && parameter->variableType != DATA_TYPE_STRING && parameter->variableType != DATA_TYPE_UNIT) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            if (argument->inferredType != parameter->variableType) {
+                if (argument->inferredType != DATA_TYPE_INT || parameter->variableType != DATA_TYPE_DOUBLE) {
+                    return COMPILER_INTERNAL_ERROR;
+                }
+            }
+
+            counter++;
+        }
+
+        counter = 0;
+
+        while (counter < parameterCount) {
+            const AbstractSyntaxNode *parameter = function->children[counter];
+            const AbstractSyntaxNode *argument = node->children[counter];
+
+            IntermediateOperand argumentOperand = {0};
+            CompilerStatus status = generateExpression(generator, &argumentOperand, argument);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+
+            if (argument->inferredType == DATA_TYPE_INT && parameter->variableType == DATA_TYPE_DOUBLE) {
+                status = convertIntToDouble(generator, &argumentOperand, argument->location);
+                if (status != COMPILER_OK) {
+                    intermediateOperandClear(&argumentOperand);
+                    return status;
+                }
+            }
+
+            IntermediateInstruction argumentInstruction = fillInstruction(INTERMEDIATE_PUSH, 1, argument->location);
+            argumentInstruction.operands[0] = argumentOperand;
+
+            status = intermediateProgramAppend(generator->program, &argumentInstruction);
+            intermediateOperandClear(&argumentOperand);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+
+            counter++;
+        }
+
+        IntermediateInstruction createFrameInstruction = fillInstruction(INTERMEDIATE_CREATE_FRAME, 0, node->location);
+        CompilerStatus status = intermediateProgramAppend(generator->program, &createFrameInstruction);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        IntermediateOperand functionLabelOperand = {0};
+        functionLabelOperand.kind = INTERMEDIATE_OPERAND_LABEL;
+        functionLabelOperand.text = createFunctionLabel(function->text);
+        if (functionLabelOperand.text == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        IntermediateInstruction callInstruction = fillInstruction(INTERMEDIATE_CALL, 1, node->location);
+        callInstruction.operands[0] = functionLabelOperand;
+
+        status = intermediateProgramAppend(generator->program, &callInstruction);
+        intermediateOperandClear(&functionLabelOperand);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        IntermediateOperand resultOperand = {0};
+        status = generateTemporary(generator, &resultOperand, node->location);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        IntermediateInstruction resultInstruction = fillInstruction(INTERMEDIATE_POP, 1, node->location);
+        resultInstruction.operands[0] = resultOperand;
+        status = intermediateProgramAppend(generator->program, &resultInstruction);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&resultOperand);
+            return status;
+        }
+
+        *operand = resultOperand;
 
         break;
     }
@@ -1051,6 +1236,116 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
 
         return status;
     }
+    case ABSTRACT_SYNTAX_RETURN: {
+        if (node->childCount > 1) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (node->childCount == 1) {
+            if (node->children == NULL || node->children[0] == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+        }
+
+        if (generator->returnType != DATA_TYPE_INT && generator->returnType != DATA_TYPE_DOUBLE && generator->returnType != DATA_TYPE_STRING && generator->returnType != DATA_TYPE_UNIT) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (node->childCount == 0) {
+            if (generator->returnType != DATA_TYPE_UNIT) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+        }
+
+        IntermediateOperand returnOperand = {0};
+        CompilerStatus status = COMPILER_OK;
+
+        if (node->childCount == 0) {
+            returnOperand.kind = INTERMEDIATE_OPERAND_UNIT;
+        } else {
+            status = generateExpression(generator, &returnOperand, node->children[0]);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+        }
+
+        if (generator->returnType == DATA_TYPE_UNIT) {
+            intermediateOperandClear(&returnOperand);
+            returnOperand.kind = INTERMEDIATE_OPERAND_UNIT;
+            returnOperand.value = (IntermediateOperandValue){0};
+        } else {
+            DataType valueType = node->children[0]->inferredType;
+            if (valueType != generator->returnType) {
+                if (valueType == DATA_TYPE_INT && generator->returnType == DATA_TYPE_DOUBLE) {
+                    status = convertIntToDouble(generator, &returnOperand, node->location);
+                    if (status != COMPILER_OK) {
+                        intermediateOperandClear(&returnOperand);
+                        return status;
+                    }
+                } else {
+                    intermediateOperandClear(&returnOperand);
+                    return COMPILER_INTERNAL_ERROR;
+                }
+            }
+        }
+
+        IntermediateInstruction returnValueInstruction = fillInstruction(INTERMEDIATE_PUSH, 1, node->location);
+        returnValueInstruction.operands[0] = returnOperand;
+
+        status = intermediateProgramAppend(generator->program, &returnValueInstruction);
+        intermediateOperandClear(&returnOperand);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        IntermediateInstruction popFrameInstruction = fillInstruction(INTERMEDIATE_POP_FRAME, 0, node->location);
+
+        status = intermediateProgramAppend(generator->program, &popFrameInstruction);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        IntermediateInstruction returnInstruction = fillInstruction(INTERMEDIATE_RETURN, 0, node->location);
+        status = intermediateProgramAppend(generator->program, &returnInstruction);
+
+        return status;
+    }
+    case ABSTRACT_SYNTAX_FUNCTION_CALL: {
+        const AbstractSyntaxNode *expressionNode = node;
+
+        if (node->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT) {
+            if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            expressionNode = node->children[0];
+        }
+
+        IntermediateOperand resultOperand = {0};
+        CompilerStatus status = generateExpression(generator, &resultOperand, expressionNode);
+
+        intermediateOperandClear(&resultOperand);
+
+        return status;
+    }
+    case ABSTRACT_SYNTAX_EXPRESSION_STATEMENT: {
+        const AbstractSyntaxNode *expressionNode = node;
+
+        if (node->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT) {
+            if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            expressionNode = node->children[0];
+        }
+
+        IntermediateOperand resultOperand = {0};
+        CompilerStatus status = generateExpression(generator, &resultOperand, expressionNode);
+
+        intermediateOperandClear(&resultOperand);
+
+        return status;
+    }
     default:
         return COMPILER_INTERNAL_ERROR;
     }
@@ -1082,24 +1377,135 @@ static CompilerStatus appendProgramInstructions(IntermediateProgram *destination
     return COMPILER_OK;
 }
 
-static char *createFunctionLabel(const char *functionName) {
-    if (functionName == NULL) {
-        return NULL;
+static CompilerStatus generateParameters(IntermediateGenerator *generator, const AbstractSyntaxNode *function) {
+    if (generator == NULL || function == NULL) {
+        return COMPILER_INTERNAL_ERROR;
     }
 
-    size_t length = strlen(functionName);
-    length += strlen("$function_");
-    length++;
-
-    char *labelName = malloc(length * sizeof(char));
-    if (labelName == NULL) {
-        return NULL;
+    if (function->kind != ABSTRACT_SYNTAX_FUNCTION) {
+        return COMPILER_INTERNAL_ERROR;
     }
 
-    strcpy(labelName, "$function_");
-    strncat(labelName, functionName, (length - strlen("$function_")));
+    if (!(function->childCount > 0) || function->children == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
 
-    return labelName;
+    size_t counter = function->childCount - 1;
+
+    while (counter > 0) {
+        counter--;
+        const AbstractSyntaxNode *parameter = function->children[counter];
+        if (parameter == NULL || parameter->kind != ABSTRACT_SYNTAX_PARAMETER || parameter->variableId == 0) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (parameter->variableType != DATA_TYPE_INT && parameter->variableType != DATA_TYPE_DOUBLE && parameter->variableType != DATA_TYPE_STRING && parameter->variableType != DATA_TYPE_UNIT) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        IntermediateOperand parameterOperand = {0};
+        CompilerStatus status = generateVariable(&parameterOperand, parameter);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        status = appendVariableDeclaration(generator, &parameterOperand, parameter->location);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&parameterOperand);
+            return status;
+        }
+
+        IntermediateInstruction parameterInstruction = fillInstruction(INTERMEDIATE_POP, 1, parameter->location);
+        parameterInstruction.operands[0] = parameterOperand;
+
+        status = intermediateProgramAppend(generator->program, &parameterInstruction);
+        intermediateOperandClear(&parameterOperand);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+    }
+
+    return COMPILER_OK;
+}
+
+static CompilerStatus generateFunctionBody(IntermediateGenerator *generator, const AbstractSyntaxNode *body) {
+    if (generator == NULL || body == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    if (body->kind != ABSTRACT_SYNTAX_BLOCK) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    if (body->childCount > 0 && body->children == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    if (generator->returnType == DATA_TYPE_UNIT) {
+        return generateStatement(generator, body);
+    }
+
+    if (body->childCount == 0) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    if (body->children[body->childCount - 1] == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    const AbstractSyntaxNode *lastStatement = body->children[body->childCount - 1];
+    const AbstractSyntaxNode *expressionNode = NULL;
+
+    if (lastStatement->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT) {
+        if (lastStatement->childCount != 1 || lastStatement->children == NULL || lastStatement->children[0] == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        expressionNode = lastStatement->children[0];
+    } else if (lastStatement->kind == ABSTRACT_SYNTAX_FUNCTION_CALL) {
+        expressionNode = lastStatement;
+    } else {
+        return generateStatement(generator, body);
+    }
+
+    size_t counter = 0;
+    CompilerStatus status = COMPILER_OK;
+
+    while (counter < body->childCount - 1) {
+        status = generateStatement(generator, body->children[counter]);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        counter++;
+    }
+
+    IntermediateOperand returnOperand = {0};
+    status = generateExpression(generator, &returnOperand, expressionNode);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    if (expressionNode->inferredType != generator->returnType) {
+        if (expressionNode->inferredType == DATA_TYPE_INT && generator->returnType == DATA_TYPE_DOUBLE) {
+            status = convertIntToDouble(generator, &returnOperand, expressionNode->location);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&returnOperand);
+                return status;
+            }
+        } else {
+            intermediateOperandClear(&returnOperand);
+            return COMPILER_INTERNAL_ERROR;
+        }
+    }
+
+    IntermediateInstruction returnValueInstruction = fillInstruction(INTERMEDIATE_PUSH, 1, expressionNode->location);
+    returnValueInstruction.operands[0] = returnOperand;
+
+    status = intermediateProgramAppend(generator->program, &returnValueInstruction);
+    intermediateOperandClear(&returnOperand);
+
+    return status;
 }
 
 static CompilerStatus generateFunction(IntermediateGenerator *generator, const AbstractSyntaxNode *node) {
@@ -1134,8 +1540,16 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator, const A
     IntermediateGenerator functionGenerator = *generator;
     functionGenerator.program = functionBody;
     functionGenerator.functionDeclarations = functionDeclarations;
+    functionGenerator.returnType = node->inferredType;
 
-    CompilerStatus status = generateStatement(&functionGenerator, body);
+    CompilerStatus status = generateParameters(&functionGenerator, node);
+    if (status != COMPILER_OK) {
+        intermediateProgramDestroy(functionBody);
+        intermediateProgramDestroy(functionDeclarations);
+        return status;
+    }
+
+    status = generateFunctionBody(&functionGenerator, body);
 
     generator->temporaryCounter = functionGenerator.temporaryCounter;
     generator->labelCounter = functionGenerator.labelCounter;
@@ -1186,6 +1600,19 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator, const A
     intermediateProgramDestroy(functionBody);
     if (status != COMPILER_OK) {
         return status;
+    }
+
+    if (functionGenerator.returnType == DATA_TYPE_UNIT) {
+        IntermediateOperand returnOperand = {0};
+        returnOperand.kind = INTERMEDIATE_OPERAND_UNIT;
+
+        IntermediateInstruction returnValueInstruction = fillInstruction(INTERMEDIATE_PUSH, 1, node->location);
+        returnValueInstruction.operands[0] = returnOperand;
+
+        status = intermediateProgramAppend(generator->program, &returnValueInstruction);
+        if (status != COMPILER_OK) {
+            return status;
+        }
     }
 
     IntermediateInstruction popFrameInstruction = fillInstruction(INTERMEDIATE_POP_FRAME, 0, node->location);
@@ -1249,6 +1676,7 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program, Intermedia
 
     IntermediateGenerator generator = {0};
     generator.program = outProgram;
+    generator.sourceProgram = program;
 
     IntermediateInstruction createFrameInstruction = fillInstruction(INTERMEDIATE_CREATE_FRAME, 0, entryFunction->location);
 
