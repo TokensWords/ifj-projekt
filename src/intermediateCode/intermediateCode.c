@@ -866,11 +866,194 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
         intermediateOperandClear(&valueOperand);
         return status;
     }
+    case ABSTRACT_SYNTAX_IF: {
+        if (node->childCount != 3 || node->children == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (node->children[0] == NULL || node->children[1] == NULL || node->children[2] == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (node->children[0]->inferredType != DATA_TYPE_BOOLEAN) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        IntermediateOperand elseLabelOperand = {0};
+        CompilerStatus status = generateLabel(generator, &elseLabelOperand);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        IntermediateOperand endLabelOperand = {0};
+        status = generateLabel(generator, &endLabelOperand);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&elseLabelOperand);
+            return status;
+        }
+
+        IntermediateOperand conditionOperand = {0};
+        status = generateExpression(generator, &conditionOperand, node->children[0]);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&elseLabelOperand);
+            intermediateOperandClear(&endLabelOperand);
+            return status;
+        }
+
+        IntermediateOperand falseOperand = {0};
+        falseOperand.kind = INTERMEDIATE_OPERAND_BOOLEAN;
+        falseOperand.value.boolValue = false;
+
+        IntermediateInstruction jumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, node->location);
+        jumpInstruction.operands[0] = elseLabelOperand;
+        jumpInstruction.operands[1] = conditionOperand;
+        jumpInstruction.operands[2] = falseOperand;
+
+        status = intermediateProgramAppend(generator->program, &jumpInstruction);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&conditionOperand);
+            intermediateOperandClear(&elseLabelOperand);
+            intermediateOperandClear(&endLabelOperand);
+            return status;
+        }
+
+        status = generateStatement(generator, node->children[1]);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&conditionOperand);
+            intermediateOperandClear(&elseLabelOperand);
+            intermediateOperandClear(&endLabelOperand);
+            return status;
+        }
+
+        IntermediateInstruction endJumpInstruction = fillInstruction(INTERMEDIATE_JUMP, 1, node->location);
+        endJumpInstruction.operands[0] = endLabelOperand;
+
+        status = intermediateProgramAppend(generator->program, &endJumpInstruction);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&conditionOperand);
+            intermediateOperandClear(&elseLabelOperand);
+            intermediateOperandClear(&endLabelOperand);
+            return status;
+        }
+
+        IntermediateInstruction elseLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+        elseLabelInstruction.operands[0] = elseLabelOperand;
+
+        status = intermediateProgramAppend(generator->program, &elseLabelInstruction);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&conditionOperand);
+            intermediateOperandClear(&elseLabelOperand);
+            intermediateOperandClear(&endLabelOperand);
+            return status;
+        }
+
+        status = generateStatement(generator, node->children[2]);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&conditionOperand);
+            intermediateOperandClear(&elseLabelOperand);
+            intermediateOperandClear(&endLabelOperand);
+            return status;
+        }
+
+        IntermediateInstruction endLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+        endLabelInstruction.operands[0] = endLabelOperand;
+        status = intermediateProgramAppend(generator->program, &endLabelInstruction);
+
+        intermediateOperandClear(&conditionOperand);
+        intermediateOperandClear(&elseLabelOperand);
+        intermediateOperandClear(&endLabelOperand);
+
+        return status;
+    }
+    case ABSTRACT_SYNTAX_WHILE: {
+        if (node->childCount != 2 || node->children == NULL || node->children[0] == NULL || node->children[1] == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (node->children[0]->inferredType != DATA_TYPE_BOOLEAN) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        IntermediateOperand startLabelOperand = {0};
+        CompilerStatus status = generateLabel(generator, &startLabelOperand);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        IntermediateOperand endLabelOperand = {0};
+        status = generateLabel(generator, &endLabelOperand);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&startLabelOperand);
+            return status;
+        }
+
+        IntermediateInstruction startLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+        startLabelInstruction.operands[0] = startLabelOperand;
+
+        status = intermediateProgramAppend(generator->program, &startLabelInstruction);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&endLabelOperand);
+            intermediateOperandClear(&startLabelOperand);
+            return status;
+        }
+
+        IntermediateOperand conditionOperand = {0};
+        status = generateExpression(generator, &conditionOperand, node->children[0]);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&endLabelOperand);
+            intermediateOperandClear(&startLabelOperand);
+            return status;
+        }
+
+        IntermediateOperand falseOperand = {0};
+        falseOperand.kind = INTERMEDIATE_OPERAND_BOOLEAN;
+        falseOperand.value.boolValue = false;
+
+        IntermediateInstruction jumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, node->location);
+        jumpInstruction.operands[0] = endLabelOperand;
+        jumpInstruction.operands[1] = conditionOperand;
+        jumpInstruction.operands[2] = falseOperand;
+
+        status = intermediateProgramAppend(generator->program, &jumpInstruction);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&conditionOperand);
+            intermediateOperandClear(&endLabelOperand);
+            intermediateOperandClear(&startLabelOperand);
+            return status;
+        }
+
+        status = generateStatement(generator, node->children[1]);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&conditionOperand);
+            intermediateOperandClear(&endLabelOperand);
+            intermediateOperandClear(&startLabelOperand);
+            return status;
+        }
+
+        IntermediateInstruction startJumpInstruction = fillInstruction(INTERMEDIATE_JUMP, 1, node->location);
+        startJumpInstruction.operands[0] = startLabelOperand;
+
+        status = intermediateProgramAppend(generator->program, &startJumpInstruction);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&conditionOperand);
+            intermediateOperandClear(&endLabelOperand);
+            intermediateOperandClear(&startLabelOperand);
+            return status;
+        }
+
+        IntermediateInstruction endLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+        endLabelInstruction.operands[0] = endLabelOperand;
+        status = intermediateProgramAppend(generator->program, &endLabelInstruction);
+
+        intermediateOperandClear(&conditionOperand);
+        intermediateOperandClear(&endLabelOperand);
+        intermediateOperandClear(&startLabelOperand);
+
+        return status;
+    }
     default:
         return COMPILER_INTERNAL_ERROR;
     }
-
-    return COMPILER_INTERNAL_ERROR;
 }
 
 static CompilerStatus appendProgramInstructions(IntermediateProgram *destination, const IntermediateProgram *source) {
