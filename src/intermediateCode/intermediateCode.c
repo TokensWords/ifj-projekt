@@ -931,6 +931,29 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
     return COMPILER_OK;
 }
 
+static CompilerStatus generateExpressionStatement(IntermediateGenerator *generator, const AbstractSyntaxNode *node) {
+    if (generator == NULL || node == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    
+    const AbstractSyntaxNode *expressionNode = node;
+
+    if (node->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT) {
+        if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        expressionNode = node->children[0];
+    }
+
+    IntermediateOperand resultOperand = {0};
+    CompilerStatus status = generateExpression(generator, &resultOperand, expressionNode);
+
+    intermediateOperandClear(&resultOperand);
+
+    return status;
+}
+
 static CompilerStatus generateStatement(IntermediateGenerator *generator, const AbstractSyntaxNode *node) {
     if (generator == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -1311,40 +1334,10 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
         return status;
     }
     case ABSTRACT_SYNTAX_FUNCTION_CALL: {
-        const AbstractSyntaxNode *expressionNode = node;
-
-        if (node->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT) {
-            if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
-                return COMPILER_INTERNAL_ERROR;
-            }
-
-            expressionNode = node->children[0];
-        }
-
-        IntermediateOperand resultOperand = {0};
-        CompilerStatus status = generateExpression(generator, &resultOperand, expressionNode);
-
-        intermediateOperandClear(&resultOperand);
-
-        return status;
+        return generateExpressionStatement(generator, node);
     }
     case ABSTRACT_SYNTAX_EXPRESSION_STATEMENT: {
-        const AbstractSyntaxNode *expressionNode = node;
-
-        if (node->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT) {
-            if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
-                return COMPILER_INTERNAL_ERROR;
-            }
-
-            expressionNode = node->children[0];
-        }
-
-        IntermediateOperand resultOperand = {0};
-        CompilerStatus status = generateExpression(generator, &resultOperand, expressionNode);
-
-        intermediateOperandClear(&resultOperand);
-
-        return status;
+        return generateExpressionStatement(generator, node);
     }
     default:
         return COMPILER_INTERNAL_ERROR;
