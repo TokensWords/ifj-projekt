@@ -1,8 +1,10 @@
-/*
- * Project: IFJ26 compiler
- * Authors: TODO(team)
- * AI-assisted scaffold.
- * Prompt: Define a flexible abstract-syntax-tree ownership contract.
+/**
+ * PROJECT: IFJ26 compiler
+ * AUTHORS: Matúš Čík
+ * BRIEF: Abstract syntax tree representation and ownership helpers
+ * 
+ * IDEA: Remove struct ASTNODE field isMutable and isEntryFunction by adding more ASTNODE types, example: ABSTRACT_SYNTAX_FUNCTION_ENTRY, ABSTRACT_SYNTAX_VARIABLE_DECLARATION_MUTABLE, ABSTRACT_SYNTAX_VARIABLE_DECLARATION_IMMUTABLE.
+ * IDEA: Make ASTNODE easier to work with by introducing funtions of getters/setter for node types.
  */
 
 #ifndef ABSTRACT_SYNTAX_TREE_H
@@ -14,26 +16,133 @@
 #include <stdint.h>
 
 typedef enum {
+
+    // --- structural ---
+
+    /**
+     * Represents the root of the abstract syntax tree
+     * @children - top-level functions in the program
+     */
     ABSTRACT_SYNTAX_PROGRAM,
+    
+    /**
+     * Represents a function declaration
+     * @text - name of the function
+     * @children - parameters and body of the function. Parameters are folowed by body. example: [param1, param2, body]. It must have a body
+     * @isEntryFunction - true if this function is the entry point of the program (taggeg by `@main`), else false
+     */
     ABSTRACT_SYNTAX_FUNCTION,
+
+    /**
+     * Represents a function parameter
+     * @text - name of the parameter
+     * @variableType - type of the parameter
+     */
     ABSTRACT_SYNTAX_PARAMETER,
+
+    /**
+     * Represents a block of statements
+     * @children - statements in the block
+     */
     ABSTRACT_SYNTAX_BLOCK,
-    ABSTRACT_SYNTAX_VARIABLE_DECLARATION,
-    ABSTRACT_SYNTAX_ASSIGNMENT,
-    ABSTRACT_SYNTAX_FUNCTION_CALL,
-    ABSTRACT_SYNTAX_RETURN,
+
+    /**
+     * Represents an if statement
+     * @children - condition, then block, else block (optional). example: [condition, thenBlock, elseBlock]
+     */
     ABSTRACT_SYNTAX_IF,
+
+    /**
+     * Represents a while loop
+     * @children - condition then block of the loop. example: [condition, block]
+     */
     ABSTRACT_SYNTAX_WHILE,
+
+    /**
+     * Represents a return statement
+     * @children - expression being returned (optional)
+     */
+    ABSTRACT_SYNTAX_RETURN,
+
+    // --- expressions ---
+
+    /**
+     * Represents a function call
+     * @text - name of the function
+     * @children - arguments to the function (optional)
+     */
+    ABSTRACT_SYNTAX_FUNCTION_CALL,
+
+    /**
+     * Represents a variable declaration
+     * @text - name of the variable
+     * @variableType - type of the variable
+     */
+    ABSTRACT_SYNTAX_VARIABLE_DECLARATION,
+
+    /**
+     * Represents an assignment
+     * @text - name of the variable being assigned to
+     * @children - assigned expression
+     */
+    ABSTRACT_SYNTAX_ASSIGNMENT,
+
+    /**
+     * Represents an expression statement
+     * @children - the expression (1 child)
+     */
     ABSTRACT_SYNTAX_EXPRESSION_STATEMENT,
-    ABSTRACT_SYNTAX_BINARY_EXPRESSION,
+
+    /**
+     * Represents a binary expression
+     * @children - left and right operands. example: [left, right]
+     */
+    ABSTRACT_SYNTAX_EXPRESSION_BINARY,
+
+    /**
+     * Represents a unary expression
+     * @text - unary operator
+     * @children - operand
+     */
     ABSTRACT_SYNTAX_UNARY_EXPRESSION,
+
+    // --- values ---
+
+    /**
+     * Represents a variable in an expression
+     * @text - variable name
+     */
     ABSTRACT_SYNTAX_IDENTIFIER,
+
+    /**
+     * Represents an integer literal
+     * @value.intValue
+     */
     ABSTRACT_SYNTAX_INT_LITERAL,
+
+    /**
+     * Represents a double literal
+     * @value.doubleValue
+     */
     ABSTRACT_SYNTAX_DOUBLE_LITERAL,
+
+    /**
+     * Represents a string literal
+     * @text - the string value
+     */
     ABSTRACT_SYNTAX_STRING_LITERAL,
-    ABSTRACT_SYNTAX_UNIT_LITERAL,
-    ABSTRACT_SYNTAX_BOOLEAN_LITERAL
-} AbstractSyntaxNodeKind;
+
+    /**
+     * Represents a boolean literal
+     * @AbstractSyntaxValue.boolValue
+     */
+    ABSTRACT_SYNTAX_BOOLEAN_LITERAL,
+
+    /**
+     * Represents a unit literal. Unit is like void
+     */
+    ABSTRACT_SYNTAX_UNIT_LITERAL
+} AbstractSyntaxNodeType;
 
 typedef union {
     int64_t intValue;
@@ -42,7 +151,10 @@ typedef union {
 } AbstractSyntaxValue;
 
 typedef struct AbstractSyntaxNode {
-    AbstractSyntaxNodeKind kind;
+    union {
+        AbstractSyntaxNodeType type;
+        AbstractSyntaxNodeType kind;
+    };
     SourceLocation location;
     DataType inferredType;
     DataType variableType;
@@ -53,6 +165,7 @@ typedef struct AbstractSyntaxNode {
     size_t childCapacity;
     size_t variableId;
     bool isEntryFunction;
+    bool isMutable;
 } AbstractSyntaxNode;
 
 typedef struct {
@@ -61,7 +174,7 @@ typedef struct {
 
 SourceProgram *sourceProgramCreate(void);
 void sourceProgramDestroy(SourceProgram *program);
-AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeKind kind, SourceLocation location);
+AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType  type, SourceLocation location);
 void abstractSyntaxNodeDestroy(AbstractSyntaxNode *node);
 CompilerStatus abstractSyntaxNodeSetText(AbstractSyntaxNode *node, const char *text);
 CompilerStatus abstractSyntaxNodeAddChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *child);
