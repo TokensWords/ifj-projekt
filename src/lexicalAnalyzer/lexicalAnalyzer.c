@@ -41,6 +41,7 @@ enum State {
   INT_PLUS_,
   DOUBLE_NO_EXP_,
   ONE_LINE_COMMENT_FINAL,
+  MULTIPLE_LINE_POSSIBLE_NESTED_COMMENT,
   MULTIPLE_LINE_COMMENT2,
   DOUBLE_NO_EXP_D_FINAL,
   ONE_LINE_STRING_FINAL,
@@ -64,6 +65,8 @@ struct LexicalAnalyzer {
     enum State state;
     int prevChar;
     bool prevCharRead;
+    size_t prevCharLine;
+    size_t prevCharColumn;
     bool reachedEof;
 };
 
@@ -85,6 +88,8 @@ LexicalAnalyzer *lexicalAnalyzerCreate(FILE *input)
     lexicalAnalyzer->currentIndent = 0;
     lexicalAnalyzer->state = START;
     lexicalAnalyzer->prevCharRead = false;
+    lexicalAnalyzer->prevCharLine = 1;
+    lexicalAnalyzer->prevCharColumn = 1;
     lexicalAnalyzer->reachedEof = false;
     return lexicalAnalyzer;
 }
@@ -276,6 +281,19 @@ static enum State startCases(char character)
     return START;
 }
 
+static void setTokenLocation(Token ** token,  size_t line, size_t column)
+{
+    (*token)->location.line = line;
+    (*token)->location.column = column;
+}
+
+static void setLexicalAnalyzerToStart(LexicalAnalyzer * lexicalAnalyzer, int currentChar)
+{
+    lexicalAnalyzer->state = START;
+    lexicalAnalyzer->prevChar = currentChar;
+    lexicalAnalyzer->prevCharRead = true;
+}
+
 static CompilerStatus setToken(Token ** token, char * tokenLexeme, TokenType type)
 {
     CompilerStatus compilerStatus = tokenSetLexeme(*token, tokenLexeme);
@@ -335,6 +353,29 @@ static CompilerStatus setToken(Token ** token, char * tokenLexeme, TokenType typ
     return compilerStatus;
 }
 
+static CompilerStatus editSetToken(Token ** token, char * tokenLexeme, int * tokenLexemeLength, TokenType type, bool reachedEof, bool oneLineString)
+{
+    if(!reachedEof)
+    {
+        stringShortenByOne(tokenLexeme, tokenLexemeLength);
+    }
+    
+    if(!removeWhiteChars(tokenLexeme, tokenLexemeLength, &((*token)->location.column)))
+    {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    if(oneLineString && !decodeEscapeSeq(tokenLexeme, tokenLexemeLength))
+    {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    CompilerStatus compilerStatus = setToken(token, tokenLexeme, type);
+    if(compilerStatus == COMPILER_INTERNAL_ERROR)
+    {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    return compilerStatus;
+}
+
 CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token **outToken)
 {
     if(lexicalAnalyzer == NULL || outToken == NULL)
@@ -361,12 +402,11 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
         return COMPILER_INTERNAL_ERROR;
     }
     strcpy(tokenLexeme, "");
-    int tokenLexemeLength = 0;
+    int tokenLexemeLength = 0, nestedComments = 0;
     bool commentEnded = false;
-    (*outToken)->location.line = lexicalAnalyzer->line;
-    (*outToken)->location.column = lexicalAnalyzer->column;
     if(lexicalAnalyzer->prevCharRead)
     {
+        setTokenLocation(outToken, lexicalAnalyzer->prevCharLine, lexicalAnalyzer->prevCharColumn);
         lexicalAnalyzer->prevCharRead = false;
         currentChar = lexicalAnalyzer->prevChar;
         if(!stringAppend(&tokenLexeme, &tokenLexemeLength, lexicalAnalyzer->prevChar))
@@ -378,19 +418,22 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
         }
         lexicalAnalyzer->state = startCases(currentChar);
     }
+    else
+    {
+        setTokenLocation(outToken, lexicalAnalyzer->line, lexicalAnalyzer->column);
+    }
 
     CompilerStatus compilerStatus = COMPILER_INTERNAL_ERROR;
     while((*outToken)->type == TOKEN_INVALID && (currentChar = fgetc(lexicalAnalyzer->input)) != EOF)
     {
         if(commentEnded)
         {
-            (*outToken)->location.line = lexicalAnalyzer->line;
-            (*outToken)->location.column = lexicalAnalyzer->column;
             strcpy(tokenLexeme, "");
             tokenLexemeLength = 0;
             commentEnded = false;
             if(lexicalAnalyzer->prevCharRead)
             {
+                setTokenLocation(outToken, lexicalAnalyzer->prevCharLine, lexicalAnalyzer->prevCharColumn);
                 lexicalAnalyzer->prevCharRead = false;
                 if(!stringAppend(&tokenLexeme, &tokenLexemeLength, lexicalAnalyzer->prevChar))
                 {
@@ -400,6 +443,10 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     return COMPILER_INTERNAL_ERROR;
                 }
                 lexicalAnalyzer->state = startCases(lexicalAnalyzer->prevChar);
+            }
+            else
+            {
+                setTokenLocation(outToken, lexicalAnalyzer->line, lexicalAnalyzer->column);
             }
         }
         // Append string 
@@ -411,6 +458,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             return COMPILER_INTERNAL_ERROR;
         }
 
+        lexicalAnalyzer->prevCharLine = lexicalAnalyzer->line;
+        lexicalAnalyzer->prevCharColumn = lexicalAnalyzer->column;
         if(currentChar == '\n')
         {
             lexicalAnalyzer->column = 1;
@@ -458,20 +507,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             else
             {
-                lexicalAnalyzer->state = START;
-                lexicalAnalyzer->prevChar = currentChar;
-                lexicalAnalyzer->prevCharRead = true;
-                stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-                if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
+                setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
+                compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_IDENTIFIER, false, false);
+                if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
                     tokenDestroy(*outToken);
                     *outToken = NULL;
-                    free(tokenLexeme);
-                    return COMPILER_INTERNAL_ERROR;
-                }
-                compilerStatus = setToken(outToken, tokenLexeme, TOKEN_IDENTIFIER);
-                if(compilerStatus == COMPILER_INTERNAL_ERROR)
-                {
                     free(tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
@@ -496,20 +537,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             else
             {
-                lexicalAnalyzer->state = START;
-                lexicalAnalyzer->prevChar = currentChar;
-                lexicalAnalyzer->prevCharRead = true;
-                stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-                if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
+                setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
+                compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, false, false);
+                if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
                     tokenDestroy(*outToken);
                     *outToken = NULL;
-                    free(tokenLexeme);
-                    return COMPILER_INTERNAL_ERROR;
-                }
-                compilerStatus = setToken(outToken, tokenLexeme, TOKEN_INT_LITERAL);
-                if(compilerStatus == COMPILER_INTERNAL_ERROR)
-                {
                     free(tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
@@ -556,20 +589,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             else
             {
-                lexicalAnalyzer->state = START;
-                lexicalAnalyzer->prevChar = currentChar;
-                lexicalAnalyzer->prevCharRead = true;
-                stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-                if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
+                setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
+                compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, false, false);
+                if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
                     tokenDestroy(*outToken);
                     *outToken = NULL;
-                    free(tokenLexeme);
-                    return COMPILER_INTERNAL_ERROR;
-                }
-                compilerStatus = setToken(outToken, tokenLexeme, TOKEN_INT_LITERAL);
-                if(compilerStatus == COMPILER_INTERNAL_ERROR)
-                {
                     free(tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
@@ -636,20 +661,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             else
             {
-                lexicalAnalyzer->state = START;
-                lexicalAnalyzer->prevChar = currentChar;
-                lexicalAnalyzer->prevCharRead = true;
-                stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-                if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
+                setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
+                compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_IDENTIFIER, false, false);
+                if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
                     tokenDestroy(*outToken);
                     *outToken = NULL;
-                    free(tokenLexeme);
-                    return COMPILER_INTERNAL_ERROR;
-                }
-                compilerStatus = setToken(outToken, tokenLexeme, TOKEN_IDENTIFIER);
-                if(compilerStatus == COMPILER_INTERNAL_ERROR)
-                {
                     free(tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
@@ -676,20 +693,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             else
             {
-                lexicalAnalyzer->state = START;
-                lexicalAnalyzer->prevChar = currentChar;
-                lexicalAnalyzer->prevCharRead = true;
-                stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-                if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
+                setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
+                compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, false, false);
+                if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
                     tokenDestroy(*outToken);
                     *outToken = NULL;
-                    free(tokenLexeme);
-                    return COMPILER_INTERNAL_ERROR;
-                }
-                compilerStatus = setToken(outToken, tokenLexeme, TOKEN_INT_LITERAL);
-                if(compilerStatus == COMPILER_INTERNAL_ERROR)
-                {
                     free(tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
@@ -714,20 +723,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             else
             {
-                lexicalAnalyzer->state = START;
-                lexicalAnalyzer->prevChar = currentChar;
-                lexicalAnalyzer->prevCharRead = true;
-                stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-                if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
+                setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
+                compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, false, false);
+                if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
                     tokenDestroy(*outToken);
                     *outToken = NULL;
-                    free(tokenLexeme);
-                    return COMPILER_INTERNAL_ERROR;
-                }
-                compilerStatus = setToken(outToken, tokenLexeme, TOKEN_INT_LITERAL);
-                if(compilerStatus == COMPILER_INTERNAL_ERROR)
-                {
                     free(tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
@@ -766,20 +767,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             else
             {
-                lexicalAnalyzer->state = START;
-                lexicalAnalyzer->prevChar = currentChar;
-                lexicalAnalyzer->prevCharRead = true;
-                stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-                if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
+                setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
+                compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, false, false);
+                if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
                     tokenDestroy(*outToken);
                     *outToken = NULL;
-                    free(tokenLexeme);
-                    return COMPILER_INTERNAL_ERROR;
-                }
-                compilerStatus = setToken(outToken, tokenLexeme, TOKEN_DOUBLE_LITERAL);
-                if(compilerStatus == COMPILER_INTERNAL_ERROR)
-                {
                     free(tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
@@ -804,15 +797,18 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             break;
         case MULTIPLE_LINE_COMMENT:
-            if(currentChar != '*')
+            if(currentChar == '/')
             {
-                lexicalAnalyzer->state = MULTIPLE_LINE_COMMENT;
+                lexicalAnalyzer->state = MULTIPLE_LINE_POSSIBLE_NESTED_COMMENT;
             }
             else if(currentChar == '*')
             {
                 lexicalAnalyzer->state = MULTIPLE_LINE_COMMENT2;
             }
-            //maybe else
+            else
+            {
+                lexicalAnalyzer->state = MULTIPLE_LINE_COMMENT;
+            }
             break;
         case ONE_LINE_STRING:
             if(currentChar != '\"' && currentChar != '\\' && currentChar != '\n')
@@ -837,20 +833,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             break;
         case ONE_LINE_STRING_NO_EMPTY_FINAL:
-            lexicalAnalyzer->state = START;
-            lexicalAnalyzer->prevChar = currentChar;
-            lexicalAnalyzer->prevCharRead = true;
-            stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-            if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)) || !decodeEscapeSeq(tokenLexeme, &tokenLexemeLength))
+            setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
+            compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_STRING_LITERAL, false, true);
+            if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
                 tokenDestroy(*outToken);
                 *outToken = NULL;
-                free(tokenLexeme);
-                return COMPILER_INTERNAL_ERROR;
-            }
-            compilerStatus = setToken(outToken, tokenLexeme, TOKEN_STRING_LITERAL);
-            if(compilerStatus == COMPILER_INTERNAL_ERROR)
-            {
                 free(tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
@@ -916,10 +904,23 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             break;
         case ONE_LINE_COMMENT_FINAL:
-            lexicalAnalyzer->state = START;
-            lexicalAnalyzer->prevChar = currentChar;
-            lexicalAnalyzer->prevCharRead = true;
+            setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
             commentEnded = true;
+            break;
+        case MULTIPLE_LINE_POSSIBLE_NESTED_COMMENT:
+            if(currentChar == '*')
+            {
+                lexicalAnalyzer->state = MULTIPLE_LINE_COMMENT;
+                nestedComments++;
+            }
+            else if(currentChar == '/')
+            {
+                lexicalAnalyzer->state = MULTIPLE_LINE_POSSIBLE_NESTED_COMMENT;
+            }
+            else
+            {
+                lexicalAnalyzer->state = MULTIPLE_LINE_COMMENT;
+            }
             break;
         case MULTIPLE_LINE_COMMENT2:
             if(currentChar != '/' && currentChar != '*')
@@ -928,7 +929,15 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             else if(currentChar == '/')
             {
-                lexicalAnalyzer->state = MULTIPLE_LINE_COMMENT_FINAL;
+                if(nestedComments > 0)
+                {
+                    nestedComments--;
+                    lexicalAnalyzer->state = MULTIPLE_LINE_COMMENT;
+                }
+                else
+                {
+                    lexicalAnalyzer->state = MULTIPLE_LINE_COMMENT_FINAL;
+                }
             }
             else if(currentChar == '*')
             {
@@ -936,20 +945,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             break;
         case DOUBLE_NO_EXP_D_FINAL:
-            lexicalAnalyzer->state = START;
-            lexicalAnalyzer->prevChar = currentChar;
-            lexicalAnalyzer->prevCharRead = true;
-            stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-            if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
+            setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
+            compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, false, false);
+            if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
                 tokenDestroy(*outToken);
                 *outToken = NULL;
-                free(tokenLexeme);
-                return COMPILER_INTERNAL_ERROR;
-            }
-            compilerStatus = setToken(outToken, tokenLexeme, TOKEN_DOUBLE_LITERAL);
-            if(compilerStatus == COMPILER_INTERNAL_ERROR)
-            {
                 free(tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
@@ -961,20 +962,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             else
             {
-                lexicalAnalyzer->state = START;
-                lexicalAnalyzer->prevChar = currentChar;
-                lexicalAnalyzer->prevCharRead = true;
-                stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-                if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)) || !decodeEscapeSeq(tokenLexeme, &tokenLexemeLength))
+                setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
+                compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_STRING_LITERAL, false, true);
+                if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
                     tokenDestroy(*outToken);
                     *outToken = NULL;
-                    free(tokenLexeme);
-                    return COMPILER_INTERNAL_ERROR;
-                }
-                compilerStatus = setToken(outToken, tokenLexeme, TOKEN_STRING_LITERAL);
-                if(compilerStatus == COMPILER_INTERNAL_ERROR)
-                {
                     free(tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
@@ -1019,29 +1012,19 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             else
             {
-                lexicalAnalyzer->state = START;
-                lexicalAnalyzer->prevChar = currentChar;
-                lexicalAnalyzer->prevCharRead = true;
-                stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-                if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
+                setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
+                compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, false, false);
+                if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
                     tokenDestroy(*outToken);
                     *outToken = NULL;
                     free(tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
-                compilerStatus = setToken(outToken, tokenLexeme, TOKEN_DOUBLE_LITERAL);
-                if(compilerStatus == COMPILER_INTERNAL_ERROR)
-                {
-                    free(tokenLexeme);
-                    return COMPILER_INTERNAL_ERROR;
-                }
             }
             break;
         case MULTIPLE_LINE_COMMENT_FINAL:
-            lexicalAnalyzer->state = START;
-            lexicalAnalyzer->prevChar = currentChar;
-            lexicalAnalyzer->prevCharRead = true;
+            setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
             commentEnded = true;
             break;
         case MULTIPLE_LINE_STRING_ONE:
@@ -1069,20 +1052,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             break;
         case EXPONENTIAL_FINAL_D:
-            lexicalAnalyzer->state = START;
-            lexicalAnalyzer->prevChar = currentChar;
-            lexicalAnalyzer->prevCharRead = true;
-            stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-            if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
+            setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
+            compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, false, false);
+            if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
                 tokenDestroy(*outToken);
                 *outToken = NULL;
-                free(tokenLexeme);
-                return COMPILER_INTERNAL_ERROR;
-            }
-            compilerStatus = setToken(outToken, tokenLexeme, TOKEN_DOUBLE_LITERAL);
-            if(compilerStatus == COMPILER_INTERNAL_ERROR)
-            {
                 free(tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
@@ -1098,20 +1073,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             break;
         case MULTIPLE_LINE_STRING_FINAL:
-            lexicalAnalyzer->state = START;
-            lexicalAnalyzer->prevChar = currentChar;
-            lexicalAnalyzer->prevCharRead = true;
-            stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-            if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
+            setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
+            compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_STRING_LITERAL, false, false);
+            if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
                 tokenDestroy(*outToken);
                 *outToken = NULL;
-                free(tokenLexeme);
-                return COMPILER_INTERNAL_ERROR;
-            }
-            compilerStatus = setToken(outToken, tokenLexeme, TOKEN_STRING_LITERAL);
-            if(compilerStatus == COMPILER_INTERNAL_ERROR)
-            {
                 free(tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
@@ -1126,13 +1093,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
 
     if(commentEnded)
     {
-        (*outToken)->location.line = lexicalAnalyzer->line;
-        (*outToken)->location.column = lexicalAnalyzer->column;
         strcpy(tokenLexeme, "");
         tokenLexemeLength = 0;
         commentEnded = false;
         if(lexicalAnalyzer->prevCharRead)
         {
+            setTokenLocation(outToken, lexicalAnalyzer->prevCharLine, lexicalAnalyzer->prevCharColumn);
             lexicalAnalyzer->prevCharRead = false;
             if(!stringAppend(&tokenLexeme, &tokenLexemeLength, lexicalAnalyzer->prevChar))
             {
@@ -1142,6 +1108,10 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 return COMPILER_INTERNAL_ERROR;
             }
             lexicalAnalyzer->state = startCases(lexicalAnalyzer->prevChar);
+        }
+        else
+        {
+            setTokenLocation(outToken, lexicalAnalyzer->line, lexicalAnalyzer->column);
         }
     }
 
@@ -1166,14 +1136,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             {
                 case ID_FINAL1:
                     lexicalAnalyzer->state = START;
-                    if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    compilerStatus = setToken(outToken, tokenLexeme, TOKEN_IDENTIFIER);
+                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_IDENTIFIER, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
                         tokenDestroy(*outToken);
@@ -1184,14 +1147,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     break;
                 case ID_FINAL2:
                     lexicalAnalyzer->state = START;
-                    if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    compilerStatus = setToken(outToken, tokenLexeme, TOKEN_IDENTIFIER);
+                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_IDENTIFIER, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
                         tokenDestroy(*outToken);
@@ -1202,14 +1158,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     break;
                 case ZERO_FINAL:
                     lexicalAnalyzer->state = START;
-                    if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    compilerStatus = setToken(outToken, tokenLexeme, TOKEN_INT_LITERAL);
+                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
                         tokenDestroy(*outToken);
@@ -1220,14 +1169,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     break;
                 case ZERO_PLUS_FINAL:
                     lexicalAnalyzer->state = START;
-                    if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    compilerStatus = setToken(outToken, tokenLexeme, TOKEN_INT_LITERAL);
+                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
                         tokenDestroy(*outToken);
@@ -1238,14 +1180,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     break;
                 case INT_FINAL:
                     lexicalAnalyzer->state = START;
-                    if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    compilerStatus = setToken(outToken, tokenLexeme, TOKEN_INT_LITERAL);
+                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
                         tokenDestroy(*outToken);
@@ -1256,14 +1191,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     break;
                 case INT_PLUS_FINAL:
                     lexicalAnalyzer->state = START;
-                    if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    compilerStatus = setToken(outToken, tokenLexeme, TOKEN_INT_LITERAL);
+                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
                         tokenDestroy(*outToken);
@@ -1274,14 +1202,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     break;
                 case DOUBLE_NO_EXP_FINAL:
                     lexicalAnalyzer->state = START;
-                    if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    compilerStatus = setToken(outToken, tokenLexeme, TOKEN_DOUBLE_LITERAL);
+                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
                         tokenDestroy(*outToken);
@@ -1292,14 +1213,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     break;
                 case DOUBLE_NO_EXP_D_FINAL:
                     lexicalAnalyzer->state = START;
-                    if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    compilerStatus = setToken(outToken, tokenLexeme, TOKEN_DOUBLE_LITERAL);
+                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
                         tokenDestroy(*outToken);
@@ -1310,14 +1224,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     break;
                 case EXPONENTIAL_FINAL:
                     lexicalAnalyzer->state = START;
-                    if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    compilerStatus = setToken(outToken, tokenLexeme, TOKEN_DOUBLE_LITERAL);
+                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
                         tokenDestroy(*outToken);
@@ -1328,14 +1235,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     break;
                 case EXPONENTIAL_FINAL_D:
                     lexicalAnalyzer->state = START;
-                    if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    compilerStatus = setToken(outToken, tokenLexeme, TOKEN_DOUBLE_LITERAL);
+                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
                         tokenDestroy(*outToken);
@@ -1346,14 +1246,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     break;
                 case ONE_LINE_STRING_FINAL:
                     lexicalAnalyzer->state = START;
-                    if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)) || !decodeEscapeSeq(tokenLexeme, &tokenLexemeLength))
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    compilerStatus = setToken(outToken, tokenLexeme, TOKEN_STRING_LITERAL);
+                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_STRING_LITERAL, true, true);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
                         tokenDestroy(*outToken);
@@ -1364,14 +1257,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     break;
                 case ONE_LINE_STRING_NO_EMPTY_FINAL:
                     lexicalAnalyzer->state = START;
-                    if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)) || !decodeEscapeSeq(tokenLexeme, &tokenLexemeLength))
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    compilerStatus = setToken(outToken, tokenLexeme, TOKEN_STRING_LITERAL);
+                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_STRING_LITERAL, true, true);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
                         tokenDestroy(*outToken);
@@ -1382,14 +1268,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     break;
                 case MULTIPLE_LINE_STRING_FINAL:
                     lexicalAnalyzer->state = START;
-                    if(!removeWhiteChars(tokenLexeme, &tokenLexemeLength, &((*outToken)->location.column)))
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    compilerStatus = setToken(outToken, tokenLexeme, TOKEN_STRING_LITERAL);
+                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_STRING_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
                         tokenDestroy(*outToken);
