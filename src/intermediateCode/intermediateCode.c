@@ -800,6 +800,86 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             return COMPILER_INTERNAL_ERROR;
         }
 
+        if (strcmp(node->text, "print") == 0) {
+            if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            const AbstractSyntaxNode * argument = node->children[0];
+            if (argument->inferredType != DATA_TYPE_INT && argument->inferredType != DATA_TYPE_DOUBLE && argument->inferredType != DATA_TYPE_STRING && argument->inferredType != DATA_TYPE_UNIT) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            IntermediateOperand argumentOperand = {0};
+
+            CompilerStatus status = generateExpression(generator, &argumentOperand, argument);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+
+            IntermediateInstruction printInstruction = fillInstruction(INTERMEDIATE_WRITE, 1, node->location);
+            printInstruction.operands[0] = argumentOperand;
+
+            if (argument->inferredType == DATA_TYPE_UNIT) {
+                printInstruction.operands[0] = (IntermediateOperand) {
+                    .kind = INTERMEDIATE_OPERAND_STRING,
+                    .text = "()",
+                };
+            }
+
+            status = intermediateProgramAppend(generator->program, &printInstruction);
+
+            operand->kind = INTERMEDIATE_OPERAND_UNIT;
+            operand->text = NULL;
+            operand->value = (IntermediateOperandValue){0};
+
+            intermediateOperandClear(&argumentOperand);
+
+            return status;
+        } else if (strcmp(node->text, "readLine") == 0 || strcmp(node->text, "readInt") == 0 || strcmp(node->text, "readDouble") == 0) {
+            if (node->children != 0) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            DataType readType = {0};
+
+            if (strcmp(node->text, "readLine") == 0) {
+                readType = DATA_TYPE_STRING;
+            }
+
+            if (strcmp(node->text, "readInt") == 0) {
+                readType = DATA_TYPE_INT;
+            }
+
+            if (strcmp(node->text, "readDouble") == 0) {
+                readType = DATA_TYPE_DOUBLE;
+            }
+
+            IntermediateOperand resultOperand = {0};
+            CompilerStatus status = generateTemporary(generator, &resultOperand, node->location);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+
+            IntermediateOperand typeOperand = {0};
+            typeOperand.kind = INTERMEDIATE_OPERAND_TYPE;
+            typeOperand.value.dataType = readType;
+
+            IntermediateInstruction readInstruction = fillInstruction(INTERMEDIATE_READ, 2, node->location);
+            readInstruction.operands[0] = resultOperand;
+            readInstruction.operands[1] = typeOperand;
+
+            status = intermediateProgramAppend(generator->program, &readInstruction);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&resultOperand);
+                return status;
+            }
+
+            *operand = resultOperand;
+
+            return status;
+        }
+
         const AbstractSyntaxNode *function = findFunction(generator->sourceProgram, node->text);
         if (function == NULL) {
             return COMPILER_INTERNAL_ERROR;
