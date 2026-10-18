@@ -17,8 +17,8 @@ static CompilerStatus writeEscapedString(const char *text, FILE *output) {
 
     while (text[counter] != '\0') {
         unsigned char current = text[counter];
-
-        if (current < 33 || current == '#' || current == '\\') {
+        
+        if (current < 33 || current >= 127 || current == '#' || current == '\\') {
             if (fprintf(output, "\\%03d", current) < 0) {
                 return COMPILER_INTERNAL_ERROR;
             }

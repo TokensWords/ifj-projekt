@@ -455,6 +455,7 @@ static void clearOperandArray(IntermediateOperand *operands, size_t count) {
     }
 
     size_t counter = 0;
+    
     while (counter < count) {
         intermediateOperandClear(&operands[counter]);
         counter++;
@@ -467,6 +468,7 @@ static CompilerStatus appendInstructionArray(IntermediateGenerator *generator, c
     }
 
     size_t counter = 0;
+
     while (counter < count) {
         CompilerStatus status = intermediateProgramAppend(generator->program, &instructions[counter]);
         if (status != COMPILER_OK) {
@@ -486,6 +488,7 @@ static CompilerStatus generateOrdinal(IntermediateGenerator *generator, const In
 
     IntermediateOperand temporaryOperands[2] = {0};
     size_t counter = 0;
+
     while (counter < 2) {
         CompilerStatus status = generateTemporary(generator, &temporaryOperands[counter], origin);
         if (status != COMPILER_OK) {
@@ -561,6 +564,7 @@ static CompilerStatus generateSubstring(IntermediateGenerator *generator, const 
 
     IntermediateOperand temporaryOperands[4] = {0};
     size_t counter = 0;
+
     while (counter < 4) {
         CompilerStatus status = generateTemporary(generator, &temporaryOperands[counter], origin);
         if (status != COMPILER_OK) {
@@ -576,7 +580,9 @@ static CompilerStatus generateSubstring(IntermediateGenerator *generator, const 
     IntermediateOperand *characterOperand = &temporaryOperands[2];
     IntermediateOperand *conditionOperand = &temporaryOperands[3];
     IntermediateOperand labelOperands[3] = {0};
+
     counter = 0;
+
     while (counter < 3) {
         CompilerStatus status = generateLabel(generator, &labelOperands[counter]);
         if (status != COMPILER_OK) {
@@ -596,7 +602,7 @@ static CompilerStatus generateSubstring(IntermediateGenerator *generator, const 
     IntermediateOperand errorOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 40};
     IntermediateOperand trueOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
     IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
-    
+
     IntermediateOperand emptyOperand = {.kind = INTERMEDIATE_OPERAND_STRING, .text = ""};
 
     IntermediateInstruction lengthInstruction = fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, origin);
