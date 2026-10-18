@@ -13,16 +13,18 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
 #define NUM_OF_KEYWORDS 22
 #define LEN_OF_KEYWORDS 10
 
-static int tokenLexemeCapacity = 100;
-static char keywords[NUM_OF_KEYWORDS][LEN_OF_KEYWORDS] = {"def", "do", "Double", "else", "if", "import",
+static int tokenLexemeCapacity = 100; // Default capacity of token lexeme
+
+// Array of keywords
+static const char keywords[NUM_OF_KEYWORDS][LEN_OF_KEYWORDS] = {"def", "do", "Double", "else", "if", "import",
     "Int", "return", "String", "then", "Unit", "val", "var", "while", "Boolean", "case", "class",
     "extension", "for", "List", "match", "type"};
 
+// All possible states of FSM
 enum State {
   INVALID,
   START,
@@ -32,15 +34,14 @@ enum State {
   AFTER_COMMENT_CHECK,
   ID_FINAL1,
   ZERO_FINAL,
-  //NUM_PLUS,
+  ZERO_,
+  ZERO_CHECK_ONE,
+  ZERO_CHECK_ONE_,
   INT_FINAL,
   DOUBLE,
   COMMENT,
   STRING,
   ID_FINAL2,
-  //UNIT_FINAL,
-  //ZERO_PLUS_FINAL,
-  //INT_PLUS_FINAL,
   INT_,
   DOUBLE_NO_EXP_FINAL,
   ONE_LINE_COMMENT,
@@ -48,7 +49,6 @@ enum State {
   ONE_LINE_STRING,
   ESCAPE_STRING,
   EXPONENTIAL,
-  //INT_PLUS_,
   DOUBLE_NO_EXP_,
   ONE_LINE_COMMENT_FINAL,
   MULTIPLE_LINE_POSSIBLE_NESTED_COMMENT,
@@ -80,32 +80,38 @@ enum State {
 };
 
 struct LexicalAnalyzer {
-    FILE *input;
-    size_t line;
-    size_t column;
-    Token * prevToken;
-    int prevIndent;
-    Stack * indentStack;
-    int indentCount;
+    FILE *input; // Input file
+    SourceLocation location; // Current location (line and column of lexical analyzer)
+
+    Token * prevToken; // Previously evaluated token
+    int prevChar; // Previous character
+    bool prevCharRead; // If lexical analyzer has prevChar - true, otherwise false
+    SourceLocation prevCharLocation; // Location of previous character
+
+    int prevIndent; // Previous indent
+    Stack * indentStack; // Stack of previous indents
+    int indentCount; // Count of indents/dedents abs(indentCount), if indentCount > 0 - indent, if indentCount < 0 - dedent
     int currentIndent;
-    int parenIndent;
-    int parenDepth;
-    bool newlineEnded;
+    int parenIndent; // Indent of logical line
+    int parenDepth; // Number of unclosed '(' before lexical analyzer head
+    bool newlineEnded; // If '\n' before - true, otherwise false
     bool logicalIndentKnown;
-    bool continuationPending;
-    int slashIndent;
+    bool continuationPending; // If '\n' inside brackets () - true, otherwise false
+    int slashIndent; // Indent of line with '/'
     bool slashWasPending;
-    enum State state;
-    int prevChar;
-    bool prevCharRead;
-    size_t prevCharLine;
-    size_t prevCharColumn;
-    bool reachedEof;
-    bool lineHasToken;
-    size_t newlineLine;
-    size_t newlineColumn;
+
+    enum State state; // Current state of lexical analyzer
+    bool reachedEof; // If lexical analyzer reached EOF (end of file) - true, otherwise false
+    bool lineHasToken; // If the current line has produced token - true, otherwise false
+
+    SourceLocation newlineLocation; // Location of '\n' - newline
 };
 
+/**
+ * Creates lexical analyzer
+ * @param input input file
+ * @return NULL if there was a problem when creating lexical analyzer or its stack or there is no input file, otherwise return pointer to lexical analyzer
+ */
 LexicalAnalyzer *lexicalAnalyzerCreate(FILE *input)
 {
     if (input == NULL) {
@@ -133,41 +139,52 @@ LexicalAnalyzer *lexicalAnalyzerCreate(FILE *input)
     
 
     lexicalAnalyzer->input = input;
-    lexicalAnalyzer->line = 1;
-    lexicalAnalyzer->column = 1;
+    lexicalAnalyzer->location.line = 1;
+    lexicalAnalyzer->location.column = 1;
     lexicalAnalyzer->prevToken = NULL;
     lexicalAnalyzer->prevIndent = 0;
     lexicalAnalyzer->indentCount = 0;
     lexicalAnalyzer->currentIndent = 0;
     lexicalAnalyzer->parenIndent = 0;
     lexicalAnalyzer->parenDepth = 0;
-    lexicalAnalyzer->newlineEnded = true;
+    lexicalAnalyzer->newlineEnded = true; // To start counting currentIndent
     lexicalAnalyzer->logicalIndentKnown = false;
     lexicalAnalyzer->continuationPending = false;
     lexicalAnalyzer->slashIndent = 0;
     lexicalAnalyzer->slashWasPending = false;
     lexicalAnalyzer->state = START;
     lexicalAnalyzer->prevCharRead = false;
-    lexicalAnalyzer->prevCharLine = 1;
-    lexicalAnalyzer->prevCharColumn = 1;
+    lexicalAnalyzer->prevCharLocation.line = 1;
+    lexicalAnalyzer->prevCharLocation.column = 1;
     lexicalAnalyzer->reachedEof = false;
     lexicalAnalyzer->lineHasToken = false;
-    lexicalAnalyzer->newlineLine = 1;
-    lexicalAnalyzer->newlineColumn = 1;
+    lexicalAnalyzer->newlineLocation.line = 1;
+    lexicalAnalyzer->newlineLocation.column = 1;
     return lexicalAnalyzer;
 }
 
+/**
+ * Checks if the current state is final
+ * @param state state
+ * @return true if the state is final, otherwise false
+ */
 static bool isFinal(enum State state)
 {
-    return (state == ID_FINAL1 || state == ID_FINAL2 || state == ZERO_FINAL /*|| state == ZERO_PLUS_FINAL*/ || state == INT_FINAL
-        /*|| state == INT_PLUS_FINAL*/ || state == DOUBLE_NO_EXP_FINAL || state == DOUBLE_NO_EXP_D_FINAL || state == ONE_LINE_COMMENT_FINAL
-        || state == MULTIPLE_LINE_COMMENT_FINAL || state == ONE_LINE_STRING_FINAL || state == ONE_LINE_STRING_NO_EMPTY_FINAL
-        || state == EXPONENTIAL_FINAL || state == EXPONENTIAL_FINAL_D || state == MULTIPLE_LINE_STRING_FINAL || state == NEWLINE_FINAL
-        || state == OPERATOR_FINAL || state == COMMENT || state == SINGLE_OR_DOUBLE_OP_FINAL || state == DOUBLE_OPERATOR_FINAL
-        /*|| state == UNIT_FINAL*/ || state == LEFT_PAREN_FINAL || state == RIGHT_PAREN_FINAL || state == COMMA_FINAL || state == COLON_FINAL
-        || state == SEMICOLON_FINAL || state == DOT_FINAL || state == AT_FINAL);
+    return (state == ID_FINAL1 || state == ID_FINAL2 || state == ZERO_FINAL || state == INT_FINAL || state == DOUBLE_NO_EXP_FINAL
+        || state == DOUBLE_NO_EXP_D_FINAL || state == ONE_LINE_COMMENT_FINAL || state == MULTIPLE_LINE_COMMENT_FINAL
+        || state == ONE_LINE_STRING_FINAL || state == ONE_LINE_STRING_NO_EMPTY_FINAL || state == EXPONENTIAL_FINAL
+        || state == EXPONENTIAL_FINAL_D || state == MULTIPLE_LINE_STRING_FINAL || state == NEWLINE_FINAL || state == OPERATOR_FINAL
+        || state == COMMENT || state == SINGLE_OR_DOUBLE_OP_FINAL || state == DOUBLE_OPERATOR_FINAL || state == LEFT_PAREN_FINAL
+        || state == RIGHT_PAREN_FINAL || state == COMMA_FINAL || state == COLON_FINAL || state == SEMICOLON_FINAL || state == DOT_FINAL || state == AT_FINAL);
 }
 
+/**
+ * Removes all white characters (' ', '\t') from the beginning of the string
+ * @param string string which is being modified
+ * @param length pointer to a length of string - can be modified
+ * @param position pointer to a starting position (column) of the string - can be modified
+ * @return false if memory allocation of the new string fails, otherwise true
+ */
 static bool removeWhiteChars(char * string, int * length, size_t * position)
 {
     char * clearString = malloc(tokenLexemeCapacity * sizeof(char));
@@ -176,7 +193,7 @@ static bool removeWhiteChars(char * string, int * length, size_t * position)
         return false;
     }
     int idx1 = 0, idx2 = 0;
-    while(string[idx1] == '\t' || string[idx1] == '\v' || string[idx1] == '\f' || string[idx1] == ' ')
+    while(string[idx1] == '\t' || string[idx1] == ' ')
     {
         idx1++;
     }
@@ -194,6 +211,12 @@ static bool removeWhiteChars(char * string, int * length, size_t * position)
     return true;
 }
 
+/**
+ * Decodes all escape sequences (for one line string "...") eg. "\n" -> '\n'
+ * @param string string which is being modified
+ * @param length pointer to a length of string - can be modified
+ * @return false if memory allocation of the new string fails, otherwise true
+ */
 static bool decodeEscapeSeq(char * string, int * length)
 {
     char * clearString = malloc(tokenLexemeCapacity * sizeof(char));
@@ -242,7 +265,53 @@ static bool decodeEscapeSeq(char * string, int * length)
     return true;
 }
 
-static bool removeUnnecessaryFromNumber(char * string)
+/**
+ * removes all '"' or '"""' (in multiline strings) from the beginning and end of the string
+ * @param string string which is being modified
+ * @param length pointer to a length of string - can be modified
+ * @return false if memory allocation of the new string fails, otherwise true
+ */
+static bool removeUnnecessaryFromString(char * string, int * length)
+{
+    char * clearString = malloc(tokenLexemeCapacity * sizeof(char));
+    if(clearString == NULL)
+    {
+        return false;
+    }
+    int idx1 = 0, idx2 = 0;
+    if(string[idx1] == '"')
+    {
+        if(string[idx1+1] == '"' && string[idx1+2] == '"')
+        {
+            idx1 += 3;
+            *length -= 3;
+        }
+        else
+        {
+            idx1 += 1;
+            *length -= 1;
+        }
+    }
+    while(idx1 < *length)
+    {
+        clearString[idx2] = string[idx1];
+        idx1++;
+        idx2++;
+    }
+    clearString[idx2] = '\0';
+    strcpy(string, clearString);
+    *length = idx2;
+    free(clearString);
+    return true;
+}
+
+/**
+ * Removes all '_', 'd', 'D' and whitespaces from number string eg. "9_000_000" -> "9000000"
+ * @param string string which is being modified
+ * @param length pointer to a length of string - can be modified
+ * @return false if memory allocation of the new string fails, otherwise true
+ */
+static bool removeUnnecessaryFromNumber(char * string, int * length)
 {
     char * clearString = malloc(tokenLexemeCapacity * sizeof(char));
     if(clearString == NULL)
@@ -260,22 +329,39 @@ static bool removeUnnecessaryFromNumber(char * string)
     }
     clearString[idx2] = '\0';
     strcpy(string, clearString);
+    *length = idx2;
     free(clearString);
     return true;
 }
 
-static int64_t stringToInt(char * string, char ** endptr)
+/**
+ * Makes int from string eg. "9000000" (string) -> 9000000 (int)
+ * @param string string which is being modified
+ * @param endptr pointer to endpointer (for error handling)
+ * @return converted int
+ */
+static int stringToInt(char * string, char ** endptr)
 {
     long longResult = strtol(string, endptr, 10);
     
-    return (int64_t)longResult; 
+    return (int)longResult; 
 }
 
+/**
+ * Makes double from string eg. "54.01" (string) -> 54.01 (double)
+ * @param string string which is being modified
+ * @param endptr pointer to endpointer (for error handling)
+ * @return converted double
+ */
 static double stringToDouble(char * string, char ** endptr)
 {
     return strtod(string, endptr); 
 }
 
+/**
+ * Frees indent stack and previous token from lexical analyzer and frees itself
+ * @param lexicalAnalyzer lexical analyzer which is being destroyed
+ */
 void lexicalAnalyzerDestroy(LexicalAnalyzer *lexicalAnalyzer)
 {
     if(lexicalAnalyzer == NULL)
@@ -287,7 +373,26 @@ void lexicalAnalyzerDestroy(LexicalAnalyzer *lexicalAnalyzer)
     free(lexicalAnalyzer);
 }
 
-static bool stringAppend(char ** string, int * length, char character)
+/**
+ * Frees token lexeme and token
+ * @param token double pointer to the token
+ * @param tokenLexeme pointer to the token lexeme
+ */
+static void tokenAndLexemeDestroy(Token ** token, char * tokenLexeme)
+{
+    tokenDestroy(*token);
+    *token = NULL;
+    free(tokenLexeme);
+}
+
+/**
+ * Appends character to the string
+ * @param string string which is being modified
+ * @param lenght pointer to a length of string - will be modified
+ * @param character character to append
+ * @return false if reallocation of the string fails, otherwise true
+ */
+static bool stringAppend(char ** string, int * length, int character)
 {
     if((*length)+1 >= tokenLexemeCapacity)
     {
@@ -306,7 +411,13 @@ static bool stringAppend(char ** string, int * length, char character)
     return true;
 }
 
-static bool isKeyword(char * lexeme, char keywords[][LEN_OF_KEYWORDS])
+/**
+ * Checks if the lexeme (string) is keyword (is in the keywords array)
+ * @param lexeme lexeme to be checked
+ * @param keywords array of keywords
+ * @return true if the lexeme is keyword, otherwise false
+ */
+static bool isKeyword(char * lexeme, const char keywords[][LEN_OF_KEYWORDS])
 {
     for(int idx = 0; idx < NUM_OF_KEYWORDS; idx++)
     {
@@ -318,18 +429,36 @@ static bool isKeyword(char * lexeme, char keywords[][LEN_OF_KEYWORDS])
     return false;
 }
 
+/**
+ * Removes the last character from string
+ * @param string string which is being modified
+ * @param lenght pointer to a length of string - will be modified
+ */
 static void stringShortenByOne(char * string, int * length)
 {
     string[(*length)-1] = '\0';
     (*length)--;
 }
 
-static void setTokenLocation(Token ** token,  size_t line, size_t column)
+/**
+ * Sets token location (line and column)
+ * @param token double pointer to the token
+ * @param location final location (contains line and column)
+ */
+static void setTokenLocation(Token ** token, SourceLocation location)
 {
-    (*token)->location.line = line;
-    (*token)->location.column = column;
+    (*token)->location.line = location.line;
+    (*token)->location.column = location.column;
 }
 
+/**
+ * Checks indent of next line inside brackets (parenIndent should be smaller than the current indent)
+ * If logical indent isn't known - set parenIndent to indent and logicalIndentKnown to true
+ * @param lexicalAnalyzer pointer to the lexical analyzer
+ * @param indent number of spaces of the physical line with token (current indent)
+ * @param needsCheck if physical line inside brackets ended before this token - true, otherwise false
+ * @return true if not waiting check or current indent > paren indent
+ */
 static bool beginRealToken(LexicalAnalyzer * lexicalAnalyzer, int indent, bool needsCheck)
 {
     if(needsCheck && indent <= lexicalAnalyzer->parenIndent)
@@ -346,9 +475,17 @@ static bool beginRealToken(LexicalAnalyzer * lexicalAnalyzer, int indent, bool n
     return true;
 }
 
+/**
+ * Calculates indent count using indent stack
+ * eg. indent stack [0, 2, 6, 8], 8 -> 2 => indent count = -2 = 2x dedent
+ * @param lexicalAnalyzer pointer to the lexical analyzer
+ * @param currentIndent current indent (in the example case currentIndent = 2)
+ * @param error type of compiler status when calculation fails
+ * @return false if push to the indent stack fails or current indent is unknown (not in the indent stack), otherwise true
+ */
 static bool calculateIndentCount(LexicalAnalyzer * lexicalAnalyzer, int currentIndent, CompilerStatus * error)
 {
-    if(currentIndent > lexicalAnalyzer->prevIndent)
+    if(currentIndent > lexicalAnalyzer->prevIndent) // Indent (stack push new indent)
     {
         lexicalAnalyzer->indentCount++;
         if(!stackPush(lexicalAnalyzer->indentStack, currentIndent))
@@ -356,9 +493,8 @@ static bool calculateIndentCount(LexicalAnalyzer * lexicalAnalyzer, int currentI
             *error = COMPILER_INTERNAL_ERROR;
             return false;
         }
-        return true;
     }
-    else if(currentIndent < lexicalAnalyzer->prevIndent)
+    else if(currentIndent < lexicalAnalyzer->prevIndent) // Dedent (number of dedents = number of stack pops)
     {
         while(currentIndent < stackTop(lexicalAnalyzer->indentStack))
         {
@@ -370,13 +506,23 @@ static bool calculateIndentCount(LexicalAnalyzer * lexicalAnalyzer, int currentI
             *error = COMPILER_LEXICAL_ERROR;
             return false;
         }
-        return true;
     }
     return true;
 }
 
-static enum State startCases(char character, LexicalAnalyzer * lexicalAnalyzer, Token ** token, char * tokenLexeme, int * tokenLexemeLength, CompilerStatus * error)
+/**
+ * All possible cases and states from START state of lexical analyzer
+ * @param character current character that is being read
+ * @param lexicalAnalyzer pointer to the lexical analyzer
+ * @param token double pointer to the token
+ * @param tokenLexeme current token lexeme
+ * @param tokenLexemeLength pointer to the token lexeme length - can be modified
+ * @param error type of compiler status when something fails
+ * @return next state of lexical analyzer based of the input (current char) and other factors
+ */
+static enum State startCases(int character, LexicalAnalyzer * lexicalAnalyzer, Token ** token, char * tokenLexeme, int * tokenLexemeLength, CompilerStatus * error)
 {
+    // If new line ended either go to indent counting state or tabulator check state
     if(lexicalAnalyzer->newlineEnded)
     {
         if(character == ' ')
@@ -385,7 +531,7 @@ static enum State startCases(char character, LexicalAnalyzer * lexicalAnalyzer, 
             lexicalAnalyzer->currentIndent++;
             return INDENT_COUNT;
         }
-        else if(character == '\t') // tab
+        else if(character == '\t') // tabulator
         {
             lexicalAnalyzer->newlineEnded = false;
             return TAB_CHECK;
@@ -393,8 +539,11 @@ static enum State startCases(char character, LexicalAnalyzer * lexicalAnalyzer, 
     }
     lexicalAnalyzer->newlineEnded = false;
 
+    /* If the current character is not whitespace, newline or '/' - can be starting character of comment
+       = current character is character of token*/
     if(character != ' ' && character != '\t' && character != '\n' && character != '/')
     {
+        // If not in the brackets and don't know the logical indent yet
         if(lexicalAnalyzer->parenDepth == 0 && !lexicalAnalyzer->logicalIndentKnown)
         {
             if(!calculateIndentCount(lexicalAnalyzer, lexicalAnalyzer->currentIndent, error))
@@ -403,6 +552,7 @@ static enum State startCases(char character, LexicalAnalyzer * lexicalAnalyzer, 
             }
             lexicalAnalyzer->prevIndent = lexicalAnalyzer->currentIndent;
         }
+        // Check indent inside bracktes
         if(!beginRealToken(lexicalAnalyzer, lexicalAnalyzer->currentIndent, lexicalAnalyzer->continuationPending))
         {
             return INVALID;
@@ -410,6 +560,7 @@ static enum State startCases(char character, LexicalAnalyzer * lexicalAnalyzer, 
         lexicalAnalyzer->continuationPending = false;
     }
 
+    // Possible states from START state with different characters
     if(character == '_')
     {
         return ID_; 
@@ -427,10 +578,6 @@ static enum State startCases(char character, LexicalAnalyzer * lexicalAnalyzer, 
     {
         return ZERO_FINAL;
     }
-    /*else if(character == '+')
-    {
-        return NUM_PLUS;
-    }*/
     else if(character >= '1' && character <= '9')
     {
         return INT_FINAL;
@@ -442,16 +589,19 @@ static enum State startCases(char character, LexicalAnalyzer * lexicalAnalyzer, 
     else if(character == '/')
     {
         lexicalAnalyzer->slashIndent = lexicalAnalyzer->currentIndent;
+        // Not sure if '/' is start of comment or real token - if inside brackets, might need it slashWasPending = continuationPending
         lexicalAnalyzer->slashWasPending = lexicalAnalyzer->continuationPending;
         return COMMENT;
     }
-    else if(character == '\"')
+    else if(character == '"')
     {
         return STRING;
     }
-    else if(character == '\n') // LF = newline
+    else if(character == '\n') // LF - newline
     {
         lexicalAnalyzer->newlineEnded = true;
+        /* If the line on which was token and is not inside brackets create new token of NEWLINE
+           else if line hadn't token or is inside brackets clear token lexeme and don't create new token*/
         if(lexicalAnalyzer->lineHasToken && lexicalAnalyzer->parenDepth == 0)
         {
             return NEWLINE_FINAL;
@@ -460,7 +610,7 @@ static enum State startCases(char character, LexicalAnalyzer * lexicalAnalyzer, 
         {
             strcpy(tokenLexeme, "");
             *tokenLexemeLength = 0;
-            setTokenLocation(token, lexicalAnalyzer->line, lexicalAnalyzer->column);
+            setTokenLocation(token, lexicalAnalyzer->location);
             return START;
         }
     }
@@ -500,9 +650,18 @@ static enum State startCases(char character, LexicalAnalyzer * lexicalAnalyzer, 
     {
         return AT_FINAL;
     }
+    else if(character == ' ' || character == '\t') // Casual ' ' or '\t' not in the beginning of the line
+    {
+        return START;
+    }
     return INVALID;
 }
 
+/**
+ * Sets lexical analyzer state to START and saves current character as lookahead (prevChar)
+ * @param lexicalAnalyzer pointer to the lexical analyzer
+ * @param currentChar current character will be read in the next call
+ */
 static void setLexicalAnalyzerToStart(LexicalAnalyzer * lexicalAnalyzer, int currentChar)
 {
     lexicalAnalyzer->state = START;
@@ -510,6 +669,13 @@ static void setLexicalAnalyzerToStart(LexicalAnalyzer * lexicalAnalyzer, int cur
     lexicalAnalyzer->prevCharRead = true;
 }
 
+/**
+ * Sets token lexeme, token type, (int or double value)
+ * @param token double pointer to the token
+ * @param tokenLexeme token lexeme
+ * @param type token type
+ * @return compiler status (COMPILER_INTERNAL_ERROR, COMPILER_OK)
+ */
 static CompilerStatus setToken(Token ** token, char * tokenLexeme, TokenType type)
 {
     CompilerStatus compilerStatus = tokenSetLexeme(*token, tokenLexeme);
@@ -534,12 +700,6 @@ static CompilerStatus setToken(Token ** token, char * tokenLexeme, TokenType typ
         }
         break;
     case TOKEN_INT_LITERAL:
-        if(!removeUnnecessaryFromNumber(tokenLexeme))
-        {
-            tokenDestroy(*token);
-            *token = NULL;
-            return COMPILER_INTERNAL_ERROR;
-        }
         (*token)->value.intValue = stringToInt(tokenLexeme, &endptr);
         if(*endptr != '\0')
         {
@@ -550,12 +710,6 @@ static CompilerStatus setToken(Token ** token, char * tokenLexeme, TokenType typ
         (*token)->type = TOKEN_INT_LITERAL;
         break;
     case TOKEN_DOUBLE_LITERAL:
-        if(!removeUnnecessaryFromNumber(tokenLexeme))
-        {
-            tokenDestroy(*token);
-            *token = NULL;
-            return COMPILER_INTERNAL_ERROR;
-        }
         (*token)->value.doubleValue = stringToDouble(tokenLexeme, &endptr);
         if(*endptr != '\0')
         {
@@ -606,8 +760,15 @@ static CompilerStatus setToken(Token ** token, char * tokenLexeme, TokenType typ
     return compilerStatus;
 }
 
+/**
+ * Sets token type to TOKEN_INDENT or TOKEN_DEDENT based on indentCount
+ * @param lexicalAnalyzer pointer to the lexical analyzer
+ * @param token double pointer to the token
+ * @return COMPILER_OK
+ */
 static CompilerStatus indentDedent(LexicalAnalyzer * lexicalAnalyzer, Token ** token)
 {
+    (*token)->value.indentLevel = lexicalAnalyzer->currentIndent;
     if(lexicalAnalyzer->indentCount > 0)
     {
         lexicalAnalyzer->indentCount--;
@@ -621,6 +782,12 @@ static CompilerStatus indentDedent(LexicalAnalyzer * lexicalAnalyzer, Token ** t
     return COMPILER_OK;
 }
 
+/**
+ * Sets token type to TOKEN_DEDENT if previous indent > 0 (current is 0 at end of file), else sets token type to TOKEN_EOF
+ * @param lexicalAnalyzer pointer to the lexical analyzer
+ * @param token double pointer to the token
+ * @return compiler status (COMPILER_INTERNAL_ERROR, COMPILER_OK)
+ */
 static CompilerStatus finishAtEof(LexicalAnalyzer *lexicalAnalyzer, Token **outToken)
 {
     if (lexicalAnalyzer->prevIndent > 0)
@@ -638,6 +805,17 @@ static CompilerStatus finishAtEof(LexicalAnalyzer *lexicalAnalyzer, Token **outT
     return COMPILER_OK;
 }
 
+/**
+ * Edits token lexeme, creates token value and if necessary slots INDENT/DEDENT in ahead
+ * @param token double pointer to the token
+ * @param lexicalAnalyzer pointer to the lexical analyzer
+ * @param tokenLexeme token lexeme
+ * @param tokenLexemeLength pointer of the token lexeme length
+ * @param type token type
+ * @param reachedEof if at end of file true, otherwise false
+ * @param oneLineString if current token is one line string true, otherwise false
+ * @return compiler status (COMPILER_INTERNAL_ERROR, COMPILER_OK)
+ */
 static CompilerStatus editSetToken(Token ** token, LexicalAnalyzer * lexicalAnalyzer, char * tokenLexeme, int * tokenLexemeLength, TokenType type, bool reachedEof, bool oneLineString)
 {
     if(!reachedEof)
@@ -649,16 +827,38 @@ static CompilerStatus editSetToken(Token ** token, LexicalAnalyzer * lexicalAnal
     {
         return COMPILER_INTERNAL_ERROR;
     }
+
+    CompilerStatus compilerStatus;
+    if(type == TOKEN_INT_LITERAL || type == TOKEN_DOUBLE_LITERAL)
+    {
+        if(!removeUnnecessaryFromNumber(tokenLexeme, tokenLexemeLength))
+        {
+            tokenDestroy(*token);
+            *token = NULL;
+            return COMPILER_INTERNAL_ERROR;
+        }
+    }
+    else if(type == TOKEN_STRING_LITERAL)
+    {
+        if(!removeUnnecessaryFromString(tokenLexeme, tokenLexemeLength))
+        {
+            tokenDestroy(*token);
+            *token = NULL;
+            return COMPILER_INTERNAL_ERROR;
+        }
+    }
     if(oneLineString && !decodeEscapeSeq(tokenLexeme, tokenLexemeLength))
     {
         return COMPILER_INTERNAL_ERROR;
     }
-    CompilerStatus compilerStatus = setToken(token, tokenLexeme, type);
+    compilerStatus = setToken(token, tokenLexeme, type);
+
     if(compilerStatus == COMPILER_INTERNAL_ERROR)
     {
         return COMPILER_INTERNAL_ERROR;
     }
 
+    // Token is recognised but have to return TOKEN_INDENT/TOKEN_DEDENT
     if(lexicalAnalyzer->indentCount != 0)
     {
         if(lexicalAnalyzer->prevToken != NULL)
@@ -688,7 +888,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
         return COMPILER_INTERNAL_ERROR;
     }
     
-    /* Team TODO: implement the required finite-state scanner manually. */
+
     if(lexicalAnalyzer->indentCount != 0)
     {
         *outToken = tokenCreate();
@@ -728,14 +928,13 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
     CompilerStatus compilerError = COMPILER_LEXICAL_ERROR;
     if(lexicalAnalyzer->prevCharRead)
     {
-        setTokenLocation(outToken, lexicalAnalyzer->prevCharLine, lexicalAnalyzer->prevCharColumn);
+        setTokenLocation(outToken, lexicalAnalyzer->prevCharLocation);
         lexicalAnalyzer->prevCharRead = false;
         currentChar = lexicalAnalyzer->prevChar;
         if(!stringAppend(&tokenLexeme, &tokenLexemeLength, lexicalAnalyzer->prevChar))
         {
-            tokenDestroy(*outToken);
-            *outToken = NULL;
-            free(tokenLexeme);
+            lexicalAnalyzer->state = INVALID;
+            tokenAndLexemeDestroy(outToken, tokenLexeme);
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -743,16 +942,13 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
         lexicalAnalyzer->state = startCases(currentChar, lexicalAnalyzer, outToken, tokenLexeme, &tokenLexemeLength, &compilerError);
         if(lexicalAnalyzer->state == INVALID)
         {
-            lexicalAnalyzer->state = INVALID;
-            tokenDestroy(*outToken);
-            *outToken = NULL;
-            free(tokenLexeme);
+            tokenAndLexemeDestroy(outToken, tokenLexeme);
             return compilerError;
         }
     }
     else
     {
-        setTokenLocation(outToken, lexicalAnalyzer->line, lexicalAnalyzer->column);
+        setTokenLocation(outToken, lexicalAnalyzer->location);
     }
 
     CompilerStatus compilerStatus = COMPILER_INTERNAL_ERROR;
@@ -765,14 +961,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             commentEnded = false;
             if(lexicalAnalyzer->prevCharRead)
             {
-                setTokenLocation(outToken, lexicalAnalyzer->prevCharLine, lexicalAnalyzer->prevCharColumn);
+                setTokenLocation(outToken, lexicalAnalyzer->prevCharLocation);
                 lexicalAnalyzer->prevCharRead = false;
                 if(!stringAppend(&tokenLexeme, &tokenLexemeLength, lexicalAnalyzer->prevChar))
                 {
                     lexicalAnalyzer->state = INVALID;
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
                 if(newlineInComment)
@@ -788,7 +982,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                         {
                             strcpy(tokenLexeme, "");
                             tokenLexemeLength = 0;
-                            setTokenLocation(outToken, lexicalAnalyzer->line, lexicalAnalyzer->column);
+                            setTokenLocation(outToken, lexicalAnalyzer->location);
                             lexicalAnalyzer->state = START;
                         }
                     }
@@ -799,9 +993,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     else
                     {
                         lexicalAnalyzer->state = INVALID;
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_LEXICAL_ERROR;
                     }
                 }
@@ -812,48 +1004,45 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     if(lexicalAnalyzer->state == INVALID)
                     {
                         lexicalAnalyzer->state = INVALID;
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return compilerError;
                     }
                 }
             }
             else
             {
-                setTokenLocation(outToken, lexicalAnalyzer->line, lexicalAnalyzer->column);
+                setTokenLocation(outToken, lexicalAnalyzer->location);
             }
         }
         // Append string 
         if(!stringAppend(&tokenLexeme, &tokenLexemeLength, currentChar))
         {
-            tokenDestroy(*outToken);
-            *outToken = NULL;
-            free(tokenLexeme);
+            lexicalAnalyzer->state = INVALID;
+            tokenAndLexemeDestroy(outToken, tokenLexeme);
             return COMPILER_INTERNAL_ERROR;
         }
 
-        lexicalAnalyzer->prevCharLine = lexicalAnalyzer->line;
-        lexicalAnalyzer->prevCharColumn = lexicalAnalyzer->column;
+        lexicalAnalyzer->prevCharLocation.line = lexicalAnalyzer->location.line;
+        lexicalAnalyzer->prevCharLocation.column = lexicalAnalyzer->location.column;
         if(currentChar == '\n')
         {
             if(lexicalAnalyzer->state != NEWLINE_FINAL && lexicalAnalyzer->state != ONE_LINE_COMMENT_FINAL)
             {
-                lexicalAnalyzer->newlineLine = lexicalAnalyzer->line;
-                lexicalAnalyzer->newlineColumn = lexicalAnalyzer->column;
+                lexicalAnalyzer->newlineLocation.line = lexicalAnalyzer->location.line;
+                lexicalAnalyzer->newlineLocation.column = lexicalAnalyzer->location.column;
             }
             if(lexicalAnalyzer->parenDepth > 0 && lexicalAnalyzer->state != MULTIPLE_LINE_STRING_INSIDE && lexicalAnalyzer->state != MULTIPLE_LINE_STRING_ONE && lexicalAnalyzer->state != MULTIPLE_LINE_STRING_TWO)
             {
                 lexicalAnalyzer->continuationPending = true;
             }
-            lexicalAnalyzer->column = 1;
-            lexicalAnalyzer->line++;
+            lexicalAnalyzer->location.column = 1;
+            lexicalAnalyzer->location.line++;
             lexicalAnalyzer->newlineEnded = true;
             lexicalAnalyzer->currentIndent = 0;
         }
         else
         {
-            lexicalAnalyzer->column++;
+            lexicalAnalyzer->location.column++;
         }
 
         switch(lexicalAnalyzer->state)
@@ -864,9 +1053,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             if(lexicalAnalyzer->state == INVALID)
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return compilerError;
             }
             break;
@@ -878,9 +1065,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             else
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
             break;
@@ -900,9 +1085,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 lexicalAnalyzer->state = startCases(currentChar, lexicalAnalyzer, outToken, tokenLexeme, &tokenLexemeLength, &compilerError);
                 if(lexicalAnalyzer->state == INVALID)
                 {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return compilerError;
                 }
             }
@@ -912,9 +1095,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 lexicalAnalyzer->state = startCases(currentChar, lexicalAnalyzer, outToken, tokenLexeme, &tokenLexemeLength, &compilerError);
                 if(lexicalAnalyzer->state == INVALID)
                 {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return compilerError;
                 }
             }
@@ -930,9 +1111,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             else
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
             break;
@@ -941,9 +1121,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             compilerStatus = editSetToken(outToken, lexicalAnalyzer,tokenLexeme, &tokenLexemeLength, TOKEN_LEFT_PAREN, false, false);
             if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
             lexicalAnalyzer->lineHasToken = true;
@@ -959,9 +1138,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_IDENTIFIER, false, false);
                 if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    lexicalAnalyzer->state = INVALID;
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
                 lexicalAnalyzer->lineHasToken = true;
@@ -972,13 +1150,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             lexicalAnalyzer->continuationPending = false;
             setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
             stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-            setTokenLocation(outToken, lexicalAnalyzer->newlineLine, lexicalAnalyzer->newlineColumn);
+            setTokenLocation(outToken, lexicalAnalyzer->newlineLocation);
             compilerStatus = setToken(outToken, tokenLexeme, TOKEN_NEWLINE);
             if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
             lexicalAnalyzer->lineHasToken = false;
@@ -998,16 +1175,14 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 {
                     strcpy(tokenLexeme, "");
                     tokenLexemeLength = 0;
-                    setTokenLocation(outToken, lexicalAnalyzer->line, lexicalAnalyzer->column);
+                    setTokenLocation(outToken, lexicalAnalyzer->location);
                     lexicalAnalyzer->state = START;
                 }
             }
             else
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
             break;
@@ -1020,13 +1195,17 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             {
                 lexicalAnalyzer->state = DOUBLE;
             }
-            else if(currentChar >= '0' && currentChar <= '9')
+            else if(currentChar == '0')
             {
-                lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
-                return COMPILER_LEXICAL_ERROR;
+                lexicalAnalyzer->state = ZERO_FINAL;
+            }
+            else if(currentChar >= '1' && currentChar <= '9')
+            {
+                lexicalAnalyzer->state = ZERO_CHECK_ONE;
+            }
+            else if(currentChar == '_')
+            {
+                lexicalAnalyzer->state = ZERO_;
             }
             else
             {
@@ -1034,22 +1213,45 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, false, false);
                 if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    lexicalAnalyzer->state = INVALID;
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
                 lexicalAnalyzer->lineHasToken = true;
             }
             break;
-        /*case NUM_PLUS:
+        case ZERO_:
             if(currentChar == '0')
             {
-                lexicalAnalyzer->state = ZERO_PLUS_FINAL;
+                lexicalAnalyzer->state = ZERO_FINAL;
             }
             else if(currentChar >= '1' && currentChar <= '9')
             {
-                lexicalAnalyzer->state = INT_PLUS_FINAL;
+                lexicalAnalyzer->state = ZERO_CHECK_ONE;
+            }
+            else if(currentChar == '_')
+            {
+                lexicalAnalyzer->state = ZERO_;
+            }
+            else
+            {
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
+                return COMPILER_LEXICAL_ERROR;
+            }
+            break;
+        case ZERO_CHECK_ONE:
+            if(currentChar >= '0' && currentChar <= '9')
+            {
+                lexicalAnalyzer->state = ZERO_CHECK_ONE;
+            }
+            else if(currentChar == 'e' || currentChar == 'E')
+            {
+                lexicalAnalyzer->state = EXPONENTIAL;
+            }
+            else if(currentChar == '_')
+            {
+                lexicalAnalyzer->state = ZERO_CHECK_ONE_;
             }
             else if(currentChar == '.')
             {
@@ -1058,12 +1260,26 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             else
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
-            break;*/
+            break;
+        case ZERO_CHECK_ONE_:
+            if(currentChar >= '0' && currentChar <= '9')
+            {
+                lexicalAnalyzer->state = ZERO_CHECK_ONE;
+            }
+            else if(currentChar == '_')
+            {
+                lexicalAnalyzer->state = ZERO_CHECK_ONE_;
+            }
+            else
+            {
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
+                return COMPILER_LEXICAL_ERROR;
+            }
+            break;
         case INT_FINAL:
             if(currentChar >= '0' && currentChar <= '9')
             {
@@ -1087,9 +1303,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, false, false);
                 if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    lexicalAnalyzer->state = INVALID;
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
                 lexicalAnalyzer->lineHasToken = true;
@@ -1103,9 +1318,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             else
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
             break;
@@ -1120,9 +1333,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_DOT, false, false);
                 if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    lexicalAnalyzer->state = INVALID;
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
                 lexicalAnalyzer->lineHasToken = true;
@@ -1144,9 +1356,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     if(!calculateIndentCount(lexicalAnalyzer, lexicalAnalyzer->currentIndent, &compilerError))
                     {
                         lexicalAnalyzer->state = INVALID;
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return compilerError;
                     }
                     lexicalAnalyzer->prevIndent = lexicalAnalyzer->currentIndent;
@@ -1154,9 +1364,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 if(!beginRealToken(lexicalAnalyzer, lexicalAnalyzer->slashIndent, lexicalAnalyzer->slashWasPending))
                 {
                     lexicalAnalyzer->state = INVALID;
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_LEXICAL_ERROR;
                 }
 
@@ -1169,17 +1377,11 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_OPERATOR, false, false);
                 if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    lexicalAnalyzer->state = INVALID;
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
                 lexicalAnalyzer->lineHasToken = true;
-                /*lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
-                return COMPILER_LEXICAL_ERROR;*/
             }
             break;
         case STRING:
@@ -1198,9 +1400,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             else
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
             break;
@@ -1215,99 +1415,26 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_IDENTIFIER, false, false);
                 if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    lexicalAnalyzer->state = INVALID;
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
                 lexicalAnalyzer->lineHasToken = true;
             }
             break;
-        /*case UNIT_FINAL:
-            setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
-            compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_UNIT_LITERAL, false, false);
-            if(compilerStatus == COMPILER_INTERNAL_ERROR)
-            {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
-                return COMPILER_INTERNAL_ERROR;
-            }
-            lexicalAnalyzer->lineHasToken = true;
-            break;
-        case ZERO_PLUS_FINAL:
-            if(currentChar == '.')
-            {
-                lexicalAnalyzer->state = DOUBLE;
-            }
-            else if(currentChar == 'e' || currentChar == 'E')
-            {
-                lexicalAnalyzer->state = EXPONENTIAL;
-            }
-            else if(currentChar >= '0' && currentChar <= '9')
-            {
-                lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
-                return COMPILER_LEXICAL_ERROR;
-            }
-            else
-            {
-                setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
-                compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, false, false);
-                if(compilerStatus == COMPILER_INTERNAL_ERROR)
-                {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
-                    return COMPILER_INTERNAL_ERROR;
-                }
-                lexicalAnalyzer->lineHasToken = true;
-            }
-            break;
-        case INT_PLUS_FINAL:
-            if(currentChar >= '0' && currentChar <= '9')
-            {
-                lexicalAnalyzer->state = INT_PLUS_FINAL;
-            }
-            else if(currentChar == '_')
-            {
-                lexicalAnalyzer->state = INT_PLUS_;
-            }
-            else if(currentChar == 'e' || currentChar == 'E')
-            {
-                lexicalAnalyzer->state = EXPONENTIAL;
-            }
-            else if(currentChar == '.')
-            {
-                lexicalAnalyzer->state = DOUBLE;
-            }
-            else
-            {
-                setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
-                compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, false, false);
-                if(compilerStatus == COMPILER_INTERNAL_ERROR)
-                {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
-                    return COMPILER_INTERNAL_ERROR;
-                }
-                lexicalAnalyzer->lineHasToken = true;
-            }
-            break;*/
         case INT_:
             if(currentChar >= '0' && currentChar <= '9')
             {
                 lexicalAnalyzer->state = INT_FINAL;
             }
+            else if(currentChar == '_')
+            {
+                lexicalAnalyzer->state = INT_;
+            }
             else
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
             break;
@@ -1334,9 +1461,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, false, false);
                 if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    lexicalAnalyzer->state = INVALID;
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
                 lexicalAnalyzer->lineHasToken = true;
@@ -1354,9 +1480,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             else
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
             break;
@@ -1394,9 +1518,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             else
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
             break;
@@ -1405,9 +1527,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_STRING_LITERAL, false, true);
             if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
             lexicalAnalyzer->lineHasToken = true;
@@ -1420,9 +1541,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             else
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
             break;
@@ -1438,52 +1557,36 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             else
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
             break;
-        /*case INT_PLUS_:
-            if(currentChar >= '0' && currentChar <= '9')
-            {
-                lexicalAnalyzer->state = INT_PLUS_FINAL;
-            }
-            else
-            {
-                lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
-                return COMPILER_LEXICAL_ERROR;
-            }
-            break;*/
         case DOUBLE_NO_EXP_:
             if(currentChar >= '0' && currentChar <= '9')
             {
                 lexicalAnalyzer->state = DOUBLE_NO_EXP_FINAL;
             }
+            else if(currentChar == '_')
+            {
+                lexicalAnalyzer->state = DOUBLE_NO_EXP_;
+            }
             else
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
             break;
         case ONE_LINE_COMMENT_FINAL:
             setLexicalAnalyzerToStart(lexicalAnalyzer, currentChar);
-            if(lexicalAnalyzer->lineHasToken && lexicalAnalyzer->parenDepth <= 0)
+            if(lexicalAnalyzer->lineHasToken && lexicalAnalyzer->parenDepth == 0)
             {
-                stringShortenByOne(tokenLexeme, &tokenLexemeLength);
-                setTokenLocation(outToken, lexicalAnalyzer->newlineLine, lexicalAnalyzer->newlineColumn);
-                compilerStatus = setToken(outToken, tokenLexeme, TOKEN_NEWLINE);
+                setTokenLocation(outToken, lexicalAnalyzer->newlineLocation);
+                compilerStatus = setToken(outToken, "\n", TOKEN_NEWLINE);
                 if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    lexicalAnalyzer->state = INVALID;
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
                 lexicalAnalyzer->lineHasToken = false;
@@ -1547,9 +1650,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, false, false);
             if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
             lexicalAnalyzer->lineHasToken = true;
@@ -1565,9 +1667,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_STRING_LITERAL, false, true);
                 if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    lexicalAnalyzer->state = INVALID;
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
                 lexicalAnalyzer->lineHasToken = true;
@@ -1595,9 +1696,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             else
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
             break;
@@ -1620,9 +1719,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, false, false);
                 if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    lexicalAnalyzer->state = INVALID;
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
                 lexicalAnalyzer->lineHasToken = true;
@@ -1651,12 +1749,14 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             {
                 lexicalAnalyzer->state = EXPONENTIAL_FINAL;
             }
+            else if(currentChar == '_')
+            {
+                lexicalAnalyzer->state = EXPONENTIAL_;
+            }
             else
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
             break;
@@ -1665,9 +1765,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, false, false);
             if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
             lexicalAnalyzer->lineHasToken = true;
@@ -1691,9 +1790,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_STRING_LITERAL, false, false);
             if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
             lexicalAnalyzer->lineHasToken = true;
@@ -1703,9 +1801,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_OPERATOR, false, false);
             if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
             lexicalAnalyzer->lineHasToken = true;
@@ -1721,9 +1818,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_OPERATOR, false, false);
                 if(compilerStatus == COMPILER_INTERNAL_ERROR)
                 {
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    lexicalAnalyzer->state = INVALID;
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
                 lexicalAnalyzer->lineHasToken = true;
@@ -1737,9 +1833,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             else
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
             break;
@@ -1748,9 +1842,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_OPERATOR, false, false);
             if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
             lexicalAnalyzer->lineHasToken = true;
@@ -1760,9 +1853,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_RIGHT_PAREN, false, false);
             if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
             lexicalAnalyzer->lineHasToken = true;
@@ -1772,9 +1864,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_COMMA, false, false);
             if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
             lexicalAnalyzer->lineHasToken = true;
@@ -1784,9 +1875,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_COLON, false, false);
             if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
             lexicalAnalyzer->lineHasToken = true;
@@ -1796,9 +1886,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_SEMICOLON, false, false);
             if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
             lexicalAnalyzer->lineHasToken = true;
@@ -1808,9 +1897,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_AT, false, false);
             if(compilerStatus == COMPILER_INTERNAL_ERROR)
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
             lexicalAnalyzer->lineHasToken = true;
@@ -1823,9 +1911,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             if(lexicalAnalyzer->state == INVALID)
             {
                 lexicalAnalyzer->state = INVALID;
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return compilerError;
             }
             break;
@@ -1839,13 +1925,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
         commentEnded = false;
         if(lexicalAnalyzer->prevCharRead)
         {
-            setTokenLocation(outToken, lexicalAnalyzer->prevCharLine, lexicalAnalyzer->prevCharColumn);
+            setTokenLocation(outToken, lexicalAnalyzer->prevCharLocation);
             lexicalAnalyzer->prevCharRead = false;
             if(!stringAppend(&tokenLexeme, &tokenLexemeLength, lexicalAnalyzer->prevChar))
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_INTERNAL_ERROR;
             }
             if(newlineInComment)
@@ -1861,7 +1946,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     {
                         strcpy(tokenLexeme, "");
                         tokenLexemeLength = 0;
-                        setTokenLocation(outToken, lexicalAnalyzer->line, lexicalAnalyzer->column);
+                        setTokenLocation(outToken, lexicalAnalyzer->location);
                         lexicalAnalyzer->state = START;
                     }
                 }
@@ -1872,9 +1957,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 else
                 {
                     lexicalAnalyzer->state = INVALID;
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_LEXICAL_ERROR;
                 }
             }
@@ -1885,16 +1968,14 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 if(lexicalAnalyzer->state == INVALID)
                 {
                     lexicalAnalyzer->state = INVALID;
-                    tokenDestroy(*outToken);
-                    *outToken = NULL;
-                    free(tokenLexeme);
+                    tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return compilerError;
                 }
             }
         }
         else
         {
-            setTokenLocation(outToken, lexicalAnalyzer->line, lexicalAnalyzer->column);
+            setTokenLocation(outToken, lexicalAnalyzer->location);
         }
     }
 
@@ -1903,9 +1984,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
     {
         if(ferror(lexicalAnalyzer->input) != 0)
         {
-            tokenDestroy(*outToken);
-            *outToken = NULL;
-            free(tokenLexeme);
+            lexicalAnalyzer->state = INVALID;
+            tokenAndLexemeDestroy(outToken, tokenLexeme);
             return COMPILER_INTERNAL_ERROR;
         }
         lexicalAnalyzer->reachedEof = true;
@@ -1922,9 +2002,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_IDENTIFIER, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -1932,13 +2011,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     lexicalAnalyzer->logicalIndentKnown = false;
                     lexicalAnalyzer->continuationPending = false;
                     lexicalAnalyzer->state = START;
-                    setTokenLocation(outToken, lexicalAnalyzer->newlineLine, lexicalAnalyzer->newlineColumn);
+                    setTokenLocation(outToken, lexicalAnalyzer->newlineLocation);
                     compilerStatus = setToken(outToken, tokenLexeme, TOKEN_NEWLINE);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     lexicalAnalyzer->lineHasToken = false;
@@ -1947,13 +2025,12 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     if(lexicalAnalyzer->lineHasToken && lexicalAnalyzer->parenDepth <= 0)
                     {
                         lexicalAnalyzer->state = START;
-                        setTokenLocation(outToken, lexicalAnalyzer->prevCharLine, lexicalAnalyzer->prevCharColumn);
-                        compilerStatus = setToken(outToken, tokenLexeme, TOKEN_NEWLINE);
+                        setTokenLocation(outToken, lexicalAnalyzer->prevCharLocation);
+                        compilerStatus = setToken(outToken, "\n", TOKEN_NEWLINE);
                         if(compilerStatus == COMPILER_INTERNAL_ERROR)
                         {
-                            tokenDestroy(*outToken);
-                            *outToken = NULL;
-                            free(tokenLexeme);
+                            lexicalAnalyzer->state = INVALID;
+                            tokenAndLexemeDestroy(outToken, tokenLexeme);
                             return COMPILER_INTERNAL_ERROR;
                         }
                         lexicalAnalyzer->lineHasToken = false;
@@ -1972,9 +2049,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_IDENTIFIER, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -1983,53 +2059,28 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
-                /*case ZERO_PLUS_FINAL:
-                    lexicalAnalyzer->state = START;
-                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, true, false);
-                    if(compilerStatus == COMPILER_INTERNAL_ERROR)
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    break;*/
                 case INT_FINAL:
                     lexicalAnalyzer->state = START;
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
-                /*case INT_PLUS_FINAL:
-                    lexicalAnalyzer->state = START;
-                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_INT_LITERAL, true, false);
-                    if(compilerStatus == COMPILER_INTERNAL_ERROR)
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    break;*/
                 case DOUBLE_NO_EXP_FINAL:
                     lexicalAnalyzer->state = START;
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2038,9 +2089,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2049,9 +2099,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2060,9 +2109,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_DOUBLE_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2071,9 +2119,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_STRING_LITERAL, true, true);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2082,9 +2129,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_STRING_LITERAL, true, true);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2093,9 +2139,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_STRING_LITERAL, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2104,9 +2149,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_OPERATOR, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2114,9 +2158,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     if(!beginRealToken(lexicalAnalyzer, lexicalAnalyzer->slashIndent, lexicalAnalyzer->slashWasPending))
                     {
                         lexicalAnalyzer->state = INVALID;
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_LEXICAL_ERROR;
                     }
                     lexicalAnalyzer->continuationPending = false;
@@ -2124,9 +2166,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_OPERATOR, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2135,9 +2176,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_OPERATOR, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2146,31 +2186,18 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_OPERATOR, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
-                /*case UNIT_FINAL:
-                    lexicalAnalyzer->state = START;
-                    compilerStatus = editSetToken(outToken, tokenLexeme, &tokenLexemeLength, TOKEN_UNIT_LITERAL, true, false);
-                    if(compilerStatus == COMPILER_INTERNAL_ERROR)
-                    {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
-                        return COMPILER_INTERNAL_ERROR;
-                    }
-                    break;*/
                 case LEFT_PAREN_FINAL:
                     lexicalAnalyzer->state = START;
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_LEFT_PAREN, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2179,9 +2206,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_RIGHT_PAREN, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2190,9 +2216,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_COMMA, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2201,9 +2226,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_COLON, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2212,9 +2236,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_SEMICOLON, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2223,9 +2246,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_DOT, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2234,9 +2256,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = editSetToken(outToken, lexicalAnalyzer, tokenLexeme, &tokenLexemeLength, TOKEN_AT, true, false);
                     if(compilerStatus == COMPILER_INTERNAL_ERROR)
                     {
-                        tokenDestroy(*outToken);
-                        *outToken = NULL;
-                        free(tokenLexeme);
+                        lexicalAnalyzer->state = INVALID;
+                        tokenAndLexemeDestroy(outToken, tokenLexeme);
                         return COMPILER_INTERNAL_ERROR;
                     }
                     break;
@@ -2257,9 +2278,8 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
             }
             else
             {
-                tokenDestroy(*outToken);
-                *outToken = NULL;
-                free(tokenLexeme);
+                lexicalAnalyzer->state = INVALID;
+                tokenAndLexemeDestroy(outToken, tokenLexeme);
                 return COMPILER_LEXICAL_ERROR;
             }
         }

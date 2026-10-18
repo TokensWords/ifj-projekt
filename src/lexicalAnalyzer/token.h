@@ -35,7 +35,7 @@ typedef enum {
 } TokenType;
 
 typedef union {
-    int64_t intValue;
+    int intValue;
     double doubleValue;
     size_t indentLevel;
 } TokenValue;
