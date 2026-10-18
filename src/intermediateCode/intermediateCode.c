@@ -449,6 +449,266 @@ static CompilerStatus generateIntegerDivision(IntermediateGenerator *generator, 
     return COMPILER_OK;
 }
 
+static void clearOperandArray(IntermediateOperand *operands, size_t count) {
+    if (operands == NULL) {
+        return;
+    }
+
+    size_t counter = 0;
+    while (counter < count) {
+        intermediateOperandClear(&operands[counter]);
+        counter++;
+    }
+}
+
+static CompilerStatus appendInstructionArray(IntermediateGenerator *generator, const IntermediateInstruction *instructions, size_t count) {
+    if (generator == NULL || generator->program == NULL || (count > 0 && instructions == NULL)) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    size_t counter = 0;
+    while (counter < count) {
+        CompilerStatus status = intermediateProgramAppend(generator->program, &instructions[counter]);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        counter++;
+    }
+
+    return COMPILER_OK;
+}
+
+static CompilerStatus generateOrdinal(IntermediateGenerator *generator, const IntermediateOperand *resultOperand, const IntermediateOperand *stringOperand, const IntermediateOperand *indexOperand, SourceLocation origin) {
+    if (generator == NULL || resultOperand == NULL || stringOperand == NULL || indexOperand == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateOperand temporaryOperands[2] = {0};
+    size_t counter = 0;
+    while (counter < 2) {
+        CompilerStatus status = generateTemporary(generator, &temporaryOperands[counter], origin);
+        if (status != COMPILER_OK) {
+            clearOperandArray(temporaryOperands, 2);
+            return status;
+        }
+
+        counter++;
+    }
+
+    IntermediateOperand *lengthOperand = &temporaryOperands[0];
+    IntermediateOperand *conditionOperand = &temporaryOperands[1];
+    IntermediateOperand endLabelOperand = {0};
+    CompilerStatus status = generateLabel(generator, &endLabelOperand);
+    if (status != COMPILER_OK) {
+        clearOperandArray(temporaryOperands, 2);
+        return status;
+    }
+
+    IntermediateOperand negativeOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = -1};
+    IntermediateOperand zeroOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
+    IntermediateOperand trueOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
+    IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
+
+    IntermediateInstruction resultInstruction = fillInstruction(INTERMEDIATE_MOVE, 2, origin);
+    resultInstruction.operands[0] = *resultOperand;
+    resultInstruction.operands[1] = negativeOperand;
+
+    IntermediateInstruction lengthInstruction = fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, origin);
+    lengthInstruction.operands[0] = *lengthOperand;
+    lengthInstruction.operands[1] = *stringOperand;
+
+    IntermediateInstruction negativeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    negativeInstruction.operands[0] = *conditionOperand;
+    negativeInstruction.operands[1] = *indexOperand;
+    negativeInstruction.operands[2] = zeroOperand;
+
+    IntermediateInstruction negativeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    negativeJumpInstruction.operands[0] = endLabelOperand;
+    negativeJumpInstruction.operands[1] = *conditionOperand;
+    negativeJumpInstruction.operands[2] = trueOperand;
+
+    IntermediateInstruction rangeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    rangeInstruction.operands[0] = *conditionOperand;
+    rangeInstruction.operands[1] = *indexOperand;
+    rangeInstruction.operands[2] = *lengthOperand;
+
+    IntermediateInstruction rangeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    rangeJumpInstruction.operands[0] = endLabelOperand;
+    rangeJumpInstruction.operands[1] = *conditionOperand;
+    rangeJumpInstruction.operands[2] = falseOperand;
+
+    IntermediateInstruction characterInstruction = fillInstruction(INTERMEDIATE_STRING_CHARACTER_CODE, 3, origin);
+    characterInstruction.operands[0] = *resultOperand;
+    characterInstruction.operands[1] = *stringOperand;
+    characterInstruction.operands[2] = *indexOperand;
+
+    IntermediateInstruction endInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, origin);
+    endInstruction.operands[0] = endLabelOperand;
+
+    IntermediateInstruction instructions[] = {resultInstruction, lengthInstruction, negativeInstruction, negativeJumpInstruction, rangeInstruction, rangeJumpInstruction, characterInstruction, endInstruction};
+    status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    intermediateOperandClear(&endLabelOperand);
+    clearOperandArray(temporaryOperands, 2);
+
+    return status;
+}
+
+static CompilerStatus generateSubstring(IntermediateGenerator *generator, const IntermediateOperand *resultOperand, const IntermediateOperand *stringOperand, const IntermediateOperand *startOperand, const IntermediateOperand *endOperand, SourceLocation origin) {
+    if (generator == NULL || resultOperand == NULL || stringOperand == NULL || startOperand == NULL || endOperand == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateOperand temporaryOperands[4] = {0};
+    size_t counter = 0;
+    while (counter < 4) {
+        CompilerStatus status = generateTemporary(generator, &temporaryOperands[counter], origin);
+        if (status != COMPILER_OK) {
+            clearOperandArray(temporaryOperands, 4);
+            return status;
+        }
+
+        counter++;
+    }
+
+    IntermediateOperand *lengthOperand = &temporaryOperands[0];
+    IntermediateOperand *indexOperand = &temporaryOperands[1];
+    IntermediateOperand *characterOperand = &temporaryOperands[2];
+    IntermediateOperand *conditionOperand = &temporaryOperands[3];
+    IntermediateOperand labelOperands[3] = {0};
+    counter = 0;
+    while (counter < 3) {
+        CompilerStatus status = generateLabel(generator, &labelOperands[counter]);
+        if (status != COMPILER_OK) {
+            clearOperandArray(labelOperands, 3);
+            clearOperandArray(temporaryOperands, 4);
+            return status;
+        }
+
+        counter++;
+    }
+
+    IntermediateOperand *loopLabelOperand = &labelOperands[0];
+    IntermediateOperand *errorLabelOperand = &labelOperands[1];
+    IntermediateOperand *endLabelOperand = &labelOperands[2];
+    IntermediateOperand zeroOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
+    IntermediateOperand oneOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 1};
+    IntermediateOperand errorOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 40};
+    IntermediateOperand trueOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
+    IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
+    
+    IntermediateOperand emptyOperand = {.kind = INTERMEDIATE_OPERAND_STRING, .text = ""};
+
+    IntermediateInstruction lengthInstruction = fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, origin);
+    lengthInstruction.operands[0] = *lengthOperand;
+    lengthInstruction.operands[1] = *stringOperand;
+
+    IntermediateInstruction startNegativeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    startNegativeInstruction.operands[0] = *conditionOperand;
+    startNegativeInstruction.operands[1] = *startOperand;
+    startNegativeInstruction.operands[2] = zeroOperand;
+
+    IntermediateInstruction startNegativeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    startNegativeJumpInstruction.operands[0] = *errorLabelOperand;
+    startNegativeJumpInstruction.operands[1] = *conditionOperand;
+    startNegativeJumpInstruction.operands[2] = trueOperand;
+
+    IntermediateInstruction endNegativeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    endNegativeInstruction.operands[0] = *conditionOperand;
+    endNegativeInstruction.operands[1] = *endOperand;
+    endNegativeInstruction.operands[2] = zeroOperand;
+
+    IntermediateInstruction endNegativeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    endNegativeJumpInstruction.operands[0] = *errorLabelOperand;
+    endNegativeJumpInstruction.operands[1] = *conditionOperand;
+    endNegativeJumpInstruction.operands[2] = trueOperand;
+
+    IntermediateInstruction orderInstruction = fillInstruction(INTERMEDIATE_COMPARE_GREATER, 3, origin);
+    orderInstruction.operands[0] = *conditionOperand;
+    orderInstruction.operands[1] = *startOperand;
+    orderInstruction.operands[2] = *endOperand;
+
+    IntermediateInstruction orderJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    orderJumpInstruction.operands[0] = *errorLabelOperand;
+    orderJumpInstruction.operands[1] = *conditionOperand;
+    orderJumpInstruction.operands[2] = trueOperand;
+
+    IntermediateInstruction startRangeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    startRangeInstruction.operands[0] = *conditionOperand;
+    startRangeInstruction.operands[1] = *startOperand;
+    startRangeInstruction.operands[2] = *lengthOperand;
+
+    IntermediateInstruction startRangeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    startRangeJumpInstruction.operands[0] = *errorLabelOperand;
+    startRangeJumpInstruction.operands[1] = *conditionOperand;
+    startRangeJumpInstruction.operands[2] = falseOperand;
+
+    IntermediateInstruction endRangeInstruction = fillInstruction(INTERMEDIATE_COMPARE_GREATER, 3, origin);
+    endRangeInstruction.operands[0] = *conditionOperand;
+    endRangeInstruction.operands[1] = *endOperand;
+    endRangeInstruction.operands[2] = *lengthOperand;
+
+    IntermediateInstruction endRangeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    endRangeJumpInstruction.operands[0] = *errorLabelOperand;
+    endRangeJumpInstruction.operands[1] = *conditionOperand;
+    endRangeJumpInstruction.operands[2] = trueOperand;
+
+    IntermediateInstruction resultInstruction = fillInstruction(INTERMEDIATE_MOVE, 2, origin);
+    resultInstruction.operands[0] = *resultOperand;
+    resultInstruction.operands[1] = emptyOperand;
+
+    IntermediateInstruction indexInstruction = fillInstruction(INTERMEDIATE_MOVE, 2, origin);
+    indexInstruction.operands[0] = *indexOperand;
+    indexInstruction.operands[1] = *startOperand;
+
+    IntermediateInstruction loopLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, origin);
+    loopLabelInstruction.operands[0] = *loopLabelOperand;
+
+    IntermediateInstruction loopConditionInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    loopConditionInstruction.operands[0] = *conditionOperand;
+    loopConditionInstruction.operands[1] = *indexOperand;
+    loopConditionInstruction.operands[2] = *endOperand;
+
+    IntermediateInstruction loopEndJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    loopEndJumpInstruction.operands[0] = *endLabelOperand;
+    loopEndJumpInstruction.operands[1] = *conditionOperand;
+    loopEndJumpInstruction.operands[2] = falseOperand;
+
+    IntermediateInstruction characterInstruction = fillInstruction(INTERMEDIATE_STRING_GET_CHARACTER, 3, origin);
+    characterInstruction.operands[0] = *characterOperand;
+    characterInstruction.operands[1] = *stringOperand;
+    characterInstruction.operands[2] = *indexOperand;
+
+    IntermediateInstruction concatenateInstruction = fillInstruction(INTERMEDIATE_CONCATENATE, 3, origin);
+    concatenateInstruction.operands[0] = *resultOperand;
+    concatenateInstruction.operands[1] = *resultOperand;
+    concatenateInstruction.operands[2] = *characterOperand;
+
+    IntermediateInstruction incrementInstruction = fillInstruction(INTERMEDIATE_ADD, 3, origin);
+    incrementInstruction.operands[0] = *indexOperand;
+    incrementInstruction.operands[1] = *indexOperand;
+    incrementInstruction.operands[2] = oneOperand;
+
+    IntermediateInstruction loopJumpInstruction = fillInstruction(INTERMEDIATE_JUMP, 1, origin);
+    loopJumpInstruction.operands[0] = *loopLabelOperand;
+
+    IntermediateInstruction errorLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, origin);
+    errorLabelInstruction.operands[0] = *errorLabelOperand;
+
+    IntermediateInstruction exitInstruction = fillInstruction(INTERMEDIATE_EXIT, 1, origin);
+    exitInstruction.operands[0] = errorOperand;
+
+    IntermediateInstruction endLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, origin);
+    endLabelInstruction.operands[0] = *endLabelOperand;
+
+    IntermediateInstruction instructions[] = {lengthInstruction, startNegativeInstruction, startNegativeJumpInstruction, endNegativeInstruction, endNegativeJumpInstruction, orderInstruction, orderJumpInstruction, startRangeInstruction, startRangeJumpInstruction, endRangeInstruction, endRangeJumpInstruction, resultInstruction, indexInstruction, loopLabelInstruction, loopConditionInstruction, loopEndJumpInstruction, characterInstruction, concatenateInstruction, incrementInstruction, loopJumpInstruction, errorLabelInstruction, exitInstruction, endLabelInstruction};
+    CompilerStatus status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    clearOperandArray(labelOperands, 3);
+    clearOperandArray(temporaryOperands, 4);
+
+    return status;
+}
+
 static char *createFunctionLabel(const char *functionName) {
     if (functionName == NULL) {
         return NULL;
@@ -805,7 +1065,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 return COMPILER_INTERNAL_ERROR;
             }
 
-            const AbstractSyntaxNode * argument = node->children[0];
+            const AbstractSyntaxNode *argument = node->children[0];
             if (argument->inferredType != DATA_TYPE_INT && argument->inferredType != DATA_TYPE_DOUBLE && argument->inferredType != DATA_TYPE_STRING && argument->inferredType != DATA_TYPE_UNIT) {
                 return COMPILER_INTERNAL_ERROR;
             }
@@ -821,7 +1081,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             printInstruction.operands[0] = argumentOperand;
 
             if (argument->inferredType == DATA_TYPE_UNIT) {
-                printInstruction.operands[0] = (IntermediateOperand) {
+                printInstruction.operands[0] = (IntermediateOperand){
                     .kind = INTERMEDIATE_OPERAND_STRING,
                     .text = "()",
                 };
@@ -837,7 +1097,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
 
             return status;
         } else if (strcmp(node->text, "readLine") == 0 || strcmp(node->text, "readInt") == 0 || strcmp(node->text, "readDouble") == 0) {
-            if (node->children != 0) {
+            if (node->childCount != 0) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -870,6 +1130,245 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             readInstruction.operands[1] = typeOperand;
 
             status = intermediateProgramAppend(generator->program, &readInstruction);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&resultOperand);
+                return status;
+            }
+
+            *operand = resultOperand;
+
+            return status;
+        } else if (strcmp(node->text, "toInt") == 0) {
+            if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            const AbstractSyntaxNode *argument = node->children[0];
+            if (argument->inferredType != DATA_TYPE_DOUBLE && argument->inferredType != DATA_TYPE_INT) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            IntermediateOperand argumentOperand = {0};
+            CompilerStatus status = generateExpression(generator, &argumentOperand, argument);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+
+            if (argument->inferredType == DATA_TYPE_INT) {
+                status = convertIntToDouble(generator, &argumentOperand, node->location);
+                if (status != COMPILER_OK) {
+                    intermediateOperandClear(&argumentOperand);
+                    return status;
+                }
+            }
+
+            IntermediateOperand resultOperand = {0};
+            status = generateTemporary(generator, &resultOperand, node->location);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&argumentOperand);
+                return status;
+            }
+
+            IntermediateInstruction conversionInstruction = fillInstruction(INTERMEDIATE_CONVERT_DOUBLE_TO_INT, 2, node->location);
+            conversionInstruction.operands[0] = resultOperand;
+            conversionInstruction.operands[1] = argumentOperand;
+
+            status = intermediateProgramAppend(generator->program, &conversionInstruction);
+            intermediateOperandClear(&argumentOperand);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&resultOperand);
+                return status;
+            }
+
+            *operand = resultOperand;
+
+            return status;
+        } else if (strcmp(node->text, "toStr") == 0) {
+            if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            const AbstractSyntaxNode *argument = node->children[0];
+            if (argument->inferredType != DATA_TYPE_INT && argument->inferredType != DATA_TYPE_DOUBLE && argument->inferredType != DATA_TYPE_STRING && argument->inferredType != DATA_TYPE_UNIT) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            IntermediateOperand argumentOperand = {0};
+            CompilerStatus status = generateExpression(generator, &argumentOperand, argument);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+
+            if (argument->inferredType == DATA_TYPE_STRING) {
+                *operand = argumentOperand;
+
+                return status;
+            }
+
+            if (argument->inferredType == DATA_TYPE_UNIT) {
+                intermediateOperandClear(&argumentOperand);
+
+                char *unitText = malloc(3 * sizeof(char));
+                if (unitText == NULL) {
+                    return COMPILER_INTERNAL_ERROR;
+                }
+
+                strcpy(unitText, "()");
+
+                argumentOperand.kind = INTERMEDIATE_OPERAND_STRING;
+                argumentOperand.text = unitText;
+                argumentOperand.value = (IntermediateOperandValue){0};
+
+                *operand = argumentOperand;
+
+                return status;
+            }
+
+            IntermediateOpcode conversionOpcode = INTERMEDIATE_CONVERT_INT_TO_STRING;
+            if (argument->inferredType == DATA_TYPE_DOUBLE) {
+                conversionOpcode = INTERMEDIATE_CONVERT_DOUBLE_TO_STRING;
+            }
+
+            IntermediateOperand resultOperand = {0};
+            status = generateTemporary(generator, &resultOperand, node->location);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&argumentOperand);
+                return status;
+            }
+
+            IntermediateInstruction conversionInstruction = fillInstruction(conversionOpcode, 2, node->location);
+            conversionInstruction.operands[0] = resultOperand;
+            conversionInstruction.operands[1] = argumentOperand;
+
+            status = intermediateProgramAppend(generator->program, &conversionInstruction);
+            intermediateOperandClear(&argumentOperand);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&resultOperand);
+                return status;
+            }
+
+            *operand = resultOperand;
+
+            return status;
+        } else if (strcmp(node->text, "chr") == 0) {
+            if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            const AbstractSyntaxNode *argument = node->children[0];
+            if (argument->inferredType != DATA_TYPE_INT) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            IntermediateOperand argumentOperand = {0};
+            CompilerStatus status = generateExpression(generator, &argumentOperand, argument);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+
+            IntermediateOperand resultOperand = {0};
+            status = generateTemporary(generator, &resultOperand, node->location);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&argumentOperand);
+                return status;
+            }
+
+            IntermediateInstruction characterInstruction = fillInstruction(INTERMEDIATE_CONVERT_INT_TO_CHARACTER, 2, node->location);
+            characterInstruction.operands[0] = resultOperand;
+            characterInstruction.operands[1] = argumentOperand;
+
+            status = intermediateProgramAppend(generator->program, &characterInstruction);
+            intermediateOperandClear(&argumentOperand);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&resultOperand);
+                return status;
+            }
+
+            *operand = resultOperand;
+
+            return status;
+        } else if (strcmp(node->text, "strLength") == 0) {
+            if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            const AbstractSyntaxNode *argument = node->children[0];
+            if (argument->inferredType != DATA_TYPE_STRING) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            IntermediateOperand argumentOperand = {0};
+            CompilerStatus status = generateExpression(generator, &argumentOperand, argument);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+
+            IntermediateOperand resultOperand = {0};
+            status = generateTemporary(generator, &resultOperand, node->location);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&argumentOperand);
+                return status;
+            }
+
+            IntermediateInstruction lengthInstruction = fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, node->location);
+            lengthInstruction.operands[0] = resultOperand;
+            lengthInstruction.operands[1] = argumentOperand;
+
+            status = intermediateProgramAppend(generator->program, &lengthInstruction);
+            intermediateOperandClear(&argumentOperand);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&resultOperand);
+                return status;
+            }
+
+            *operand = resultOperand;
+
+            return status;
+        }
+
+        if (strcmp(node->text, "ord") == 0 || strcmp(node->text, "subStr") == 0) {
+            bool isOrdinal = strcmp(node->text, "ord") == 0;
+            size_t argumentCount = isOrdinal ? 2 : 3;
+            if (node->childCount != argumentCount || node->children == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            size_t counter = 0;
+            while (counter < argumentCount) {
+                const AbstractSyntaxNode *argument = node->children[counter];
+                DataType argumentType = counter == 0 ? DATA_TYPE_STRING : DATA_TYPE_INT;
+                if (argument == NULL || argument->inferredType != argumentType) {
+                    return COMPILER_INTERNAL_ERROR;
+                }
+
+                counter++;
+            }
+
+            IntermediateOperand argumentOperands[3] = {0};
+            counter = 0;
+            while (counter < argumentCount) {
+                CompilerStatus status = generateExpression(generator, &argumentOperands[counter], node->children[counter]);
+                if (status != COMPILER_OK) {
+                    clearOperandArray(argumentOperands, 3);
+                    return status;
+                }
+
+                counter++;
+            }
+
+            IntermediateOperand resultOperand = {0};
+            CompilerStatus status = generateTemporary(generator, &resultOperand, node->location);
+            if (status != COMPILER_OK) {
+                clearOperandArray(argumentOperands, 3);
+                return status;
+            }
+
+            if (isOrdinal) {
+                status = generateOrdinal(generator, &resultOperand, &argumentOperands[0], &argumentOperands[1], node->location);
+            } else {
+                status = generateSubstring(generator, &resultOperand, &argumentOperands[0], &argumentOperands[1], &argumentOperands[2], node->location);
+            }
+            clearOperandArray(argumentOperands, 3);
             if (status != COMPILER_OK) {
                 intermediateOperandClear(&resultOperand);
                 return status;
@@ -1015,7 +1514,7 @@ static CompilerStatus generateExpressionStatement(IntermediateGenerator *generat
     if (generator == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    
+
     const AbstractSyntaxNode *expressionNode = node;
 
     if (node->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT) {
