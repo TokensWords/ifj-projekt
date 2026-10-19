@@ -9,6 +9,8 @@
 #include "abstractSyntaxTree.h"
 #include "compilerTypes.h"
 #include "symbolTable.h"
+#include "memory.h"
+
 #include <stdbool.h>
 
 /**
@@ -56,6 +58,60 @@ CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symb
 }
 
 
+/**
+ * @brief Extracts information from current ast node to a new symbol.
+ *
+ * @param node node to be extracted from
+ *
+ * @return status of the program - error codes
+ */
+Symbol *astNodeToSymbol(AbstractSyntaxNode *node)
+{
+		if(node == NULL) {
+				return NULL
+		}
+
+		Symbol *symbol = memoryAllocate(sizeof(Symbol));
+		if(symbol == NULL) {
+				return NULL;
+		}
+
+		//resolve kind
+		if(node->kind == ABSTRACT_SYNTAX_FUNCTION) {
+				symbol->kind = SYMBOL_FUNCTION;
+		} else if(node->kind == ABSTRACT_SYNTAX_PARAMETER || node->kind == ABSTRACT_SYNTAX_VARIABLE_DECLARATION) {
+				symbol->kind = SYMBOL_VARIABLE;
+		} else{
+				free(symbol);
+				return 0;
+		}
+
+		symbol->name = node->text;
+		symbol->dataType = node->variableType;
+		symbol->mutable = node->mutable;
+		symbol->defined = false;
+		symbol->scopeDepth = 0;
+
+		if(symbol->kind == ABSTRACT_SYNTAX_FUNCTION) {
+				symbol->function->parameterTypes = NULL;
+				symbol->function->parameterCount = node->variableCount;
+				symbol->function.returnType = variableType;
+		} else{
+				symbol->function->parameterTypes = NULL;
+				symbol->function->parameterCount = 0;
+				symbol->function.returnType = DATA_TYPE_UNKNOWN;
+		}
+
+		return symbol;
+}
+
+
+/**
+ * @brief TODO
+ *
+ *
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalResolveFunction(AbstractSyntaxNode *functionNode, SymbolTable *symbols)
 {
     if(functionNode == NULL || symbols == NULL) {
@@ -63,7 +119,12 @@ CompilerStatus semAnalResolveFunction(AbstractSyntaxNode *functionNode, SymbolTa
     }
     CompilerStatus status = COMPILER_OK;
 
-    //TODO
+		Symbol *functionSymbol = astNodeToSymbol(functionNode);
+
+		status = symbolTableInsert(symbols, functionSymbol);
+		if(status != COMPILER_OK) {
+				return status;
+		}
     
     return status;
 }

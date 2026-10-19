@@ -12,6 +12,9 @@
 #include "compilerTypes.h"
 #include "symbolTable.h"
 
+
+Symbol *astNodeToSymbol(AbstractSyntaxNode *node)
+
 CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symbols);
 
 CompilerStatus semAnalResolveFunction(AbstractSyntaxNode *functionNode, SymbolTable *symbols);
