@@ -12,7 +12,7 @@
 #include "compilerTypes.h"
 #include "symbolTable.h"
 
-CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symbols);
+CompilerStatus semanticanalyzeranalyze(sourceprogram *program, symboltable *symbols);
 
 #endif
 
