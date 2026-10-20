@@ -93,6 +93,10 @@ DataType *astGetParameterTypes(AbstractSyntaxNode *node)
 /**
  * @brief Extracts information from current ast node to a new symbol.
  *
+ * This function does only extract information from the node + function parameter types from function nodes.
+ * It does NOT set coresponding scope depth (default 0).
+ * It sets defined to false.
+ *
  * @param node node to be extracted from
  *
  * @return status of the program - error codes
@@ -121,8 +125,8 @@ Symbol *astNodeToSymbol(AbstractSyntaxNode *node)
 		symbol->name = node->text;
 		symbol->dataType = node->variableType;
 		symbol->mutable = node->mutable;
-		symbol->defined = false;
-		symbol->scopeDepth = 0;
+		symbol->defined = false;	//default
+		symbol->scopeDepth = 0;		//default
 
 		if(symbol->kind == ABSTRACT_SYNTAX_FUNCTION) {
 				symbol->function->parameterTypes = astGetParameterTypes(node);
@@ -130,12 +134,12 @@ Symbol *astNodeToSymbol(AbstractSyntaxNode *node)
 						free(symbol);
 						return NULL;
 				}
-				symbol->function->parameterCount = node->variableCount;
-				symbol->function.returnType = variableType;
+				symbol->function->parameterCount = node->childCount - 1;
+				symbol->function.returnType = node->variableType;
 		} else{
-				symbol->function->parameterTypes = NULL;
-				symbol->function->parameterCount = 0;
-				symbol->function.returnType = DATA_TYPE_UNKNOWN;
+				symbol->function->parameterTypes = NULL;					//defaul
+				symbol->function->parameterCount = 0;							//defaul
+				symbol->function.returnType = DATA_TYPE_UNKNOWN;	//defaul
 		}
 
 		return symbol;
@@ -156,11 +160,14 @@ CompilerStatus semAnalResolveFunction(AbstractSyntaxNode *functionNode, SymbolTa
     CompilerStatus status = COMPILER_OK;
 
 		Symbol *functionSymbol = astNodeToSymbol(functionNode);
+		functionSymbol->scopeDepth = symbolTableGetCurrentScope(symbols);
+		functionSymbol->defined = true;
 
 		status = symbolTableInsert(symbols, functionSymbol);
 		if(status != COMPILER_OK) {
 				return status;
 		}
+
     
     return status;
 }
