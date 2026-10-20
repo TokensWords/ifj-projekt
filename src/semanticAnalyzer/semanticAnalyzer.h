@@ -13,7 +13,8 @@
 #include "symbolTable.h"
 
 
-Symbol *astNodeToSymbol(AbstractSyntaxNode *node)
+DataType *astGetParameterTypes(AbstractSyntaxNode *node);
+Symbol *astNodeToSymbol(AbstractSyntaxNode *node);
 
 CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symbols);
 

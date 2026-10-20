@@ -59,6 +59,38 @@ CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symb
 
 
 /**
+ * @brief gets parameter types from AST node
+ *
+ * @param node pointer to AST function node to get parameter types from
+ *
+ * @return array of data types
+ */
+DataType *astGetParameterTypes(AbstractSyntaxNode *node)
+{
+		if(node == NULL) {
+				return NULL;
+		}
+		if(node->type != ABSTRACT_SYNTAX_FUNCTION) {
+				return NULL;
+		}
+		
+		DataType *types = memoryAllocate(sizeof(DataType) * (node->childCount - 1));
+		if(types == NULL) {
+				return NULL;
+		}
+
+		for(size_t parameterI = 0; parameterI < node->childCount - 1; parameterI++) {
+				if(node->children[parameterI] == NULL) {
+						free(types);
+						return NULL;
+				}
+				types[parameterI] = node->children[parameterI]->variableType;
+		}
+
+		return types;
+}
+
+/**
  * @brief Extracts information from current ast node to a new symbol.
  *
  * @param node node to be extracted from
@@ -83,7 +115,7 @@ Symbol *astNodeToSymbol(AbstractSyntaxNode *node)
 				symbol->kind = SYMBOL_VARIABLE;
 		} else{
 				free(symbol);
-				return 0;
+				return NULL;
 		}
 
 		symbol->name = node->text;
@@ -93,7 +125,11 @@ Symbol *astNodeToSymbol(AbstractSyntaxNode *node)
 		symbol->scopeDepth = 0;
 
 		if(symbol->kind == ABSTRACT_SYNTAX_FUNCTION) {
-				symbol->function->parameterTypes = NULL;
+				symbol->function->parameterTypes = astGetParameterTypes(node);
+				if(symbol->function->parameterTypes == NULL) {
+						free(symbol);
+						return NULL;
+				}
 				symbol->function->parameterCount = node->variableCount;
 				symbol->function.returnType = variableType;
 		} else{
