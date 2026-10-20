@@ -84,6 +84,10 @@ DataType *astGetParameterTypes(AbstractSyntaxNode *node)
 						free(types);
 						return NULL;
 				}
+				if(node->children[parameterI]->type != ABSTRACT_SYNTAX_PARAMETER) {
+						free(types);
+						return NULL;
+				}
 				types[parameterI] = node->children[parameterI]->variableType;
 		}
 
@@ -147,8 +151,10 @@ Symbol *astNodeToSymbol(AbstractSyntaxNode *node)
 
 
 /**
- * @brief TODO
+ * @brief Adds a new function symbol to the symbol table and enters new scope.
  *
+ * @param functionNode pointer to a AST node type - function
+ * @param symbols pointer to the existing symbol table
  *
  * @return status of the program - error codes
  */
@@ -160,14 +166,29 @@ CompilerStatus semAnalResolveFunction(AbstractSyntaxNode *functionNode, SymbolTa
     CompilerStatus status = COMPILER_OK;
 
 		Symbol *functionSymbol = astNodeToSymbol(functionNode);
+		if(functionSymbol == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+		}
+
 		functionSymbol->scopeDepth = symbolTableGetCurrentScope(symbols);
 		functionSymbol->defined = true;
 
 		status = symbolTableInsert(symbols, functionSymbol);
 		if(status != COMPILER_OK) {
+				free(functionSymbol->function.parameterTypes);
+				free(functionSymbol);
+				return status;
+		}
+		
+		status = symbolTableEnterScope(symbols);
+		if(status != COMPILER_OK) {
+				free(functionSymbol->function.parameterTypes);
+				free(functionSymbol);
 				return status;
 		}
 
+		//TODO cycle through parameters
+		//TODO resolve body
     
     return status;
 }
