@@ -153,7 +153,7 @@ Symbol *astNodeToSymbol(AbstractSyntaxNode *node)
 /**
  * @brief Adds a new function symbol to the symbol table and enters new scope.
  *
- * @param functionNode pointer to a AST node type - function
+ * @param functionNode pointer to a AST node type function
  * @param symbols pointer to the existing symbol table
  *
  * @return status of the program - error codes
@@ -163,6 +163,10 @@ CompilerStatus semAnalResolveFunction(AbstractSyntaxNode *functionNode, SymbolTa
     if(functionNode == NULL || symbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
+		if(functionNode != ABSTRACT_SYNTAX_FUNCTION) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
     CompilerStatus status = COMPILER_OK;
 
 		Symbol *functionSymbol = astNodeToSymbol(functionNode);
@@ -194,14 +198,38 @@ CompilerStatus semAnalResolveFunction(AbstractSyntaxNode *functionNode, SymbolTa
 }
 
 
+/**
+ * @brief Adds a new variable(parameter) symbol to the symbol table.
+ *
+ * @param parameterNode pointer to a AST node type parameter
+ * @param symbols pointer to the existing symbol table
+ *
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalResolveParameter(AbstractSyntaxNode *parameterNode, SymbolTable *symbols)
 {
     if(parameterNode == NULL || symbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
+		if(functionNode != ABSTRACT_SYNTAX_PARAMETER) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
     CompilerStatus status = COMPILER_OK;
 
-    //TODO
+		Symbol *parameterSymbol = astNodeToSymbol(parameterNode);
+		if(parameterSymbol == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+		}
+
+		parameterSymbol->scopeDepth = symbolTableGetCurrentScope(symbols);
+		parameterSymbol->defined = true;
+
+		status = symbolTableInsert(symbols, parameterSymbol);
+		if(status != COMPILER_OK) {
+				free(parameterSymbol);
+				return status;
+		}
     
     return status;
 }
