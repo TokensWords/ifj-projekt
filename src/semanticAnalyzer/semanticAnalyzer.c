@@ -23,20 +23,12 @@
  */
 CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symbols)
 {
-    if (program == NULL || symbols == NULL) {
+    if (program == NULL || symbols == NULL || program->root == NULL || program->root->type != ABSTRACT_SYNTAX_PROGRAM) {
         return COMPILER_INTERNAL_ERROR;
     }
 
-		if(program->root == NULL) {
-				return COMPILER_UNDEFINED_SYMBOL_ERROR;		//no source code (main)
-		}
-
-		if(program->root->type != ABSTRACT_SYNTAX_PROGRAM) {
-				return COMPILER_INTERNAL_ERROR;
-		}
-
 		CompilerStatus status = COMPILER_OK;
-		AbstractSyntaxNode root = program->root;
+		AbstractSyntaxNode *root = program->root;
 		bool hasMain = false;
 
 		//loop thorough functins
@@ -46,7 +38,7 @@ CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symb
 				}
 				hasMain = hasMain || root->children[currentFunI]->isEntryFunction;
 
-				status = semAnalResolveFunction(root->children[currentFunI]);
+				status = semAnalResolveFunction(root->children[currentFunI], symbols);
 				if(status != COMPILER_OK) {
 						return status;
 				}
@@ -108,7 +100,7 @@ DataType *astGetParameterTypes(AbstractSyntaxNode *node)
 Symbol *astNodeToSymbol(AbstractSyntaxNode *node)
 {
 		if(node == NULL) {
-				return NULL
+				return NULL;
 		}
 
 		Symbol *symbol = memoryAllocate(sizeof(Symbol));
@@ -128,21 +120,21 @@ Symbol *astNodeToSymbol(AbstractSyntaxNode *node)
 
 		symbol->name = node->text;
 		symbol->dataType = node->variableType;
-		symbol->mutable = node->mutable;
+		symbol->mutable = node->isMutable;
 		symbol->defined = false;	//default
 		symbol->scopeDepth = 0;		//default
 
 		if(symbol->kind == ABSTRACT_SYNTAX_FUNCTION) {
-				symbol->function->parameterTypes = astGetParameterTypes(node);
-				if(symbol->function->parameterTypes == NULL) {
+				symbol->function.parameterTypes = astGetParameterTypes(node);
+				if(symbol->function.parameterTypes == NULL) {
 						free(symbol);
 						return NULL;
 				}
-				symbol->function->parameterCount = node->childCount - 1;
+				symbol->function.parameterCount = node->childCount - 1;
 				symbol->function.returnType = node->variableType;
 		} else{
-				symbol->function->parameterTypes = NULL;					//defaul
-				symbol->function->parameterCount = 0;							//defaul
+				symbol->function.parameterTypes = NULL;					//defaul
+				symbol->function.parameterCount = 0;							//defaul
 				symbol->function.returnType = DATA_TYPE_UNKNOWN;	//defaul
 		}
 
@@ -160,10 +152,7 @@ Symbol *astNodeToSymbol(AbstractSyntaxNode *node)
  */
 CompilerStatus semAnalResolveFunction(AbstractSyntaxNode *functionNode, SymbolTable *symbols)
 {
-    if(functionNode == NULL || symbols == NULL) {
-        return COMPILER_INTERNAL_ERROR;
-    }
-		if(functionNode != ABSTRACT_SYNTAX_FUNCTION) {
+    if(functionNode == NULL || symbols == NULL || functionNode->type != ABSTRACT_SYNTAX_FUNCTION) {
         return COMPILER_INTERNAL_ERROR;
     }
 
@@ -208,10 +197,7 @@ CompilerStatus semAnalResolveFunction(AbstractSyntaxNode *functionNode, SymbolTa
  */
 CompilerStatus semAnalResolveParameter(AbstractSyntaxNode *parameterNode, SymbolTable *symbols)
 {
-    if(parameterNode == NULL || symbols == NULL) {
-        return COMPILER_INTERNAL_ERROR;
-    }
-		if(functionNode != ABSTRACT_SYNTAX_PARAMETER) {
+    if(parameterNode == NULL || symbols == NULL || parameterNode->type != ABSTRACT_SYNTAX_PARAMETER) {
         return COMPILER_INTERNAL_ERROR;
     }
 
@@ -237,7 +223,7 @@ CompilerStatus semAnalResolveParameter(AbstractSyntaxNode *parameterNode, Symbol
 
 CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SymbolTable *symbols)
 {
-    if(blockNode == NULL || symbols == NULL) {
+    if(blockNode == NULL || symbols == NULL || blockNode->type != ABSTRACT_SYNTAX_BLOCK) {
         return COMPILER_INTERNAL_ERROR;
     }
     CompilerStatus status = COMPILER_OK;
@@ -302,10 +288,7 @@ CompilerStatus semAnalResolveFunctionCall(AbstractSyntaxNode *functionCallNode, 
 
 CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDeclarationNode, SymbolTable *symbols)
 {
-    if(variableDeclarationNode == NULL || symbols == NULL) {
-        return COMPILER_INTERNAL_ERROR;
-    }
-		if(functionNode != ABSTRACT_SYNTAX_PARAMETER) {
+    if(variableDeclarationNode == NULL || symbols == NULL || variableDeclarationNode->type != ABSTRACT_SYNTAX_VARIABLE_DECLARATION) {
         return COMPILER_INTERNAL_ERROR;
     }
 
