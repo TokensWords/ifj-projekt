@@ -305,9 +305,27 @@ CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDec
     if(variableDeclarationNode == NULL || symbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
+		if(functionNode != ABSTRACT_SYNTAX_PARAMETER) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
     CompilerStatus status = COMPILER_OK;
 
-    //TODO
+		Symbol *variableSymbol = astNodeToSymbol(variableDeclarationNode);
+		if(variableSymbol == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+		}
+
+		variableSymbol->scopeDepth = symbolTableGetCurrentScope(symbols);
+		variableSymbol->defined = false;
+
+		status = symbolTableInsert(symbols, variableSymbol);
+		if(status != COMPILER_OK) {
+				free(variableSymbol);
+				return status;
+		}
+
+		//TODO resolve initialization
     
     return status;
 }
