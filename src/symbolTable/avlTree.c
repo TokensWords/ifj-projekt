@@ -55,14 +55,36 @@ TAvlTree *avlTreeRemove(const TAvlTree *tree, const void *key)
 
 bool avlTreeSearch(const TAvlTree *tree, const void *key)
 {
+    if (tree == NULL || key == NULL) {
+        return false;
+    }
+
+    return avlTreeSearchRecursive(tree->root, key, tree->cmp);
 }
 
 void *avlTreeGetData(const TAvlTree *tree, const void *key)
 {
+    if (tree == NULL || key == NULL) {
+        return NULL;
+    }
+
+    return avlTreeGetNodeRecursive(tree->root, key, tree->cmp);
 }
 
 TAvlNode *avlTreeCreateNode(const void *key, const void *data)
 {
+    TAvlNode *node = memoryAllocate(sizeof(TAvlNode));
+    if (node == NULL) {
+        return NULL;
+    }
+
+    node->key = (void *)key;
+    node->data = (void *)data;
+    node->left = NULL;
+    node->right = NULL;
+    node->height = 1; //new node is initially added as a leaf
+
+    return node;
 }
 
 void avlTreeDestroyNode(const TAvlNode *node, void (*onRemoveAction)(void *data, void *key))
@@ -89,10 +111,36 @@ void avlTreeDestroyRecursive(const TAvlNode *root, void (*onRemoveAction)(void *
 
 bool avlTreeSearchRecursive(const TAvlNode *root, const void *key, int (*cmp)(const void *key1, const void *key2))
 {
+    if (root == NULL) {
+        return false;
+    }
+
+    int cmpResult = cmp(key, root->key);
+
+    if (cmpResult == 0) {
+        return true;
+    } 
+    if (cmpResult < 0) {
+        return avlTreeSearchRecursive(root->left, key, cmp);
+    }
+    return avlTreeSearchRecursive(root->right, key, cmp);
 }
 
 TAvlNode *avlTreeGetNodeRecursive(const TAvlNode *root, const void *key, int (*cmp)(const void *key1, const void *key2))
 {
+    if (root == NULL) {
+        return NULL;
+    }
+
+    int cmpResult = cmp(key, root->key);
+
+    if (cmpResult == 0) {
+        return root;
+    } 
+    if (cmpResult < 0) {
+        return avlTreeSearchRecursive(root->left, key, cmp);
+    }
+    return avlTreeSearchRecursive(root->right, key, cmp);
 }
 
 TAvlNode *avlTreeInsertRecursive(TAvlNode *root, const void *key, int (*cmp)(const void *key1, const void *key2), const void *data)
