@@ -3,6 +3,8 @@
 
 #include "symbolTable.h"
 
+#include <stdbool.h>
+
 typedef struct Key Key;
 
 /**
@@ -33,5 +35,13 @@ void *symbolTableMakeKey(const char *name, size_t scopeDepth);
  * @return A negative value if key1 < key2, 0 if key1 == key2, and a positive value if key1 > key2.
  */
 int symbolTableCompareKeys(const void *key1, const void *key2);
+
+/**
+ * @brief Adds a key to the remove list.
+ * @param table The symbol table to which the key should be added to the remove list.
+ * @param key The key to be added to the remove list.
+ * @return true if key was added to the remove list, false otherwise
+ */
+bool symbolTableAddToRemoveList(SymbolTable *table, void *key);
 
 #endif // SYMBOL_TABLE_PRIVATE_H
