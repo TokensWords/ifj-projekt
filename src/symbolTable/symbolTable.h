@@ -1,6 +1,6 @@
 /*
  * Project: IFJ26 compiler
- * Authors: TODO(team)
+ * Authors: Václav Krytinář xkrytiv00
  * AI-assisted interface only.
  * Prompt: Define the symbol-table boundary without tree algorithms.
  */
@@ -32,16 +32,59 @@ typedef struct {
     bool defined;
     size_t scopeDepth;
     FunctionSignature function;
+    size_t variableId;
 } Symbol;
 
 typedef struct SymbolTable SymbolTable;
 
+/**
+ * @brief Creates a new symbol table.
+ * @return A pointer to the newly created symbol table, or NULL if creation failed.
+ */
 SymbolTable *symbolTableCreate(void);
+
+/**
+ * @brief Destroys the symbol table and frees associated memory.
+ * @param table The symbol table to destroy.
+ */
 void symbolTableDestroy(SymbolTable *table);
+
+/**
+ * @brief Enters a new scope in the symbol table.
+ * @param table The symbol table to operate on.
+ * @return A CompilerStatus indicating success or failure.
+ */
 CompilerStatus symbolTableEnterScope(SymbolTable *table);
+
+/**
+ * @brief Leaves the current scope in the symbol table.
+ * @param table The symbol table to operate on.
+ * @return A CompilerStatus indicating success or failure.
+ */
 CompilerStatus symbolTableLeaveScope(SymbolTable *table);
+
+/**
+ * @brief Inserts a new symbol into the symbol table.
+ * @param table The symbol table to operate on.
+ * @param symbol The symbol to insert.
+ * @return A CompilerStatus indicating success or failure.
+ */
 CompilerStatus symbolTableInsert(SymbolTable *table, const Symbol *symbol);
+
+/**
+ * @brief Finds a symbol in the symbol table by name.
+ * @param table The symbol table to search.
+ * @param name The name of the symbol to find.
+ * @return A pointer to the found symbol, or NULL if not found.
+ */
 const Symbol *symbolTableFind(const SymbolTable *table, const char *name);
+
+/**
+ * @brief Finds a symbol in the current scope of the symbol table by name.
+ * @param table The symbol table to search.
+ * @param name The name of the symbol to find.
+ * @return A pointer to the found symbol, or NULL if not found.
+ */
 const Symbol *symbolTableFindCurrentScope(const SymbolTable *table, const char *name);
 
 #endif
