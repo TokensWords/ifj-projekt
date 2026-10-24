@@ -66,12 +66,37 @@ void symbolTableDestroy(SymbolTable *table)
 
 CompilerStatus symbolTableEnterScope(SymbolTable *table)
 {
+    if (table == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
 
+    if(!symbolTableAddToRemoveList(table, NULL)) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    ++table->scopeDepth;
+
+    return COMPILER_OK;
 }
 
 CompilerStatus symbolTableLeaveScope(SymbolTable *table)
 {
+    if (table == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
 
+    for (size_t i = table->removeListLen - 2; table->removeList[i] != NULL; --i) {
+        TAvlTree* result = avlTreeRemove(table->tree, table->removeList[i]);
+        if (result == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        table->tree = result;
+    }
+
+    --table->scopeDepth;
+
+    return COMPILER_OK;
 }
 
 CompilerStatus symbolTableInsert(SymbolTable *table, const Symbol *symbol)
@@ -183,7 +208,7 @@ void *symbolTableMakeKey(const char *name, size_t scopeDepth)
 
 bool symbolTableAddToRemoveList(SymbolTable *table, void *key)
 {
-    if (table == NULL || key == NULL) {
+    if (table == NULL) {
         return false;
     }
 
