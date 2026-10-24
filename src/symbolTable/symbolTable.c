@@ -81,7 +81,7 @@ CompilerStatus symbolTableEnterScope(SymbolTable *table)
 
 CompilerStatus symbolTableLeaveScope(SymbolTable *table)
 {
-    if (table == NULL) {
+    if (table == NULL || table->scopeDepth <= 1) {
         return COMPILER_INTERNAL_ERROR;
     }
 
@@ -92,14 +92,16 @@ CompilerStatus symbolTableLeaveScope(SymbolTable *table)
         }
 
         table->tree = result;
+        --table->removeListLen;
     }
 
+    --table->removeListLen;
     --table->scopeDepth;
 
     return COMPILER_OK;
 }
 
-CompilerStatus symbolTableInsert(SymbolTable *table, const Symbol *symbol)
+CompilerStatus symbolTableInsert(SymbolTable *table, Symbol *symbol)
 {
     if (table == NULL || symbol == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -144,6 +146,7 @@ const Symbol *symbolTableFind(const SymbolTable *table, const char *name)
         key->scopeDepth = --depth;
     }
 
+    free(key);
     return NULL;
 }
 
@@ -169,9 +172,12 @@ const Symbol *symbolTableFindCurrentScope(const SymbolTable *table, const char *
     return NULL;
 }
 
-void *symbolTableOnRemoveAction(void *data, void *key)
+void symbolTableOnRemoveAction(void *data, void *key)
 {
-    free(((Symbol *)data)->function.parameterTypes);
+    if (((Symbol *)data)->kind == SYMBOL_FUNCTION) {
+        free(((Symbol *)data)->function.parameterTypes);
+    }
+
     free(data);
     free(key);
 }
@@ -203,7 +209,7 @@ void *symbolTableMakeKey(const char *name, size_t scopeDepth)
     key->name = name;
     key->scopeDepth = scopeDepth;
 
-    return key;
+    return (void*)key;
 }
 
 bool symbolTableAddToRemoveList(SymbolTable *table, void *key)
@@ -212,7 +218,7 @@ bool symbolTableAddToRemoveList(SymbolTable *table, void *key)
         return false;
     }
 
-    void **listTmp = memoryAllocateArray(table->removeListLen + 1, sizeof(void*));
+    void **listTmp = memoryResizeArray(table->removeList, table->removeListLen + 1, sizeof(void*));
     if (listTmp == NULL) {
         return false;
     }

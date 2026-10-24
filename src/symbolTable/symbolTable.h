@@ -69,7 +69,7 @@ CompilerStatus symbolTableLeaveScope(SymbolTable *table);
  * @param symbol The symbol to insert.
  * @return A CompilerStatus indicating success or failure.
  */
-CompilerStatus symbolTableInsert(SymbolTable *table, const Symbol *symbol);
+CompilerStatus symbolTableInsert(SymbolTable *table, Symbol *symbol);
 
 /**
  * @brief Finds a symbol in the symbol table by name.

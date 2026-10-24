@@ -14,7 +14,7 @@ typedef struct Key Key;
  * @param data The data associated with the removed symbol.
  * @param key The key of the removed symbol.
  */
-void *symbolTableOnRemoveAction(void *data, void *key);
+void symbolTableOnRemoveAction(void *data, void *key);
 
 /**
  * @brief Creates a key for the symbol table based on the provided name and current scope depth.
