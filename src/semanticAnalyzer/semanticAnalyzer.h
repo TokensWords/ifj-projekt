@@ -15,6 +15,19 @@
 typedef struct SemAnalData SemAnalData;
 
 /**
+ * @brief Initializes semantic-analysis data and creates its function symbol table.
+ * @param data The semantic-analysis data to initialize.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalDataInit(SemAnalData *data);
+
+/**
+ * @brief Destroys resources owned by semantic-analysis data.
+ * @param data The semantic-analysis data to destroy.
+ */
+void semAnalDataDestroy(SemAnalData *data);
+
+/**
  * @brief goes through functions in AST and checks semantics
  * @param program sorce program AST got from syntax analyser
  * @param symbols symbol table to work with
@@ -27,6 +40,13 @@ CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symb
  * @return The created symbol.
  */
 Symbol *semAnalCreateSymbolDefault();
+
+
+/**
+ * @brief Frees a symbol and its allocated function parameter types.
+ * @param symbol The symbol to free.
+ */
+void semAnalFreeSymbol(Symbol *symbol);
 
 /**
  * @brief gets parameter types from AST node
@@ -45,19 +65,29 @@ DataType *semAnalAstGetParameterTypes(AbstractSyntaxNode *node);
 Symbol *semAnalAstNodeToSymbol(AbstractSyntaxNode *node);
 
 /**
- * @brief goes through functions in AST and checks semantics
- * @param program sorce program AST got from syntax analyser
- * @param symbols symbol table to work with
- * @return status of the program - error codes
- */
-CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symbols);
-
-/**
  * @brief Adds builtin functions to the table of symbols.
  * @param symbols Table of symbols to insert builtin functions to.
  * @return status of the program - error codes
  */
 CompilerStatus semAnalDefineBuiltinFunctions(SymbolTable *symbols);
+
+
+/**
+ * @brief Adds all user functions to the table of symbols.
+ * It adds function name, explicit return type and parameters.
+ * It does not check the function body or correct return semantics.
+ * @param rootNode Root node of the AST.
+ * @param symbols Table of symbols to insert the functions to.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalDeclareFunctions(AbstractSyntaxNode *rootNode, SymbolTable *symbols);
+
+/**
+ * @brief Checks that an entry function has no parameters and returns unit.
+ * @param functionNode The function AST node to check.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalCheckMain(AbstractSyntaxNode *functionNode);
 
 CompilerStatus semAnalResolveFunction(AbstractSyntaxNode *functionNode, SymbolTable *symbols);
 CompilerStatus semAnalResolveParameter(AbstractSyntaxNode *parameterNode, SymbolTable *symbols);
@@ -74,4 +104,3 @@ CompilerStatus semAnalResolveUnaryExpression(AbstractSyntaxNode *unaryExpression
 CompilerStatus semAnalResolveIdentifier(AbstractSyntaxNode *identifierNode, SymbolTable *symbols);
 
 #endif
-

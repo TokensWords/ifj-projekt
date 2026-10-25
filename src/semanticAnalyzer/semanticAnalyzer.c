@@ -12,6 +12,7 @@
 #include "symbolTable.h"
 
 #include <stdbool.h>
+#include <stdlib.h>
 
 
 
@@ -23,6 +24,40 @@ struct SemAnalData
     SymbolTable **symbolTables;
 };
 
+CompilerStatus semAnalDataInit(SemAnalData *data)
+{
+    if (data == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    data->variableIdCounter = 0;
+    data->numberOfTables = 0;
+    data->symbolTables = NULL;
+    data->functionSymbols = symbolTableCreate();
+    if (data->functionSymbols == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    return COMPILER_OK;
+}
+
+void semAnalDataDestroy(SemAnalData *data)
+{
+    if (data == NULL) {
+        return;
+    }
+
+    for (size_t tableI = 0; tableI < data->numberOfTables; ++tableI) {
+        symbolTableDestroy(data->symbolTables[tableI]);
+    }
+    free(data->symbolTables);
+    symbolTableDestroy(data->functionSymbols);
+    data->variableIdCounter = 0;
+    data->functionSymbols = NULL;
+    data->numberOfTables = 0;
+    data->symbolTables = NULL;
+}
+
 
 CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symbols) {
     if (program == NULL || symbols == NULL || program->root == NULL || program->root->type != ABSTRACT_SYNTAX_PROGRAM) {
@@ -31,25 +66,102 @@ CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symb
 
     CompilerStatus status = COMPILER_OK;
     AbstractSyntaxNode *root = program->root;
+
+    SemAnalData data;
+    status = semAnalDataInit(&data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    status = semAnalDefineBuiltinFunctions(data.functionSymbols);
+    if (status != COMPILER_OK) {
+        semAnalDataDestroy(&data);
+        return status;
+    }
+
+    status = semAnalDeclareFunctions(root, data.functionSymbols);
+    if (status != COMPILER_OK) {
+        semAnalDataDestroy(&data);
+        return status;
+    }
+
+    semAnalDataDestroy(&data);
+    return status;
+}
+
+
+CompilerStatus semAnalDeclareFunctions(AbstractSyntaxNode *rootNode, SymbolTable *symbols)
+{
+    if (rootNode == NULL || symbols == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
     bool hasMain = false;
 
-    // loop thorough functins
-    for (size_t currentFunI = 0; currentFunI < root->childCount; currentFunI++) {
-        if (hasMain && root->children[currentFunI]->isEntryFunction) {
-            return COMPILER_REDEFINITION_ERROR; // multiple mains
+    for (size_t funI = 0; funI < rootNode->childCount; ++funI) {
+        // multiple mains
+        if (hasMain && rootNode->children[funI]->isEntryFunction) {
+            return COMPILER_REDEFINITION_ERROR;
         }
-        hasMain = hasMain || root->children[currentFunI]->isEntryFunction;
 
-        status = semAnalResolveFunction(root->children[currentFunI], symbols);
+        // main not propper main
+        CompilerStatus status;
+        if (hasMain = rootNode->children[funI]->isEntryFunction) {
+            status = semAnalCheckMain(rootNode->children[funI]);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+        }
+
+        // create symbol
+        Symbol *symbolTmp = semAnalAstNodeToSymbol(rootNode->children[funI]);
+        if (symbolTmp == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        // symbol already exists
+        if (symbolTableFindCurrentScope(symbols, symbolTmp->name) != NULL) {
+            semAnalFreeSymbol(symbolTmp);
+            return COMPILER_REDEFINITION_ERROR;
+        }
+
+        // insert
+        status = symbolTableInsert(symbols, symbolTmp);
         if (status != COMPILER_OK) {
+            semAnalFreeSymbol(symbolTmp);
             return status;
         }
     }
 
-    if (!hasMain)
-        status = COMPILER_UNDEFINED_SYMBOL_ERROR;
+    // no main
+    if (!hasMain) {
+        return COMPILER_UNDEFINED_SYMBOL_ERROR;
+    }
 
-    return status;
+    return COMPILER_OK;
+}
+
+CompilerStatus semAnalCheckMain(AbstractSyntaxNode *functionNode)
+{
+    if (functionNode == NULL || functionNode->type != ABSTRACT_SYNTAX_FUNCTION ||
+        functionNode->childCount == 0) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    if (!functionNode->isEntryFunction) {
+        return COMPILER_OK;
+    }
+
+    size_t parameterCount = functionNode->childCount - 1;
+    if (parameterCount != 0) {
+        return COMPILER_ARGUMENT_ERROR;
+    }
+
+    if (functionNode->variableType != DATA_TYPE_UNIT) {
+        return COMPILER_TYPE_ERROR;
+    }
+
+    return COMPILER_OK;
 }
 
 
@@ -65,7 +177,7 @@ Symbol *semAnalCreateSymbolDefault()
     symbol->dataType = DATA_TYPE_UNKNOWN;
     symbol->mutable = false;
     symbol->defined = false;
-    symbol->scopeDepth = 0;
+    symbol->scopeDepth = 1;
     symbol->function.parameterTypes = NULL;
     symbol->function.parameterCount = 0;
     symbol->function.returnType = DATA_TYPE_UNKNOWN;
@@ -73,12 +185,15 @@ Symbol *semAnalCreateSymbolDefault()
     return symbol;
 }
 
+void semAnalFreeSymbol(Symbol *symbol)
+{
+    free(symbol->function.parameterTypes);
+    free(symbol);
+}
+
 
 DataType *semAnalAstGetParameterTypes(AbstractSyntaxNode *node) {
-    if (node == NULL) {
-        return NULL;
-    }
-    if (node->type != ABSTRACT_SYNTAX_FUNCTION) {
+    if (node == NULL || node->type != ABSTRACT_SYNTAX_FUNCTION) {
         return NULL;
     }
 
