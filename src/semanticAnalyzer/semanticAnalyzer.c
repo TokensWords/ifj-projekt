@@ -22,6 +22,7 @@ struct SemAnalData
     SymbolTable *functionSymbols;
     size_t numberOfTables;
     SymbolTable **symbolTables;
+    const char **recursionList;
 };
 
 CompilerStatus semAnalDataInit(SemAnalData *data)
@@ -33,10 +34,77 @@ CompilerStatus semAnalDataInit(SemAnalData *data)
     data->variableIdCounter = 0;
     data->numberOfTables = 0;
     data->symbolTables = NULL;
+    data->recursionList = NULL;
     data->functionSymbols = symbolTableCreate();
     if (data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
+
+    return COMPILER_OK;
+}
+
+CompilerStatus semAnalListsBigger(SemAnalData *data)
+{
+    if (data == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    SymbolTable *newTable = symbolTableCreate();
+    if (newTable == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    SymbolTable **newTables = memoryResizeArray(
+        data->symbolTables, data->numberOfTables + 1, sizeof(SymbolTable *));
+    if (newTables == NULL) {
+        symbolTableDestroy(newTable);
+        return COMPILER_INTERNAL_ERROR;
+    }
+    data->symbolTables = newTables;
+    data->symbolTables[data->numberOfTables] = newTable;
+
+    const char **newRecList = memoryResizeArray(
+        data->recursionList, data->numberOfTables + 1, sizeof(const char *));
+    if (newRecList == NULL) {
+        symbolTableDestroy(newTable);
+        data->symbolTables[data->numberOfTables] = NULL;
+        return COMPILER_INTERNAL_ERROR;
+    }
+    data->recursionList = newRecList;
+    data->recursionList[data->numberOfTables] = NULL;
+
+    ++data->numberOfTables;
+    return COMPILER_OK;
+}
+
+CompilerStatus semAnalListsSmaller(SemAnalData *data)
+{
+    if (data == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    if (data->numberOfTables == 0) {
+        return COMPILER_OK;
+    }
+
+    size_t lastTable = data->numberOfTables - 1;
+    symbolTableDestroy(data->symbolTables[lastTable]);
+    data->symbolTables[lastTable] = NULL;
+    data->recursionList[lastTable] = NULL;
+    --data->numberOfTables;
+
+    SymbolTable **smallerTables = memoryResizeArray(
+        data->symbolTables, data->numberOfTables, sizeof(SymbolTable *));
+    if (smallerTables == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    data->symbolTables = smallerTables;
+
+    const char **smallerRecList = memoryResizeArray(
+        data->recursionList, data->numberOfTables, sizeof(const char *));
+    if (smallerRecList == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    data->recursionList = smallerRecList;
 
     return COMPILER_OK;
 }
@@ -51,11 +119,13 @@ void semAnalDataDestroy(SemAnalData *data)
         symbolTableDestroy(data->symbolTables[tableI]);
     }
     free(data->symbolTables);
+    free(data->recursionList);
     symbolTableDestroy(data->functionSymbols);
     data->variableIdCounter = 0;
     data->functionSymbols = NULL;
     data->numberOfTables = 0;
     data->symbolTables = NULL;
+    data->recursionList = NULL;
 }
 
 
@@ -83,6 +153,23 @@ CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symb
     if (status != COMPILER_OK) {
         semAnalDataDestroy(&data);
         return status;
+    }
+
+    // code analysis, loop to define all functions
+    for (size_t funI = 0; funI < root->childCount; ++funI) {
+        Symbol *tmpSymbol = NULL;
+        if (tmpSymbol = symbolTableFindCurrentScope(data.functionSymbols, root->children[funI]->text) == NULL) {
+            semAnalDataDestroy(&data);
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (!tmpSymbol->defined) {
+            status = semAnalDefineFunction(root->children[funI], &data);
+            if (status != COMPILER_OK) {
+                semAnalDataDestroy(&data);
+                return status;
+            }
+        }
     }
 
     semAnalDataDestroy(&data);
@@ -253,58 +340,41 @@ Symbol *semAnalAstNodeToSymbol(AbstractSyntaxNode *node) {
     return symbol;
 }
 
-/**
- * @brief Adds a new function symbol to the symbol table and enters new scope.
- *
- * @param functionNode pointer to a AST node type function
- * @param symbols pointer to the existing symbol table
- *
- * @return status of the program - error codes
- */
-CompilerStatus semAnalResolveFunction(AbstractSyntaxNode *functionNode, SymbolTable *symbols) {
-    if (functionNode == NULL || symbols == NULL || functionNode->type != ABSTRACT_SYNTAX_FUNCTION) {
+
+CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalData *data) {
+    if (functionNode == NULL || data == NULL || data->functionSymbols == NULL ||
+        functionNode->type != ABSTRACT_SYNTAX_FUNCTION) {
         return COMPILER_INTERNAL_ERROR;
     }
 
     CompilerStatus status = COMPILER_OK;
 
-    Symbol *functionSymbol = astNodeToSymbol(functionNode);
-    if (functionSymbol == NULL) {
-        return COMPILER_INTERNAL_ERROR;
-    }
-
-    functionSymbol->scopeDepth = symbolTableGetCurrentScope(symbols);
-    functionSymbol->defined = true;
-
-    status = symbolTableInsert(symbols, functionSymbol);
+    status = semAnalListsBigger(data);
     if (status != COMPILER_OK) {
-        free(functionSymbol->function.parameterTypes);
-        free(functionSymbol);
         return status;
     }
 
-    status = symbolTableEnterScope(symbols);
-    if (status != COMPILER_OK) {
-        free(functionSymbol->function.parameterTypes);
-        free(functionSymbol);
-        return status;
+    data->recursionList = functionNode->text;
+
+    for (size_t parmI = 0; parmI < functionNode->childCount - 1; ++parmI) {
+        status = semAnalDeclareParameter(functionNode->children[parmI], data->symbolTables[data->numberOfTables - 1]);
+        if (status != COMPILER_OK) {
+            return status;
+        }
     }
 
-    // TODO cycle through parameters
     // TODO resolve body
+
+    status = semAnalListsSmaller(data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
 
     return status;
 }
 
-/**
- * @brief Adds a new variable(parameter) symbol to the symbol table.
- *
- * @param parameterNode pointer to a AST node type parameter
- * @param symbols pointer to the existing symbol table
- *
- * @return status of the program - error codes
- */
-CompilerStatus semAnalResolveParameter(AbstractSyntaxNode *parameterNode, SymbolTable *symbols) {
+
+CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SymbolTable *symbols) {
     if (parameterNode == NULL || symbols == NULL ||
         parameterNode->type != ABSTRACT_SYNTAX_PARAMETER) {
         return COMPILER_INTERNAL_ERROR;
@@ -317,20 +387,20 @@ CompilerStatus semAnalResolveParameter(AbstractSyntaxNode *parameterNode, Symbol
         return COMPILER_INTERNAL_ERROR;
     }
 
-    parameterSymbol->scopeDepth = symbolTableGetCurrentScope(symbols);
-    parameterSymbol->defined = true;
+    parameterSymbol->scopeDepth = 1;
 
     status = symbolTableInsert(symbols, parameterSymbol);
     if (status != COMPILER_OK) {
-        free(parameterSymbol);
+        semAnalFreeSymbol(parameterSymbol);
         return status;
     }
 
     return status;
 }
 
-CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SymbolTable *symbols) {
-    if (blockNode == NULL || symbols == NULL || blockNode->type != ABSTRACT_SYNTAX_BLOCK) {
+CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *data) {
+    if (blockNode == NULL || data == NULL || data->functionSymbols == NULL ||
+        blockNode->type != ABSTRACT_SYNTAX_BLOCK) {
         return COMPILER_INTERNAL_ERROR;
     }
     CompilerStatus status = COMPILER_OK;
@@ -340,8 +410,8 @@ CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SymbolTable *s
     return status;
 }
 
-CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SymbolTable *symbols) {
-    if (ifNode == NULL || symbols == NULL) {
+CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
+    if (ifNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
     CompilerStatus status = COMPILER_OK;
@@ -351,8 +421,8 @@ CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SymbolTable *symbols
     return status;
 }
 
-CompilerStatus semAnalResolveWhile(AbstractSyntaxNode *whileNode, SymbolTable *symbols) {
-    if (whileNode == NULL || symbols == NULL) {
+CompilerStatus semAnalResolveWhile(AbstractSyntaxNode *whileNode, SemAnalData *data) {
+    if (whileNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
     CompilerStatus status = COMPILER_OK;
@@ -362,8 +432,8 @@ CompilerStatus semAnalResolveWhile(AbstractSyntaxNode *whileNode, SymbolTable *s
     return status;
 }
 
-CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SymbolTable *symbols) {
-    if (returnNode == NULL || symbols == NULL) {
+CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SemAnalData *data) {
+    if (returnNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
     CompilerStatus status = COMPILER_OK;
@@ -373,9 +443,8 @@ CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SymbolTable 
     return status;
 }
 
-CompilerStatus semAnalResolveFunctionCall(AbstractSyntaxNode *functionCallNode,
-                                          SymbolTable *symbols) {
-    if (functionCallNode == NULL || symbols == NULL) {
+CompilerStatus semAnalResolveFunctionCall(AbstractSyntaxNode *functionCallNode, SemAnalData *data) {
+    if (functionCallNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
     CompilerStatus status = COMPILER_OK;
@@ -385,9 +454,8 @@ CompilerStatus semAnalResolveFunctionCall(AbstractSyntaxNode *functionCallNode,
     return status;
 }
 
-CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDeclarationNode,
-                                                 SymbolTable *symbols) {
-    if (variableDeclarationNode == NULL || symbols == NULL ||
+CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDeclarationNode, SemAnalData *data) {
+    if (variableDeclarationNode == NULL || data == NULL || data->functionSymbols == NULL ||
         variableDeclarationNode->type != ABSTRACT_SYNTAX_VARIABLE_DECLARATION) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -399,10 +467,10 @@ CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDec
         return COMPILER_INTERNAL_ERROR;
     }
 
-    variableSymbol->scopeDepth = symbolTableGetCurrentScope(symbols);
+    variableSymbol->scopeDepth = symbolTableGetCurrentScope(data->functionSymbols);
     variableSymbol->defined = false;
 
-    status = symbolTableInsert(symbols, variableSymbol);
+    status = symbolTableInsert(data->functionSymbols, variableSymbol);
     if (status != COMPILER_OK) {
         free(variableSymbol);
         return status;
@@ -413,8 +481,8 @@ CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDec
     return status;
 }
 
-CompilerStatus semAnalResolveAssignment(AbstractSyntaxNode *assignmentNode, SymbolTable *symbols) {
-    if (assignmentNode == NULL || symbols == NULL) {
+CompilerStatus semAnalResolveAssignment(AbstractSyntaxNode *assignmentNode, SemAnalData *data) {
+    if (assignmentNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
     CompilerStatus status = COMPILER_OK;
@@ -424,9 +492,8 @@ CompilerStatus semAnalResolveAssignment(AbstractSyntaxNode *assignmentNode, Symb
     return status;
 }
 
-CompilerStatus semAnalResolveExpressionStatement(AbstractSyntaxNode *expressionStatementNode,
-                                                 SymbolTable *symbols) {
-    if (expressionStatementNode == NULL || symbols == NULL) {
+CompilerStatus semAnalResolveExpressionStatement(AbstractSyntaxNode *expressionStatementNode, SemAnalData *data) {
+    if (expressionStatementNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
     CompilerStatus status = COMPILER_OK;
@@ -436,9 +503,8 @@ CompilerStatus semAnalResolveExpressionStatement(AbstractSyntaxNode *expressionS
     return status;
 }
 
-CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBinaryNode,
-                                              SymbolTable *symbols) {
-    if (expressionBinaryNode == NULL || symbols == NULL) {
+CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBinaryNode, SemAnalData *data) {
+    if (expressionBinaryNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
     CompilerStatus status = COMPILER_OK;
@@ -448,9 +514,8 @@ CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBina
     return status;
 }
 
-CompilerStatus semAnalResolveUnaryExpression(AbstractSyntaxNode *unaryExpressionNode,
-                                             SymbolTable *symbols) {
-    if (unaryExpressionNode == NULL || symbols == NULL) {
+CompilerStatus semAnalResolveUnaryExpression(AbstractSyntaxNode *unaryExpressionNode, SemAnalData *data) {
+    if (unaryExpressionNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
     CompilerStatus status = COMPILER_OK;
@@ -460,8 +525,8 @@ CompilerStatus semAnalResolveUnaryExpression(AbstractSyntaxNode *unaryExpression
     return status;
 }
 
-CompilerStatus semAnalResolveIdentifier(AbstractSyntaxNode *identifierNode, SymbolTable *symbols) {
-    if (identifierNode == NULL || symbols == NULL) {
+CompilerStatus semAnalResolveIdentifier(AbstractSyntaxNode *identifierNode, SemAnalData *data) {
+    if (identifierNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
     CompilerStatus status = COMPILER_OK;

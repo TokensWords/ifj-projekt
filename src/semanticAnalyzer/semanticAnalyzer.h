@@ -22,6 +22,20 @@ typedef struct SemAnalData SemAnalData;
 CompilerStatus semAnalDataInit(SemAnalData *data);
 
 /**
+ * @brief Expands the semantic-analysis symbol-table and recursion lists.
+ * @param data The semantic-analysis data containing the lists.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalListsBigger(SemAnalData *data);
+
+/**
+ * @brief Removes the last entries from the semantic-analysis lists.
+ * @param data The semantic-analysis data containing the lists.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalListsSmaller(SemAnalData *data);
+
+/**
  * @brief Destroys resources owned by semantic-analysis data.
  * @param data The semantic-analysis data to destroy.
  */
@@ -89,18 +103,20 @@ CompilerStatus semAnalDeclareFunctions(AbstractSyntaxNode *rootNode, SymbolTable
  */
 CompilerStatus semAnalCheckMain(AbstractSyntaxNode *functionNode);
 
-CompilerStatus semAnalResolveFunction(AbstractSyntaxNode *functionNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveParameter(AbstractSyntaxNode *parameterNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveWhile(AbstractSyntaxNode *whileNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveFunctionCall(AbstractSyntaxNode *functionCallNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDeclarationNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveAssignment(AbstractSyntaxNode *assignmentNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveExpressionStatement(AbstractSyntaxNode *expressionStatementNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBinaryNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveUnaryExpression(AbstractSyntaxNode *unaryExpressionNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveIdentifier(AbstractSyntaxNode *identifierNode, SymbolTable *symbols);
+CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalData *data);
+CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SymbolTable *symbols);
+CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *data);
+
+CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data);
+CompilerStatus semAnalResolveWhile(AbstractSyntaxNode *whileNode, SemAnalData *data);
+CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SemAnalData *data);
+CompilerStatus semAnalResolveFunctionCall(AbstractSyntaxNode *functionCallNode, SemAnalData *data);
+CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDeclarationNode, SemAnalData *data);
+CompilerStatus semAnalResolveAssignment(AbstractSyntaxNode *assignmentNode, SemAnalData *data);
+CompilerStatus semAnalResolveExpressionStatement(AbstractSyntaxNode *expressionStatementNode, SemAnalData *data);
+
+CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBinaryNode, SemAnalData *data);
+CompilerStatus semAnalResolveUnaryExpression(AbstractSyntaxNode *unaryExpressionNode, SemAnalData *data);
+CompilerStatus semAnalResolveIdentifier(AbstractSyntaxNode *identifierNode, SemAnalData *data);
 
 #endif
