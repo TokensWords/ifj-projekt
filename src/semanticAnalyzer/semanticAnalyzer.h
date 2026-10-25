@@ -12,11 +12,52 @@
 #include "compilerTypes.h"
 #include "symbolTable.h"
 
+typedef struct SemAnalData SemAnalData;
 
-DataType *astGetParameterTypes(AbstractSyntaxNode *node);
-Symbol *astNodeToSymbol(AbstractSyntaxNode *node);
-
+/**
+ * @brief goes through functions in AST and checks semantics
+ * @param program sorce program AST got from syntax analyser
+ * @param symbols symbol table to work with
+ * @return status of the program - error codes
+ */
 CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symbols);
+
+/**
+ * @brief Allocates a new symbol and initializes with default values.
+ * @return The created symbol.
+ */
+Symbol *semAnalCreateSymbolDefault();
+
+/**
+ * @brief gets parameter types from AST node
+ * @param node pointer to AST function node to get parameter types from
+ * @return array of data types
+ */
+DataType *semAnalAstGetParameterTypes(AbstractSyntaxNode *node);
+
+/**
+ * @brief Extracts information from current ast node to a new symbol.
+ * This function does only extract information from the node + function parameter types from
+ * function nodes. It does NOT set coresponding scope depth (default 0). It sets defined to false.
+ * @param node node to be extracted from
+ * @return status of the program - error codes
+ */
+Symbol *semAnalAstNodeToSymbol(AbstractSyntaxNode *node);
+
+/**
+ * @brief goes through functions in AST and checks semantics
+ * @param program sorce program AST got from syntax analyser
+ * @param symbols symbol table to work with
+ * @return status of the program - error codes
+ */
+CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symbols);
+
+/**
+ * @brief Adds builtin functions to the table of symbols.
+ * @param symbols Table of symbols to insert builtin functions to.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalDefineBuiltinFunctions(SymbolTable *symbols);
 
 CompilerStatus semAnalResolveFunction(AbstractSyntaxNode *functionNode, SymbolTable *symbols);
 CompilerStatus semAnalResolveParameter(AbstractSyntaxNode *parameterNode, SymbolTable *symbols);
@@ -31,11 +72,6 @@ CompilerStatus semAnalResolveExpressionStatement(AbstractSyntaxNode *expressionS
 CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBinaryNode, SymbolTable *symbols);
 CompilerStatus semAnalResolveUnaryExpression(AbstractSyntaxNode *unaryExpressionNode, SymbolTable *symbols);
 CompilerStatus semAnalResolveIdentifier(AbstractSyntaxNode *identifierNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveIntLiteral(AbstractSyntaxNode *intLiteralNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveDoubleLiteral(AbstractSyntaxNode *doubleLiteralNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveStringLiteral(AbstractSyntaxNode *stringLiteralNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveBooleanLiteral(AbstractSyntaxNode *booleanLiteralNode, SymbolTable *symbols);
-CompilerStatus semAnalResolveUnitLiteral(AbstractSyntaxNode *unitLiteralNode, SymbolTable *symbols);
 
 #endif
 
