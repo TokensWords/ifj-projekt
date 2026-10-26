@@ -55,7 +55,6 @@ CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symb
  */
 Symbol *semAnalCreateSymbolDefault();
 
-
 /**
  * @brief Frees a symbol and its allocated function parameter types.
  * @param symbol The symbol to free.
@@ -85,7 +84,6 @@ Symbol *semAnalAstNodeToSymbol(AbstractSyntaxNode *node);
  */
 CompilerStatus semAnalDefineBuiltinFunctions(SymbolTable *symbols);
 
-
 /**
  * @brief Adds all user functions to the table of symbols.
  * It adds function name, explicit return type and parameters.
@@ -103,20 +101,139 @@ CompilerStatus semAnalDeclareFunctions(AbstractSyntaxNode *rootNode, SymbolTable
  */
 CompilerStatus semAnalCheckMain(AbstractSyntaxNode *functionNode);
 
+/**
+ * @brief Checks whether an AST node ends with a return statement.
+ * @param node The AST node to check.
+ * @return true if the node ends with a return statement, otherwise false.
+ */
+bool semAnalNodeEndsWithReturn(AbstractSyntaxNode *node);
+
+/**
+ * @brief Checks whether both branches of an if statement return.
+ * @param ifNode The if-statement AST node to check.
+ * @return true if all branches return, otherwise false.
+ */
+bool semAnalCheckIfReturns(AbstractSyntaxNode *ifNode);
+
+/**
+ * @brief Resolves and validates a function's return type from its body.
+ * @param functionNode The function AST node.
+ * @param functionSymbol The symbol associated with the function.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveFunctionReturnType(AbstractSyntaxNode *functionNode, Symbol *functionSymbol);
+
+/**
+ * @brief Defines a function by resolving its parameters and body.
+ * @param functionNode The function AST node to define.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalData *data);
+
+/**
+ * @brief Declares a function parameter in the symbol table.
+ * @param parameterNode The parameter AST node to declare.
+ * @param symbols The symbol table in which to declare the parameter.
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SymbolTable *symbols);
+
+/**
+ * @brief Resolves the statements in a block.
+ * @param blockNode The block AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *data);
 
+/**
+ * @brief Resolves an AST node and performs semantic checks.
+ * Basically a switch to call correct resolve function.
+ * @param node The AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveNode(AbstractSyntaxNode *node, SemAnalData *data);
+
+/**
+ * @brief Resolves an if statement and its branches.
+ * @param ifNode The if-statement AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data);
+
+/**
+ * @brief Resolves a while statement and its body.
+ * @param whileNode The while-statement AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalResolveWhile(AbstractSyntaxNode *whileNode, SemAnalData *data);
+
+/**
+ * @brief Resolves a return statement and checks its return type.
+ * @param returnNode The return-statement AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SemAnalData *data);
+
+/**
+ * @brief Resolves a function call and checks its arguments.
+ * @param functionCallNode The function-call AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalResolveFunctionCall(AbstractSyntaxNode *functionCallNode, SemAnalData *data);
+
+/**
+ * @brief Resolves a variable declaration and checks its type.
+ * @param variableDeclarationNode The variable-declaration AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDeclarationNode, SemAnalData *data);
+
+/**
+ * @brief Resolves an assignment and checks its type.
+ * @param assignmentNode The assignment AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalResolveAssignment(AbstractSyntaxNode *assignmentNode, SemAnalData *data);
+
+/**
+ * @brief Resolves an expression statement.
+ * @param expressionStatementNode The expression-statement AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalResolveExpressionStatement(AbstractSyntaxNode *expressionStatementNode, SemAnalData *data);
 
+/**
+ * @brief Resolves a binary expression and checks operand types.
+ * @param expressionBinaryNode The binary-expression AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBinaryNode, SemAnalData *data);
+
+/**
+ * @brief Resolves a unary expression and checks its operand type.
+ * @param unaryExpressionNode The unary-expression AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalResolveUnaryExpression(AbstractSyntaxNode *unaryExpressionNode, SemAnalData *data);
+
+/**
+ * @brief Resolves an identifier and looks up its symbol.
+ * @param identifierNode The identifier AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
 CompilerStatus semAnalResolveIdentifier(AbstractSyntaxNode *identifierNode, SemAnalData *data);
 
 #endif

@@ -23,6 +23,7 @@ struct SemAnalData
     size_t numberOfTables;
     SymbolTable **symbolTables;
     const char **recursionList;
+    AbstractSyntaxNode *root;
 };
 
 CompilerStatus semAnalDataInit(SemAnalData *data)
@@ -31,6 +32,7 @@ CompilerStatus semAnalDataInit(SemAnalData *data)
         return COMPILER_INTERNAL_ERROR;
     }
 
+    data->root = NULL;
     data->variableIdCounter = 0;
     data->numberOfTables = 0;
     data->symbolTables = NULL;
@@ -63,8 +65,7 @@ CompilerStatus semAnalListsBigger(SemAnalData *data)
     data->symbolTables = newTables;
     data->symbolTables[data->numberOfTables] = newTable;
 
-    const char **newRecList = memoryResizeArray(
-        data->recursionList, data->numberOfTables + 1, sizeof(const char *));
+    const char **newRecList = memoryResizeArray(data->recursionList, data->numberOfTables + 1, sizeof(const char *));
     if (newRecList == NULL) {
         symbolTableDestroy(newTable);
         data->symbolTables[data->numberOfTables] = NULL;
@@ -126,6 +127,7 @@ void semAnalDataDestroy(SemAnalData *data)
     data->numberOfTables = 0;
     data->symbolTables = NULL;
     data->recursionList = NULL;
+    data->root = NULL;
 }
 
 
@@ -142,6 +144,7 @@ CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symb
     if (status != COMPILER_OK) {
         return status;
     }
+    data.root = root;
 
     status = semAnalDefineBuiltinFunctions(data.functionSymbols);
     if (status != COMPILER_OK) {
@@ -341,6 +344,94 @@ Symbol *semAnalAstNodeToSymbol(AbstractSyntaxNode *node) {
 }
 
 
+
+bool semAnalCheckIfReturns(AbstractSyntaxNode *ifNode) {
+    if (ifNode == NULL || ifNode->type != ABSTRACT_SYNTAX_IF || ifNode->childCount < 2) {
+        return false;
+    }
+
+
+    AbstractSyntaxNode *thenBranch = ifNode->children[1];
+    bool thenReturns = semAnalNodeEndsWithReturn(thenBranch);
+
+    if (!thenReturns) {
+        return false;
+    }
+
+    // else branch
+    if (ifNode->childCount > 2 && ifNode->children[2] != NULL) {
+        AbstractSyntaxNode *elseBranch = ifNode->children[2];
+        return semAnalNodeEndsWithReturn(elseBranch);
+    }
+
+    return false; // no else branch
+}
+
+bool semAnalNodeEndsWithReturn(AbstractSyntaxNode *node) {
+    if (node == NULL) {
+        return false;
+    }
+
+    if (node->type == ABSTRACT_SYNTAX_RETURN) {
+        return true;
+    }
+
+    if (node->type == ABSTRACT_SYNTAX_BLOCK) {
+        if (node->childCount == 0) {
+            return false;
+        }
+
+        AbstractSyntaxNode *lastStatement = node->children[node->childCount - 1];
+        return semAnalNodeEndsWithReturn(lastStatement);
+    }
+
+    if (node->type == ABSTRACT_SYNTAX_IF) {
+        return semAnalCheckIfReturns(node);
+    }
+
+    return false;
+}
+
+
+CompilerStatus semAnalResolveFunctionReturnType(AbstractSyntaxNode *functionNode, Symbol *functionSymbol) {
+    AbstractSyntaxNode *lastNode = functionNode->children[functionNode->childCount - 1];
+
+    // get the last type in the body
+    DataType lastType = DATA_TYPE_UNKNOWN;
+    if (lastNode->type == ABSTRACT_SYNTAX_BLOCK) {
+        lastNode = lastNode->children[lastNode->childCount - 1];
+    }
+    // if statement last logic
+    if (lastNode->type == ABSTRACT_SYNTAX_IF) {
+        if (semAnalCheckIfReturns(lastNode)) {
+            lastType = functionSymbol->function.returnType;
+        } else if (lastNode->inferredType == DATA_TYPE_UNIT) {
+            lastType = DATA_TYPE_UNIT;
+        } else{
+            return COMPILER_TYPE_ERROR; // invalid if at the end
+        }
+    }
+    // valid last statement logic
+    else if (lastNode->type == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT || lastNode->type == ABSTRACT_SYNTAX_FUNCTION_CALL
+            || lastNode->type == ABSTRACT_SYNTAX_RETURN) {
+        lastType = lastNode->inferredType;
+    } else{
+        lastType = DATA_TYPE_UNIT;
+    }
+
+    // get the correct function type
+    if (functionSymbol->function.returnType == DATA_TYPE_UNKNOWN) {
+        functionSymbol->function.returnType = lastType;
+    } else if (functionSymbol->function.returnType != lastType) {
+        return COMPILER_TYPE_ERROR;
+    } else{
+        functionNode->inferredType = functionSymbol->function.returnType;
+    }
+
+    return COMPILER_OK;
+}
+
+
 CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalData *data) {
     if (functionNode == NULL || data == NULL || data->functionSymbols == NULL ||
         functionNode->type != ABSTRACT_SYNTAX_FUNCTION) {
@@ -349,13 +440,35 @@ CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalDa
 
     CompilerStatus status = COMPILER_OK;
 
+    Symbol *functionSymbol = symbolTableFindCurrentScope(data->functionSymbols, functionNode->text);
+    if (functionSymbol == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
     status = semAnalListsBigger(data);
     if (status != COMPILER_OK) {
         return status;
     }
 
-    data->recursionList = functionNode->text;
+    data->recursionList[data->numberOfTables - 1] = functionNode->text;
 
+    // checking the recurrent functions for returns
+    size_t i;
+    for (i = 0; strcmp(data->recursionList[i], functionSymbol->name) != 0; ++i) {}
+    if (i != data->numberOfTables - 1) {
+        do {
+            Symbol *funSymbolTmp = symbolTableFindCurrentScope(data->functionSymbols, data->recursionList[i]);
+            if (funSymbolTmp == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+            // function inside recursion does not have explicit return type
+            if (funSymbolTmp->function.returnType == DATA_TYPE_UNKNOWN) {
+                return COMPILER_TYPE_ERROR;
+            }
+        } while(strcmp(data->recursionList[i], functionSymbol->name) != 0);
+    }
+
+    // declaring parameters - adding to symbol table
     for (size_t parmI = 0; parmI < functionNode->childCount - 1; ++parmI) {
         status = semAnalDeclareParameter(functionNode->children[parmI], data->symbolTables[data->numberOfTables - 1]);
         if (status != COMPILER_OK) {
@@ -363,14 +476,20 @@ CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalDa
         }
     }
 
-    // TODO resolve body
+    AbstractSyntaxNode *lastNode = functionNode->children[functionNode->childCount - 1];
+
+    // resolving the body
+    status = semAnalResolveNode(lastNode, data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
 
     status = semAnalListsSmaller(data);
     if (status != COMPILER_OK) {
         return status;
     }
 
-    return status;
+    return semAnalResolveFunctionReturnType(functionNode, functionSymbol);
 }
 
 
@@ -398,142 +517,417 @@ CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, Symbol
     return status;
 }
 
+
+CompilerStatus semAnalResolveNode(AbstractSyntaxNode *node, SemAnalData *data) {
+    if (node == NULL) {
+        return COMPILER_OK;
+    }
+    switch (node->type) {
+        case ABSTRACT_SYNTAX_BLOCK: return semAnalResolveBlock(node, data);
+        case ABSTRACT_SYNTAX_IF: return semAnalResolveIf(node, data);
+        case ABSTRACT_SYNTAX_WHILE: return semAnalResolveWhile(node, data);
+        case ABSTRACT_SYNTAX_RETURN: return semAnalResolveReturn(node, data);
+        case ABSTRACT_SYNTAX_FUNCTION_CALL: return semAnalResolveFunctionCall(node, data);
+        case ABSTRACT_SYNTAX_VARIABLE_DECLARATION: return semAnalResolveVariableDeclaration(node, data);
+        case ABSTRACT_SYNTAX_ASSIGNMENT: return semAnalResolveAssignment(node, data);
+        case ABSTRACT_SYNTAX_EXPRESSION_STATEMENT: return semAnalResolveExpressionStatement(node, data);
+        case ABSTRACT_SYNTAX_EXPRESSION_BINARY: return semAnalResolveExpressionBinary(node, data);
+        case ABSTRACT_SYNTAX_UNARY_EXPRESSION: return semAnalResolveUnaryExpression(node, data);
+        case ABSTRACT_SYNTAX_IDENTIFIER: return semAnalResolveIdentifier(node, data);
+        case ABSTRACT_SYNTAX_INT_LITERAL:
+            node->inferredType = DATA_TYPE_INT;
+            return COMPILER_OK;
+        case ABSTRACT_SYNTAX_DOUBLE_LITERAL:
+            node->inferredType = DATA_TYPE_DOUBLE;
+            return COMPILER_OK;
+        case ABSTRACT_SYNTAX_STRING_LITERAL:
+            node->inferredType = DATA_TYPE_STRING;
+            return COMPILER_OK;
+        case ABSTRACT_SYNTAX_BOOLEAN_LITERAL:
+            node->inferredType = DATA_TYPE_BOOLEAN;
+            return COMPILER_OK;
+        case ABSTRACT_SYNTAX_UNIT_LITERAL:
+            node->inferredType = DATA_TYPE_UNIT;
+            return COMPILER_OK;
+        default:
+            return COMPILER_INTERNAL_ERROR;
+    }
+}
+
 CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *data) {
     if (blockNode == NULL || data == NULL || data->functionSymbols == NULL ||
         blockNode->type != ABSTRACT_SYNTAX_BLOCK) {
         return COMPILER_INTERNAL_ERROR;
     }
-    CompilerStatus status = COMPILER_OK;
 
-    // TODO
+    SymbolTable *currentTable = data->symbolTables[data->numberOfTables - 1];
+    CompilerStatus status = symbolTableEnterScope(currentTable);
+    if (status != COMPILER_OK) {
+        return status;
+    }
 
-    return status;
+    for (size_t i = 0; i < blockNode->childCount; ++i) {
+        status = semAnalResolveNode(blockNode->children[i], data);
+        if (status != COMPILER_OK) {
+            symbolTableLeaveScope(currentTable);
+            return status;
+        }
+    }
+
+    if (blockNode->childCount > 0) {
+        blockNode->inferredType = blockNode->children[blockNode->childCount - 1]->inferredType;
+    } else {
+        blockNode->inferredType = DATA_TYPE_UNIT;
+    }
+
+    symbolTableLeaveScope(currentTable);
+    return COMPILER_OK;
 }
 
 CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
     if (ifNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
+
     CompilerStatus status = COMPILER_OK;
 
-    // TODO
+    // resolve condition
+    AbstractSyntaxNode *condition = ifNode->children[0];
+    status = semAnalResolveNode(condition, data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
 
-    return status;
+    // if needs bool as condition
+    if (condition->inferredType != DATA_TYPE_BOOLEAN) {
+        return COMPILER_TYPE_ERROR;
+    }
+
+    // resolve then block
+    status = semAnalResolveNode(ifNode->children[1], data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    // resolve else block (if it exists)
+    if (ifNode->childCount > 2 && ifNode->children[2] != NULL) {
+        status = semAnalResolveNode(ifNode->children[2], data);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+    }
+
+    if (ifNode->children[1] == DATA_TYPE_UNIT && ifNode->children[2] == DATA_TYPE_UNIT) {
+        ifNode->inferredType = DATA_TYPE_UNIT;
+    } else{
+        ifNode->inferredType = DATA_TYPE_UNKNOWN; // default
+    }
+
+    return COMPILER_OK;
 }
 
 CompilerStatus semAnalResolveWhile(AbstractSyntaxNode *whileNode, SemAnalData *data) {
     if (whileNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
+
     CompilerStatus status = COMPILER_OK;
 
-    // TODO
+    // resolve condition
+    AbstractSyntaxNode *condition = whileNode->children[0];
+    status = semAnalResolveNode(condition, data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
 
-    return status;
+    // while needs bool as condition
+    if (condition->inferredType != DATA_TYPE_BOOLEAN) {
+        return COMPILER_TYPE_ERROR;
+    }
+
+    // resolve body block
+    status = semAnalResolveNode(whileNode->children[1], data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    whileNode->inferredType = DATA_TYPE_UNIT;
+    return COMPILER_OK;
 }
 
 CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SemAnalData *data) {
     if (returnNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    CompilerStatus status = COMPILER_OK;
 
-    // TODO
+    if (returnNode->childCount > 0 && returnNode->children[0] != NULL) {
+        CompilerStatus status = semAnalResolveNode(returnNode->children[0], data);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        returnNode->inferredType = returnNode->children[0]->inferredType;
+    } else {
+        returnNode->inferredType = DATA_TYPE_UNIT;
+    }
 
-    return status;
+    // resolve if function has declared data type
+    Symbol *functionSymbol = symbolTableFindCurrentScope(data->functionSymbols,data->recursionList[data->numberOfTables - 1]);
+    if (functionSymbol == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    if (functionSymbol->function.returnType == DATA_TYPE_UNKNOWN) {
+        functionSymbol->function.returnType = returnNode->inferredType;
+    } else if (functionSymbol->function.returnType != DATA_TYPE_UNIT || functionSymbol->function.returnType != returnNode->inferredType) {
+        return COMPILER_TYPE_ERROR;
+    }
+
+    return COMPILER_OK;
 }
 
 CompilerStatus semAnalResolveFunctionCall(AbstractSyntaxNode *functionCallNode, SemAnalData *data) {
     if (functionCallNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
+
+    Symbol *funcSymbol = symbolTableFind(data->functionSymbols, functionCallNode->text);
+    if (funcSymbol == NULL || funcSymbol->kind != SYMBOL_FUNCTION) {
+        return COMPILER_UNDEFINED_SYMBOL_ERROR;
+    }
+
+    if (functionCallNode->childCount != funcSymbol->function.parameterCount) {
+        return COMPILER_ARGUMENT_ERROR;
+    }
+
+    // check the arguments
     CompilerStatus status = COMPILER_OK;
+    for (size_t i = 0; i < functionCallNode->childCount; ++i) {
+        AbstractSyntaxNode *argNode = functionCallNode->children[i];
 
-    // TODO
+        status = semAnalResolveNode(argNode, data);
+        if (status != COMPILER_OK) {
+            return status;
+        }
 
-    return status;
+        DataType argType = argNode->inferredType;
+        DataType expectedType = funcSymbol->function.parameterTypes[i];
+
+        if (expectedType != DATA_TYPE_UNKNOWN && expectedType != argType) {
+            if (expectedType == DATA_TYPE_DOUBLE && argType == DATA_TYPE_INT) {
+                argNode->inferredType = DATA_TYPE_INT; // implicit conversion later
+            } else {
+                return COMPILER_ARGUMENT_ERROR;
+            }
+        }
+    }
+
+    if (!funcSymbol->defined) {
+        size_t funI;
+        for (funI = 0; strcmp(data->root->children[funI]->text, functionCallNode->text) != 0; ++funI) {}
+        status = semAnalDefineFunction(data->root->children[funI], data);
+    }
+
+    functionCallNode->inferredType = funcSymbol->function.returnType;
+    return COMPILER_OK;
 }
 
 CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDeclarationNode, SemAnalData *data) {
-    if (variableDeclarationNode == NULL || data == NULL || data->functionSymbols == NULL ||
-        variableDeclarationNode->type != ABSTRACT_SYNTAX_VARIABLE_DECLARATION) {
+    if (variableDeclarationNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
-    CompilerStatus status = COMPILER_OK;
+    SymbolTable *currentTable = data->symbolTables[data->numberOfTables - 1];
+    AbstractSyntaxNode *initExpr = variableDeclarationNode->children[0];
 
-    Symbol *variableSymbol = astNodeToSymbol(variableDeclarationNode);
+    // redefinition check
+    Symbol *varSymbol = symbolTableFindCurrentScope(currentTable, variableDeclarationNode->text);
+    if (varSymbol != NULL) {
+        return COMPILER_REDEFINITION_ERROR;
+    }
+
+    CompilerStatus status = semAnalResolveNode(initExpr, data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    // check for wrong types
+    if (variableDeclarationNode->variableType != DATA_TYPE_UNKNOWN &&
+        initExpr->inferredType != variableDeclarationNode->variableType) {
+        if (variableDeclarationNode->variableType == DATA_TYPE_DOUBLE && initExpr->inferredType == DATA_TYPE_INT) {
+            initExpr->inferredType = DATA_TYPE_INT; // implicit conversion later
+        } else {
+            return COMPILER_TYPE_ERROR;
+        }
+    }
+
+    if (variableDeclarationNode->variableType == DATA_TYPE_UNKNOWN) {
+        variableDeclarationNode->variableType = initExpr->inferredType;
+        if (variableDeclarationNode->variableType == DATA_TYPE_UNKNOWN) {
+            return COMPILER_TYPE_ERROR; //unable to get type
+        }
+    }
+
+    Symbol *variableSymbol = semAnalAstNodeToSymbol(variableDeclarationNode);
     if (variableSymbol == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
-    variableSymbol->scopeDepth = symbolTableGetCurrentScope(data->functionSymbols);
-    variableSymbol->defined = false;
+    ++data->variableIdCounter;
+    variableSymbol->variableId = data->variableIdCounter;
 
-    status = symbolTableInsert(data->functionSymbols, variableSymbol);
+    status = symbolTableInsert(currentTable, variableSymbol);
     if (status != COMPILER_OK) {
-        free(variableSymbol);
+        semAnalFreeSymbol(variableSymbol);
         return status;
     }
 
-    // TODO resolve initialization
+    variableDeclarationNode->inferredType = variableDeclarationNode->type;
+    variableDeclarationNode->variableId = variableSymbol->variableId;
 
-    return status;
+    return COMPILER_OK;
 }
 
 CompilerStatus semAnalResolveAssignment(AbstractSyntaxNode *assignmentNode, SemAnalData *data) {
     if (assignmentNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    CompilerStatus status = COMPILER_OK;
 
-    // TODO
+    // check variable declaration
+    SymbolTable *currentTable = data->symbolTables[data->numberOfTables - 1];
+    Symbol *varSymbol = symbolTableFind(currentTable, assignmentNode->text);
+    if (varSymbol == NULL) {
+        return COMPILER_UNDEFINED_SYMBOL_ERROR;
+    }
+    if (!varSymbol->mutable) {
+        return COMPILER_IMMUTABLE_WRITE_ERROR;
+    }
 
-    return status;
+    AbstractSyntaxNode *assignExpr = assignmentNode->children[0];
+    CompilerStatus status = semAnalResolveNode(assignExpr, data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    // check types
+    if (varSymbol->dataType != assignExpr->inferredType) {
+        if (varSymbol->dataType == DATA_TYPE_DOUBLE && assignExpr->inferredType == DATA_TYPE_INT) {
+            assignExpr->inferredType = DATA_TYPE_INT; // implicit conversion later
+        } else {
+            return COMPILER_TYPE_ERROR;
+        }
+    }
+
+    assignmentNode->inferredType = varSymbol->dataType;
+    return COMPILER_OK;
 }
 
 CompilerStatus semAnalResolveExpressionStatement(AbstractSyntaxNode *expressionStatementNode, SemAnalData *data) {
-    if (expressionStatementNode == NULL || data == NULL || data->functionSymbols == NULL) {
+    if (expressionStatementNode == NULL || data == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    CompilerStatus status = COMPILER_OK;
 
-    // TODO
+    CompilerStatus status = semAnalResolveNode(expressionStatementNode->children[0], data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
 
-    return status;
+    expressionStatementNode->inferredType = expressionStatementNode->children[0]->inferredType;
+    return COMPILER_OK;
 }
 
 CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBinaryNode, SemAnalData *data) {
-    if (expressionBinaryNode == NULL || data == NULL || data->functionSymbols == NULL) {
+    if (expressionBinaryNode == NULL || data == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    CompilerStatus status = COMPILER_OK;
 
-    // TODO
+    AbstractSyntaxNode *left = expressionBinaryNode->children[0];
+    AbstractSyntaxNode *right = expressionBinaryNode->children[1];
 
-    return status;
+    CompilerStatus status = semAnalResolveNode(left, data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    status = semAnalResolveNode(right, data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    if (left->inferredType == DATA_TYPE_UNIT || right->inferredType == DATA_TYPE_UNIT) {
+        return COMPILER_TYPE_ERROR;
+    }
+
+    // only numbers expression
+    if (expressionBinaryNode->text[0] == '-' || expressionBinaryNode->text[0] == '*' || expressionBinaryNode->text[0] == '/') {
+        if (left->inferredType == DATA_TYPE_STRING || right->inferredType == DATA_TYPE_STRING) {
+            return COMPILER_TYPE_ERROR;
+        } else if (left->inferredType == DATA_TYPE_INT && right->inferredType == DATA_TYPE_INT){
+            expressionBinaryNode->inferredType = DATA_TYPE_INT;
+        } else{
+            expressionBinaryNode->inferredType = DATA_TYPE_DOUBLE;
+        }
+    }
+
+    // numbers + concatenation
+    else if (expressionBinaryNode->text[0] == '+') {
+        if (left->inferredType == right->inferredType) {
+            expressionBinaryNode->inferredType = left->inferredType;
+        } else if (left->inferredType == DATA_TYPE_STRING || right->inferredType == DATA_TYPE_STRING){
+            return COMPILER_TYPE_ERROR;
+        } else{
+            expressionBinaryNode->inferredType = DATA_TYPE_DOUBLE;
+        }
+    }
+
+    // comparison
+    else{
+        if (left->inferredType == right->inferredType) {
+            expressionBinaryNode->inferredType = DATA_TYPE_BOOLEAN;
+        } else if (left->inferredType == DATA_TYPE_STRING || right->inferredType == DATA_TYPE_STRING){
+            return COMPILER_TYPE_ERROR;
+        } else{
+            expressionBinaryNode->inferredType = DATA_TYPE_BOOLEAN;
+        }
+    }
+
+    return COMPILER_OK;
 }
 
 CompilerStatus semAnalResolveUnaryExpression(AbstractSyntaxNode *unaryExpressionNode, SemAnalData *data) {
-    if (unaryExpressionNode == NULL || data == NULL || data->functionSymbols == NULL) {
+    if (unaryExpressionNode == NULL || data == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    CompilerStatus status = COMPILER_OK;
 
-    // TODO
+    AbstractSyntaxNode *operand = unaryExpressionNode->children[0];
+    CompilerStatus status = semAnalResolveNode(operand, data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
 
-    return status;
+    // unary operator int or double only
+    if (operand->inferredType != DATA_TYPE_INT && operand->inferredType != DATA_TYPE_DOUBLE) {
+        return COMPILER_TYPE_ERROR;
+    }
+
+    unaryExpressionNode->inferredType = operand->inferredType;
+    return COMPILER_OK;
 }
 
 CompilerStatus semAnalResolveIdentifier(AbstractSyntaxNode *identifierNode, SemAnalData *data) {
-    if (identifierNode == NULL || data == NULL || data->functionSymbols == NULL) {
+    if (identifierNode == NULL || data == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    CompilerStatus status = COMPILER_OK;
 
-    // TODO
+    SymbolTable *currentTable = data->symbolTables[data->numberOfTables - 1];
+    Symbol *symbol = symbolTableFind(currentTable, identifierNode->text);
 
-    return status;
+    if (symbol == NULL) {
+        return COMPILER_UNDEFINED_SYMBOL_ERROR;
+    }
+
+    identifierNode->inferredType = symbol->dataType;
+    identifierNode->variableId = symbol->variableId;
+
+    return COMPILER_OK;
 }
 
 
