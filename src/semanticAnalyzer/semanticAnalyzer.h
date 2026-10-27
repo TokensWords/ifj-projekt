@@ -181,6 +181,22 @@ CompilerStatus semAnalResolveWhile(AbstractSyntaxNode *whileNode, SemAnalData *d
 CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SemAnalData *data);
 
 /**
+ * @brief Finds a function in the current recursion list.
+ * @param funName The function name to find.
+ * @param data The semantic-analysis data containing the recursion list.
+ * @return The function's index if found, -1 if it is not recursive, or -2 on invalid input.
+ */
+int semAnalInRecursion(const char *funName, SemAnalData *data);
+
+/**
+ * @brief Checks that functions in the recursion list have declared return types.
+ * @param recursionI The index in the recursion list to start checking from.
+ * @param data The semantic-analysis data containing the recursion list and function symbols.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalCheckRecursion(size_t recursionI, SemAnalData *data);
+
+/**
  * @brief Resolves a function call and checks its arguments.
  * @param functionCallNode The function-call AST node to resolve.
  * @param data The semantic-analysis data to use.
@@ -235,5 +251,12 @@ CompilerStatus semAnalResolveUnaryExpression(AbstractSyntaxNode *unaryExpression
  * @return status of the program - error codes
  */
 CompilerStatus semAnalResolveIdentifier(AbstractSyntaxNode *identifierNode, SemAnalData *data);
+
+/**
+ * @brief Gets the data type to which a "line of code" should be evaluated to.
+ * @param node The AST node to evaluate.
+ * @return The data type produced by the node.
+ */
+DataType semAnalEvaluatesToType(AbstractSyntaxNode *node);
 
 #endif
