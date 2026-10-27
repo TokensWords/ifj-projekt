@@ -39,6 +39,7 @@ contract only. The team must choose, design, implement, and explain the internal
 | `defined` | `bool` | Completed-definition marker |
 | `scopeDepth` | `size_t` | Lexical depth |
 | `function` | `FunctionSignature` | Function-only type data |
+| `variableId` | `size_t` | Unique id for every variable |
 
 ## `SymbolTable`
 
