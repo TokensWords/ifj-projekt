@@ -1,6 +1,6 @@
 /*
  * Project: IFJ26 compiler
- * Authors: TODO(team)
+ * Authors: Václav Krytinář xkrytiv00
  * AI-assisted scaffold.
  * Prompt: Define the optional intermediate-code optimizer boundary.
  */
@@ -10,6 +10,8 @@
 
 #include "compilerTypes.h"
 #include "intermediateCode.h"
+
+#include "optimizerSymTable.h"
 
 CompilerStatus optimizerRun(IntermediateProgram *program);
 

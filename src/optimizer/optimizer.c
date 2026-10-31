@@ -1,6 +1,6 @@
 /*
  * Project: IFJ26 compiler
- * Authors: TODO(team)
+ * Authors: Václav Krytinář xkrytiv00
  * AI-assisted scaffold.
  * Prompt: Create an optional optimizer integration stub.
  */
