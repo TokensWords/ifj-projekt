@@ -8,6 +8,7 @@
 #ifndef OPTIMIZER_SYM_TABLE_H
 #define OPTIMIZER_SYM_TABLE_H
 
+#include <stddef.h>
 #include "compilerTypes.h"
 
 #include <stdbool.h>

@@ -11,7 +11,7 @@
 #include "compilerTypes.h"
 #include "intermediateCode.h"
 
-#include "optimizerSymTable.h"
+typedef struct BbtElem BbtElem;
 
 CompilerStatus optimizerRun(IntermediateProgram *program);
 
