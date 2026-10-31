@@ -15,4 +15,12 @@ typedef struct BbtElem BbtElem;
 
 CompilerStatus optimizerRun(IntermediateProgram *program);
 
-#endif
+bool optimizerGetNextBlock(size_t *start, size_t *end, IntermediateProgram *program);
+
+CompilerStatus optimizerOptimizeBlock(size_t start, size_t end, IntermediateProgram *program);
+
+CompilerStatus optimizerBackwardPass(BbtElem bbtTable[], size_t start, size_t end, IntermediateProgram *program);
+
+CompilerStatus optimizerForwardPass(BbtElem bbtTable[], size_t start, size_t end, IntermediateProgram *program);
+
+#endif // OPTIMIZER_H
