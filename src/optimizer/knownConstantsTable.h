@@ -43,6 +43,8 @@ void knownConstantsTableDestroy(KnownConstantsTable *table);
  */
 CompilerStatus knownConstantsTableInsert(KnownConstantsTable *table, KnownConstant *constant);
 
+CompilerStatus knownConstantsTableRemove(KnownConstantsTable *table, const char *name);
+
 /**
  * @brief Finds a known constant in the table by name.
  * @param table The table to search.

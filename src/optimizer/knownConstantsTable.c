@@ -69,6 +69,18 @@ CompilerStatus knownConstantsTableInsert(KnownConstantsTable *table, KnownConsta
     return COMPILER_OK;
 }
 
+CompilerStatus knownConstantsTableRemove(KnownConstantsTable *table, const char *name)
+{
+    TAvlTree* result = avlTreeRemove(table->tree, name);
+    if (result == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    table->tree = result;
+
+    return COMPILER_OK;
+}
+
 KnownConstant *knownConstantsTableFind(const KnownConstantsTable *table, const char *name)
 {
     if (table == NULL || name == NULL) {

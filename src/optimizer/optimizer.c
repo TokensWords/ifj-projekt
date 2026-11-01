@@ -7,6 +7,7 @@
 
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -19,6 +20,9 @@
 #include "optimizer.h"
 #include "optimizerSymTable.h"
 #include "knownConstantsTable.h"
+
+#define OPTIMIZER_MAX_INT 64
+#define OPTIMIZER_MAX_DOUBLE 64
 
 struct BbtElem {
     size_t line;
@@ -113,6 +117,14 @@ enum OpcodeFlags {
     LIVE2 = 1 << 5
 };
 
+enum OpcodeCategories {
+    THREE_OPERAND = EVAL0 | EVAL1 | EVAL2 | LIVE1 | LIVE2,
+    TWO_OPERAND = EVAL0 | EVAL1 | LIVE1,
+    ONE_WRITE = EVAL0,
+    ONE_READ = EVAL0 | LIVE0,
+    JUMP_READ = EVAL1 | EVAL2 | LIVE1 | LIVE2
+};
+
 uint8_t optimizerGetOpcodeFlags(IntermediateOpcode opcode)
 {
     switch (opcode) {
@@ -129,7 +141,7 @@ uint8_t optimizerGetOpcodeFlags(IntermediateOpcode opcode)
         case INTERMEDIATE_CONCATENATE:
         case INTERMEDIATE_STRING_GET_CHARACTER:
         case INTERMEDIATE_STRING_CHARACTER_CODE:
-            return EVAL0 | EVAL1 | EVAL2 | LIVE1 | LIVE2; // 0 written; 1,2 read
+            return THREE_OPERAND; // 0 written; 1,2 read
 
         case INTERMEDIATE_MOVE:
         case INTERMEDIATE_NOT:
@@ -139,21 +151,21 @@ uint8_t optimizerGetOpcodeFlags(IntermediateOpcode opcode)
         case INTERMEDIATE_CONVERT_DOUBLE_TO_STRING:
         case INTERMEDIATE_CONVERT_INT_TO_CHARACTER:
         case INTERMEDIATE_STRING_LENGTH:
-            return EVAL0 | EVAL1 | LIVE1; // 0 written; 1 read
+            return TWO_OPERAND; // 0 written; 1 read
 
         case INTERMEDIATE_POP:
         case INTERMEDIATE_READ:
         case INTERMEDIATE_DEFINE_VARIABLE:
-            return EVAL0; // 0 written
+            return ONE_WRITE; // 0 written
 
         case INTERMEDIATE_WRITE:
         case INTERMEDIATE_PUSH:
         case INTERMEDIATE_EXIT:
-            return EVAL0 | LIVE0; // 0 read
+            return ONE_READ; // 0 read
 
         case INTERMEDIATE_JUMP_IF_EQUAL:
         case INTERMEDIATE_JUMP_IF_NOT_EQUAL:
-            return EVAL1 | EVAL2 | LIVE1 | LIVE2; // 1,2 read
+            return JUMP_READ; // 1,2 read
 
         default:
             return 0;
@@ -174,6 +186,10 @@ void optimizerBbtTableSetDefault(BbtElem table[], size_t index, size_t line)
 CompilerStatus optimizerBackwardPass(BbtElem bbtTable[], size_t start, size_t end, IntermediateProgram *program)
 {
     OptimizerSymTable *symbols = optimizerSymTableCreate();
+    if (symbols == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
     uint8_t flags = 0;
 
     while (end >= start) {
@@ -184,11 +200,13 @@ CompilerStatus optimizerBackwardPass(BbtElem bbtTable[], size_t start, size_t en
         optimizerBbtTableSetDefault(bbtTable, end - start, end);
 
         for (size_t i = 0; i < 3; ++i) {
-            if (flags & 1 << i && program->instructions[end].operands[i].kind == INTERMEDIATE_OPERAND_VARIABLE) {
-                if ((symbol = optimizerSymTableFind(symbols, program->instructions[end].operands[i].text)) != NULL) {
+            IntermediateOperand *curretnOperandPtr = &program->instructions[end].operands[i];
+
+            if (flags & 1 << i && (*curretnOperandPtr).kind == INTERMEDIATE_OPERAND_VARIABLE) {
+                if ((symbol = optimizerSymTableFind(symbols, (*curretnOperandPtr).text)) != NULL) {
                     bbtTable[end-start].live[i] = symbol->live;
                     bbtTable[end-start].nextUse[i] = symbol->nextUse;
-                } else if (strncmp("$variable", program->instructions[end].operands[i].text, 9) == 0) {
+                } else if (strncmp("$variable", (*curretnOperandPtr).text, 9) == 0) {
                     bbtTable[end-start].live[i] = true;
                 }
 
@@ -199,7 +217,7 @@ CompilerStatus optimizerBackwardPass(BbtElem bbtTable[], size_t start, size_t en
                     }
                 }
 
-                symbol->name = program->instructions[end].operands[i].text;
+                symbol->name = (*curretnOperandPtr).text;
                 symbol->live = flags & 1 << i+3;
                 symbol->nextUse = end;
 
@@ -209,6 +227,8 @@ CompilerStatus optimizerBackwardPass(BbtElem bbtTable[], size_t start, size_t en
                 }
             }
         }
+
+        --end;
     }
 
     optimizerSymTableDestroy(symbols);
@@ -217,8 +237,327 @@ CompilerStatus optimizerBackwardPass(BbtElem bbtTable[], size_t start, size_t en
 }
 
 
+bool optimizerIsOperandConst(IntermediateOperand operand)
+{
+    switch (operand.kind)
+    {
+    case INTERMEDIATE_OPERAND_INT:
+    case INTERMEDIATE_OPERAND_DOUBLE:
+    case INTERMEDIATE_OPERAND_STRING:
+    case INTERMEDIATE_OPERAND_BOOLEAN:
+        return true;
+    default:
+        return false;
+    }
+}
+
+CompilerStatus optimizerConstantFold(IntermediateInstruction *instruction, uint8_t flags)
+{
+    if (instruction == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateOpcode originalOpcode = instruction->opcode;
+    IntermediateOperand *dest = &instruction->operands[0];
+    IntermediateOperand *left = &instruction->operands[1];
+    IntermediateOperand *right = &instruction->operands[2];
+
+    if ((flags & THREE_OPERAND) == THREE_OPERAND) {
+        int64_t leftInt = left->value.intValue;
+        int64_t rightInt = right->value.intValue;
+        double leftDouble = left->value.doubleValue;
+        double rightDouble = right->value.doubleValue;
+        bool leftBool = left->value.boolValue;
+        bool rightBool = right->value.boolValue;
+
+        switch (originalOpcode) {
+            case INTERMEDIATE_ADD:
+                if (left->kind == INTERMEDIATE_OPERAND_INT) {
+                    left->value.intValue = leftInt + rightInt;
+                } else {
+                    left->value.doubleValue = leftDouble + rightDouble;
+                }
+                break;
+            case INTERMEDIATE_SUBTRACT:
+                if (left->kind == INTERMEDIATE_OPERAND_INT) {
+                    left->value.intValue = leftInt - rightInt;
+                } else {
+                    left->value.doubleValue = leftDouble - rightDouble;
+                }
+                break;
+            case INTERMEDIATE_MULTIPLY:
+                if (left->kind == INTERMEDIATE_OPERAND_INT) {
+                    left->value.intValue = leftInt * rightInt;
+                } else {
+                    left->value.doubleValue = leftDouble * rightDouble;
+                }
+                break;
+            case INTERMEDIATE_DIVIDE:
+                if (rightDouble == 0.0) {
+                    return COMPILER_INTERNAL_ERROR;
+                }
+                left->value.doubleValue = leftDouble / rightDouble;
+                break;
+            case INTERMEDIATE_INTEGER_DIVIDE:
+                if (rightInt == 0) {
+                    return COMPILER_INTERNAL_ERROR;
+                }
+                left->value.intValue = leftInt / rightInt;
+                break;
+            case INTERMEDIATE_COMPARE_LESS:
+                left->kind = INTERMEDIATE_OPERAND_BOOLEAN;
+                if (left->kind == INTERMEDIATE_OPERAND_INT) {
+                    left->value.boolValue = leftInt < rightInt;
+                } else if (left->kind == INTERMEDIATE_OPERAND_DOUBLE) {
+                    left->value.boolValue = leftDouble < rightDouble;
+                } else if (left->kind == INTERMEDIATE_OPERAND_STRING) {
+                    left->value.boolValue = strcmp(left->text, right->text) < 0;
+                } else {
+                    left->value.boolValue = leftBool < rightBool;
+                }
+                break;
+            case INTERMEDIATE_COMPARE_GREATER:
+                left->kind = INTERMEDIATE_OPERAND_BOOLEAN;
+                if (left->kind == INTERMEDIATE_OPERAND_INT) {
+                    left->value.boolValue = leftInt > rightInt;
+                } else if (left->kind == INTERMEDIATE_OPERAND_DOUBLE) {
+                    left->value.boolValue = leftDouble > rightDouble;
+                } else if (left->kind == INTERMEDIATE_OPERAND_STRING) {
+                    left->value.boolValue = strcmp(left->text, right->text) > 0;
+                } else {
+                    left->value.boolValue = leftBool > rightBool;
+                }
+                break;
+            case INTERMEDIATE_COMPARE_EQUAL:
+                left->kind = INTERMEDIATE_OPERAND_BOOLEAN;
+                if (left->kind == INTERMEDIATE_OPERAND_INT) {
+                    left->value.boolValue = leftInt == rightInt;
+                } else if (left->kind == INTERMEDIATE_OPERAND_DOUBLE) {
+                    left->value.boolValue = leftDouble == rightDouble;
+                } else if (left->kind == INTERMEDIATE_OPERAND_STRING) {
+                    left->value.boolValue = strcmp(left->text, right->text) == 0;
+                } else {
+                    left->value.boolValue = leftBool == rightBool;
+                }
+                break;
+            case INTERMEDIATE_AND:
+                left->value.boolValue = leftBool && rightBool;
+                break;
+            case INTERMEDIATE_OR:
+                left->value.boolValue = leftBool || rightBool;
+                break;
+            case INTERMEDIATE_CONCATENATE: {
+                size_t len = strlen(left->text) + strlen(right->text) + 1;
+                char *newStr = memoryAllocate(len * sizeof(char));
+                if (newStr == NULL) {
+                    return COMPILER_INTERNAL_ERROR;
+                }
+                strcpy(newStr, left->text);
+                strcat(newStr, right->text);
+                free(left->text);
+                left->text = newStr;
+                break;
+            }
+            case INTERMEDIATE_STRING_GET_CHARACTER: {
+                if (rightInt < 0 || rightInt >= (int64_t)strlen(left->text)) {
+                    return COMPILER_INTERNAL_ERROR;
+                }
+                char *newStr = memoryAllocate(2 * sizeof(char));
+                if (newStr == NULL) {
+                    return COMPILER_INTERNAL_ERROR;
+                }
+                newStr[0] = left->text[rightInt];
+                newStr[1] = '\0';
+                free(left->text);
+                left->text = newStr;
+                left->kind = INTERMEDIATE_OPERAND_STRING;
+                break;
+            }
+            case INTERMEDIATE_STRING_CHARACTER_CODE: {
+                if (rightInt < 0 || rightInt >= (int64_t)strlen(left->text)) {
+                    return COMPILER_INTERNAL_ERROR;
+                }
+                left->value.intValue = (unsigned char)left->text[rightInt];
+                left->kind = INTERMEDIATE_OPERAND_INT;
+                free(left->text);
+                left->text = NULL;
+                break;
+            }
+            default:
+                return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (right->kind == INTERMEDIATE_OPERAND_STRING) {
+            if (right->text != NULL) {
+                free(right->text);
+            }
+        }
+
+        right->text = NULL;
+        right->kind = INTERMEDIATE_OPERAND_NONE;
+        instruction->operandCount = 2;
+    }
+
+    else if ((flags & TWO_OPERAND) == TWO_OPERAND) {
+        int64_t leftInt = left->value.intValue;
+        double leftDouble = left->value.doubleValue;
+
+        switch (originalOpcode) {
+            case INTERMEDIATE_MOVE:
+                break;
+            case INTERMEDIATE_NOT:
+                left->value.boolValue = !left->value.boolValue;
+                break;
+            case INTERMEDIATE_CONVERT_INT_TO_DOUBLE:
+                left->value.doubleValue = (double)leftInt;
+                left->kind = INTERMEDIATE_OPERAND_DOUBLE;
+                break;
+            case INTERMEDIATE_CONVERT_DOUBLE_TO_INT:
+                left->value.intValue = (int64_t)leftDouble;
+                left->kind = INTERMEDIATE_OPERAND_INT;
+                break;
+            case INTERMEDIATE_CONVERT_INT_TO_STRING: {
+                char buffer[OPTIMIZER_MAX_INT];
+                snprintf(buffer, sizeof(buffer), "%ld", leftInt);
+                left->text = strdup(buffer);
+                if (left->text == NULL) {
+                    return COMPILER_INTERNAL_ERROR;
+                }
+                left->kind = INTERMEDIATE_OPERAND_STRING;
+                break;
+            }
+            case INTERMEDIATE_CONVERT_DOUBLE_TO_STRING: {
+                char buffer[OPTIMIZER_MAX_DOUBLE];
+                snprintf(buffer, sizeof(buffer), "%g", leftDouble);
+                left->text = strdup(buffer);
+                if (left->text == NULL) {
+                    return COMPILER_INTERNAL_ERROR;
+                }
+                left->kind = INTERMEDIATE_OPERAND_STRING;
+                break;
+            }
+            case INTERMEDIATE_CONVERT_INT_TO_CHARACTER: {
+                char *newStr = memoryAllocate(2 * sizeof(char));
+                if (newStr == NULL) {
+                    return COMPILER_INTERNAL_ERROR;
+                }
+                newStr[0] = (char)leftInt;
+                newStr[1] = '\0';
+                left->text = newStr;
+                left->kind = INTERMEDIATE_OPERAND_STRING;
+                break;
+            }
+            case INTERMEDIATE_STRING_LENGTH:
+                if (left->text != NULL) {
+                    left->value.intValue = strlen(left->text);
+                } else {
+                    left->value.intValue = 0;
+                }
+                left->kind = INTERMEDIATE_OPERAND_INT;
+                free(left->text);
+                left->text = NULL;
+                break;
+            default:
+                return COMPILER_INTERNAL_ERROR;
+        }
+    }
+
+    else {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    instruction->opcode = INTERMEDIATE_MOVE;
+
+    return COMPILER_OK;
+}
+
+void optimizerNopInstruction(IntermediateInstruction *instruction)
+{
+    for (size_t i = 0; i < instruction->operandCount; ++i) {
+        free(instruction->operands[i].text);
+        instruction->operands[i].text = NULL;
+        instruction->operands[i].kind = INTERMEDIATE_OPERAND_NONE;
+    }
+
+    instruction->operandCount = 0;
+    instruction->opcode = INTERMEDIATE_NOP;
+}
+
 CompilerStatus optimizerForwardPass(BbtElem bbtTable[], size_t start, size_t end, IntermediateProgram *program)
 {
+    KnownConstantsTable *constants = knownConstantsTableCreate();
+    if (constants == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
 
+    uint8_t flags = 0;
+    KnownConstant *constant = NULL;
+    size_t first = start;
+    CompilerStatus status = COMPILER_OK;
+
+    while(start <= end) {
+        IntermediateInstruction *currentInstrPtr = &program->instructions[start];
+
+        // constant propagation
+        flags = optimizerGetOpcodeFlags((*currentInstrPtr).opcode);
+        for (size_t i = 0; i < 3; ++i) {
+            IntermediateOperand *curretnOperandPtr = &(*currentInstrPtr).operands[i];
+            // is a read variable
+            if (flags & 1 << i && (*curretnOperandPtr).kind == INTERMEDIATE_OPERAND_VARIABLE && flags & 1 << i+3) {
+                constant = knownConstantsTableFind(constants, (*curretnOperandPtr).text);
+                if (constant != NULL) {
+                    (*curretnOperandPtr).kind = constant->kind;
+                    (*curretnOperandPtr).value = constant->value;
+                }
+            }
+        }
+
+        // constant folding
+        flags = optimizerGetOpcodeFlags((*currentInstrPtr).opcode);
+        if ((flags & THREE_OPERAND == THREE_OPERAND && optimizerIsOperandConst((*currentInstrPtr).operands[1]) && optimizerIsOperandConst((*currentInstrPtr).operands[2]))
+        || (flags & TWO_OPERAND == TWO_OPERAND && optimizerIsOperandConst((*currentInstrPtr).operands[1]))) {
+            status = optimizerConstantFold(currentInstrPtr, flags);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+        }
+
+        // dead code removal
+        flags = optimizerGetOpcodeFlags((*currentInstrPtr).opcode);
+        if ((flags & THREE_OPERAND == THREE_OPERAND || flags & TWO_OPERAND == TWO_OPERAND) && !bbtTable[start - first].live) {
+            optimizerNopInstruction(currentInstrPtr);
+        }
+
+        // known constants update
+        flags = optimizerGetOpcodeFlags((*currentInstrPtr).opcode);
+        if ((*currentInstrPtr).opcode == INTERMEDIATE_MOVE && optimizerIsOperandConst((*currentInstrPtr).operands[1])) {
+            constant = memoryAllocate(sizeof(KnownConstant));
+            if (constant == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+            constant->kind = (*currentInstrPtr).operands[1].kind;
+            constant->name = (*currentInstrPtr).operands[1].text;
+            constant->value = (*currentInstrPtr).operands[1].value;
+            constant->originIndex = start - first;
+
+            status = knownConstantsTableInsert(constants, constant);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+        }
+        else if (flags & THREE_OPERAND == THREE_OPERAND || flags & TWO_OPERAND == TWO_OPERAND || flags & ONE_WRITE == ONE_WRITE) {
+            status = knownConstantsTableRemove(constants, (*currentInstrPtr).operands[1].text);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+        }
+
+        ++start;
+    }
+
+
+    knownConstantsTableDestroy(constants);
+
+    return COMPILER_OK;
 }
 

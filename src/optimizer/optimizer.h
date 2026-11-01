@@ -17,6 +17,7 @@
 
 typedef struct BbtElem BbtElem;
 typedef enum OpcodeFlags OpcodeFlags;
+typedef enum OpcodeCategories OpcodeCategories;
 
 CompilerStatus optimizerRun(IntermediateProgram *program);
 
