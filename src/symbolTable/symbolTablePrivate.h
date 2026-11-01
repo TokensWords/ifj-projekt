@@ -4,6 +4,7 @@
 #include "symbolTable.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 typedef struct Key Key;
 

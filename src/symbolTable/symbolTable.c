@@ -12,6 +12,8 @@
 
 #include <string.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdlib.h>
 
 struct SymbolTable {
     size_t scopeDepth;
@@ -27,7 +29,7 @@ struct Key {
 
 SymbolTable *symbolTableCreate(void)
 {
-    SymbolTable *table = memoryAlloc(sizeof(SymbolTable));
+    SymbolTable *table = memoryAllocate(sizeof(SymbolTable));
     if (table == NULL) {
         return NULL;
     }
@@ -124,7 +126,7 @@ CompilerStatus symbolTableInsert(SymbolTable *table, Symbol *symbol)
     return COMPILER_OK;
 }
 
-const Symbol *symbolTableFind(const SymbolTable *table, const char *name)
+Symbol *symbolTableFind(const SymbolTable *table, const char *name)
 {
     if (table == NULL || name == NULL) {
         return NULL;
@@ -138,7 +140,7 @@ const Symbol *symbolTableFind(const SymbolTable *table, const char *name)
 
     while (depth > 0) {
         if (avlTreeSearch(table->tree, key)) {
-            const Symbol *symbol = avlTreeGetData(table->tree, key);
+            Symbol *symbol = avlTreeGetData(table->tree, key);
             free(key);
             return symbol;
         }
@@ -150,7 +152,7 @@ const Symbol *symbolTableFind(const SymbolTable *table, const char *name)
     return NULL;
 }
 
-const Symbol *symbolTableFindCurrentScope(const SymbolTable *table, const char *name)
+Symbol *symbolTableFindCurrentScope(const SymbolTable *table, const char *name)
 {
     if (table == NULL || name == NULL) {
         return NULL;
@@ -162,7 +164,7 @@ const Symbol *symbolTableFindCurrentScope(const SymbolTable *table, const char *
     }
 
     if (avlTreeSearch(table->tree, key)) {
-        const Symbol *symbol = avlTreeGetData(table->tree, key);
+        Symbol *symbol = avlTreeGetData(table->tree, key);
         free(key);
         return symbol;
     }
@@ -201,7 +203,7 @@ void *symbolTableMakeKey(const char *name, size_t scopeDepth)
         return NULL;
     }
 
-    struct Key *key = memoryAlloc(sizeof(struct Key));
+    struct Key *key = memoryAllocate(sizeof(struct Key));
     if (key == NULL) {
         return NULL;
     }

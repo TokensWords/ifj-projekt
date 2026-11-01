@@ -11,6 +11,7 @@
 #include "compilerTypes.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 typedef enum {
     SYMBOL_VARIABLE,
@@ -77,7 +78,7 @@ CompilerStatus symbolTableInsert(SymbolTable *table, Symbol *symbol);
  * @param name The name of the symbol to find.
  * @return A pointer to the found symbol, or NULL if not found.
  */
-const Symbol *symbolTableFind(const SymbolTable *table, const char *name);
+Symbol *symbolTableFind(const SymbolTable *table, const char *name);
 
 /**
  * @brief Finds a symbol in the current scope of the symbol table by name.
@@ -85,7 +86,7 @@ const Symbol *symbolTableFind(const SymbolTable *table, const char *name);
  * @param name The name of the symbol to find.
  * @return A pointer to the found symbol, or NULL if not found.
  */
-const Symbol *symbolTableFindCurrentScope(const SymbolTable *table, const char *name);
+Symbol *symbolTableFindCurrentScope(const SymbolTable *table, const char *name);
 
 #endif
 

@@ -12,6 +12,9 @@
 #include "compilerTypes.h"
 #include "symbolTable.h"
 
+#include <stdbool.h>
+#include <stddef.h>
+
 typedef struct SemAnalData SemAnalData;
 
 /**

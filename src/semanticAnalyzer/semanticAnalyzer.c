@@ -12,7 +12,9 @@
 #include "symbolTable.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 
 
 
@@ -196,7 +198,7 @@ CompilerStatus semAnalDeclareFunctions(AbstractSyntaxNode *rootNode, SymbolTable
 
         // main not propper main
         CompilerStatus status;
-        if (hasMain = rootNode->children[funI]->isEntryFunction) {
+        if ((hasMain = rootNode->children[funI]->isEntryFunction)) {
             status = semAnalCheckMain(rootNode->children[funI]);
             if (status != COMPILER_OK) {
                 return status;
@@ -330,8 +332,8 @@ Symbol *semAnalAstNodeToSymbol(AbstractSyntaxNode *node) {
     symbol->dataType = node->variableType;
     symbol->mutable = node->isMutable;
 
-    if (symbol->kind == ABSTRACT_SYNTAX_FUNCTION) {
-        symbol->function.parameterTypes = astGetParameterTypes(node);
+    if (symbol->kind == SYMBOL_FUNCTION) {
+        symbol->function.parameterTypes = semAnalAstGetParameterTypes(node);
         if (symbol->function.parameterTypes == NULL) {
             free(symbol);
             return NULL;
@@ -481,7 +483,7 @@ CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, Symbol
 
     CompilerStatus status = COMPILER_OK;
 
-    Symbol *parameterSymbol = astNodeToSymbol(parameterNode);
+    Symbol *parameterSymbol = semAnalAstNodeToSymbol(parameterNode);
     if (parameterSymbol == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -613,7 +615,7 @@ CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
     }
 
     if (semAnalEvaluatesToType(ifNode->children[1]) == DATA_TYPE_UNIT
-    && (ifNode->childCount == 0 || ifNode->children[2] != NULL || (ifNode->children[2]) == DATA_TYPE_UNIT)) {
+    && (ifNode->childCount == 0 || ifNode->children[2] != NULL || semAnalEvaluatesToType(ifNode->children[2]) == DATA_TYPE_UNIT)) {
         ifNode->inferredType = DATA_TYPE_UNIT;
     } else{
         ifNode->inferredType = DATA_TYPE_UNKNOWN;
@@ -995,10 +997,13 @@ do{\
     {\
     case 3:\
         tmpTypes[2] = (param3);\
+        __attribute__ ((fallthrough));\
     case 2:\
         tmpTypes[1] = (param2);\
+        __attribute__ ((fallthrough));\
     case 1:\
         tmpTypes[0] = (param1);\
+        __attribute__ ((fallthrough));\
     default:\
         break;\
     }\

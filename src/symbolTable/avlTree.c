@@ -3,6 +3,8 @@
 
 #include "memory.h"
 
+#include <stdbool.h>
+#include <stddef.h>
 #include <stdlib.h>
     
 struct TAvlNode {
@@ -19,7 +21,7 @@ struct TAvlTree {
     void (*onRemoveAction)(void *data, void *key);
 };
 
-void avlTreeNoOnRemoveAction(void *data, void *key){}
+void avlTreeNoOnRemoveAction(void *data, void *key) {(void)data; (void)key;}
 
 TAvlTree *avlTreeInit(int (*cmp)(const void *key1, const void *key2), void (*onRemoveAction)(void *data, void *key))
 {

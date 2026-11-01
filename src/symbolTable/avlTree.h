@@ -1,7 +1,6 @@
 #ifndef AVL_TREE_H
 #define AVL_TREE_H
 
-#include <stdint.h>
 #include <stdbool.h>
 
 /**
