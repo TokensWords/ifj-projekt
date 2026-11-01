@@ -12,6 +12,7 @@
 #include "intermediateCode.h"
 
 typedef struct BbtElem BbtElem;
+typedef enum OpcodeFlags OpcodeFlags;
 
 CompilerStatus optimizerRun(IntermediateProgram *program);
 
@@ -19,7 +20,13 @@ bool optimizerGetNextBlock(size_t *start, size_t *end, IntermediateProgram *prog
 
 CompilerStatus optimizerOptimizeBlock(size_t start, size_t end, IntermediateProgram *program);
 
+
+uint8_t optimizerGetOpcodeFlags(IntermediateOpcode opcode);
+
+void optimizerBbtTableSetDefault(BbtElem table[], size_t index, size_t line);
+
 CompilerStatus optimizerBackwardPass(BbtElem bbtTable[], size_t start, size_t end, IntermediateProgram *program);
+
 
 CompilerStatus optimizerForwardPass(BbtElem bbtTable[], size_t start, size_t end, IntermediateProgram *program);
 
