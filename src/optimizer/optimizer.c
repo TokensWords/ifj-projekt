@@ -108,21 +108,21 @@ CompilerStatus optimizerOptimizeBlock(size_t start, size_t end, IntermediateProg
 }
 
 
-enum OpcodeFlags {
-    EVAL0 = 1,
-    EVAL1 = 1 << 1,
-    EVAL2 = 1 << 2,
-    LIVE0 = 1 << 3,
-    LIVE1 = 1 << 4,
-    LIVE2 = 1 << 5
+enum OPTIMIZER_OpcodeFlags {
+    OPTIMIZER_EVAL0 = 1,
+    OPTIMIZER_EVAL1 = 1 << 1,
+    OPTIMIZER_EVAL2 = 1 << 2,
+    OPTIMIZER_LIVE0 = 1 << 3,
+    OPTIMIZER_LIVE1 = 1 << 4,
+    OPTIMIZER_LIVE2 = 1 << 5
 };
 
-enum OpcodeCategories {
-    THREE_OPERAND = EVAL0 | EVAL1 | EVAL2 | LIVE1 | LIVE2,
-    TWO_OPERAND = EVAL0 | EVAL1 | LIVE1,
-    ONE_WRITE = EVAL0,
-    ONE_READ = EVAL0 | LIVE0,
-    JUMP_READ = EVAL1 | EVAL2 | LIVE1 | LIVE2
+enum OPTIMIZER_OpcodeCategories {
+    OPTIMIZER_THREE_OPERAND = OPTIMIZER_EVAL0 | OPTIMIZER_EVAL1 | OPTIMIZER_EVAL2 | OPTIMIZER_LIVE1 | OPTIMIZER_LIVE2,
+    OPTIMIZER_TWO_OPERAND = OPTIMIZER_EVAL0 | OPTIMIZER_EVAL1 | OPTIMIZER_LIVE1,
+    OPTIMIZER_ONE_WRITE = OPTIMIZER_EVAL0,
+    OPTIMIZER_ONE_READ = OPTIMIZER_EVAL0 | OPTIMIZER_LIVE0,
+    OPTIMIZER_JUMP_READ = OPTIMIZER_EVAL1 | OPTIMIZER_EVAL2 | OPTIMIZER_LIVE1 | OPTIMIZER_LIVE2
 };
 
 uint8_t optimizerGetOpcodeFlags(IntermediateOpcode opcode)
@@ -141,7 +141,7 @@ uint8_t optimizerGetOpcodeFlags(IntermediateOpcode opcode)
         case INTERMEDIATE_CONCATENATE:
         case INTERMEDIATE_STRING_GET_CHARACTER:
         case INTERMEDIATE_STRING_CHARACTER_CODE:
-            return THREE_OPERAND; // 0 written; 1,2 read
+            return OPTIMIZER_THREE_OPERAND; // 0 written; 1,2 read
 
         case INTERMEDIATE_MOVE:
         case INTERMEDIATE_NOT:
@@ -151,21 +151,21 @@ uint8_t optimizerGetOpcodeFlags(IntermediateOpcode opcode)
         case INTERMEDIATE_CONVERT_DOUBLE_TO_STRING:
         case INTERMEDIATE_CONVERT_INT_TO_CHARACTER:
         case INTERMEDIATE_STRING_LENGTH:
-            return TWO_OPERAND; // 0 written; 1 read
+            return OPTIMIZER_TWO_OPERAND; // 0 written; 1 read
 
         case INTERMEDIATE_POP:
         case INTERMEDIATE_READ:
         case INTERMEDIATE_DEFINE_VARIABLE:
-            return ONE_WRITE; // 0 written
+            return OPTIMIZER_ONE_WRITE; // 0 written
 
         case INTERMEDIATE_WRITE:
         case INTERMEDIATE_PUSH:
         case INTERMEDIATE_EXIT:
-            return ONE_READ; // 0 read
+            return OPTIMIZER_ONE_READ; // 0 read
 
         case INTERMEDIATE_JUMP_IF_EQUAL:
         case INTERMEDIATE_JUMP_IF_NOT_EQUAL:
-            return JUMP_READ; // 1,2 read
+            return OPTIMIZER_JUMP_READ; // 1,2 read
 
         default:
             return 0;
@@ -213,6 +213,7 @@ CompilerStatus optimizerBackwardPass(BbtElem bbtTable[], size_t start, size_t en
                 if (symbol == NULL) {
                     symbol = memoryAllocate(sizeof(OptimizerSymbol));
                     if (symbol == NULL) {
+                        optimizerSymTableDestroy(symbols);
                         return COMPILER_INTERNAL_ERROR;
                     }
                 }
@@ -223,6 +224,7 @@ CompilerStatus optimizerBackwardPass(BbtElem bbtTable[], size_t start, size_t en
 
                 CompilerStatus status = optimizerSymTableInsert(symbols, symbol);
                 if (status != COMPILER_OK) {
+                    optimizerSymTableDestroy(symbols);
                     return status;
                 }
             }
@@ -262,7 +264,7 @@ CompilerStatus optimizerConstantFold(IntermediateInstruction *instruction, uint8
     IntermediateOperand *left = &instruction->operands[1];
     IntermediateOperand *right = &instruction->operands[2];
 
-    if ((flags & THREE_OPERAND) == THREE_OPERAND) {
+    if ((flags & OPTIMIZER_THREE_OPERAND) == OPTIMIZER_THREE_OPERAND) {
         int64_t leftInt = left->value.intValue;
         int64_t rightInt = right->value.intValue;
         double leftDouble = left->value.doubleValue;
@@ -398,7 +400,7 @@ CompilerStatus optimizerConstantFold(IntermediateInstruction *instruction, uint8
         instruction->operandCount = 2;
     }
 
-    else if ((flags & TWO_OPERAND) == TWO_OPERAND) {
+    else if ((flags & OPTIMIZER_TWO_OPERAND) == OPTIMIZER_TWO_OPERAND) {
         int64_t leftInt = left->value.intValue;
         double leftDouble = left->value.doubleValue;
 
@@ -514,17 +516,18 @@ CompilerStatus optimizerForwardPass(BbtElem bbtTable[], size_t start, size_t end
 
         // constant folding
         flags = optimizerGetOpcodeFlags((*currentInstrPtr).opcode);
-        if ((flags & THREE_OPERAND == THREE_OPERAND && optimizerIsOperandConst((*currentInstrPtr).operands[1]) && optimizerIsOperandConst((*currentInstrPtr).operands[2]))
-        || (flags & TWO_OPERAND == TWO_OPERAND && optimizerIsOperandConst((*currentInstrPtr).operands[1]))) {
+        if ((flags & OPTIMIZER_THREE_OPERAND == OPTIMIZER_THREE_OPERAND && optimizerIsOperandConst((*currentInstrPtr).operands[1]) && optimizerIsOperandConst((*currentInstrPtr).operands[2]))
+        || (flags & OPTIMIZER_TWO_OPERAND == OPTIMIZER_TWO_OPERAND && optimizerIsOperandConst((*currentInstrPtr).operands[1]))) {
             status = optimizerConstantFold(currentInstrPtr, flags);
             if (status != COMPILER_OK) {
+                knownConstantsTableDestroy(constants);
                 return status;
             }
         }
 
         // dead code removal
         flags = optimizerGetOpcodeFlags((*currentInstrPtr).opcode);
-        if ((flags & THREE_OPERAND == THREE_OPERAND || flags & TWO_OPERAND == TWO_OPERAND) && !bbtTable[start - first].live) {
+        if ((flags & OPTIMIZER_THREE_OPERAND == OPTIMIZER_THREE_OPERAND || flags & OPTIMIZER_TWO_OPERAND == OPTIMIZER_TWO_OPERAND) && !bbtTable[start - first].live) {
             optimizerNopInstruction(currentInstrPtr);
         }
 
@@ -533,6 +536,7 @@ CompilerStatus optimizerForwardPass(BbtElem bbtTable[], size_t start, size_t end
         if ((*currentInstrPtr).opcode == INTERMEDIATE_MOVE && optimizerIsOperandConst((*currentInstrPtr).operands[1])) {
             constant = memoryAllocate(sizeof(KnownConstant));
             if (constant == NULL) {
+                knownConstantsTableDestroy(constants);
                 return COMPILER_INTERNAL_ERROR;
             }
             constant->kind = (*currentInstrPtr).operands[1].kind;
@@ -542,12 +546,14 @@ CompilerStatus optimizerForwardPass(BbtElem bbtTable[], size_t start, size_t end
 
             status = knownConstantsTableInsert(constants, constant);
             if (status != COMPILER_OK) {
+                knownConstantsTableDestroy(constants);
                 return status;
             }
         }
-        else if (flags & THREE_OPERAND == THREE_OPERAND || flags & TWO_OPERAND == TWO_OPERAND || flags & ONE_WRITE == ONE_WRITE) {
+        else if (flags & OPTIMIZER_THREE_OPERAND == OPTIMIZER_THREE_OPERAND || flags & OPTIMIZER_TWO_OPERAND == OPTIMIZER_TWO_OPERAND || flags & OPTIMIZER_ONE_WRITE == OPTIMIZER_ONE_WRITE) {
             status = knownConstantsTableRemove(constants, (*currentInstrPtr).operands[1].text);
             if (status != COMPILER_OK) {
+                knownConstantsTableDestroy(constants);
                 return status;
             }
         }
@@ -560,4 +566,3 @@ CompilerStatus optimizerForwardPass(BbtElem bbtTable[], size_t start, size_t end
 
     return COMPILER_OK;
 }
-
