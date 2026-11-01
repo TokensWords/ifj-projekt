@@ -18,7 +18,6 @@ typedef struct {
     const char *name;
     IntermediateOperandValue value;
     IntermediateOperandKind kind;
-    size_t originIndex;
 } KnownConstant;
 
 typedef struct KnownConstantsTable KnownConstantsTable;
@@ -43,6 +42,12 @@ void knownConstantsTableDestroy(KnownConstantsTable *table);
  */
 CompilerStatus knownConstantsTableInsert(KnownConstantsTable *table, KnownConstant *constant);
 
+/**
+ * @brief Removes a known constant from the table by name.
+ * @param table The table to operate on.
+ * @param name The name of the constant to remove.
+ * @return A CompilerStatus indicating success or failure.
+ */
 CompilerStatus knownConstantsTableRemove(KnownConstantsTable *table, const char *name);
 
 /**
