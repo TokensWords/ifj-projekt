@@ -11,12 +11,12 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "optimizer.h"
+#include "intermediateCode.h"
 
 #include "compilerTypes.h"
-#include "intermediateCode.h"
 #include "memory.h"
 
+#include "optimizer.h"
 #include "optimizerSymTable.h"
 #include "knownConstantsTable.h"
 

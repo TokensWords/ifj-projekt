@@ -8,6 +8,10 @@
 #ifndef OPTIMIZER_H
 #define OPTIMIZER_H
 
+
+#include <stddef.h>
+#include <stdbool.h>
+
 #include "compilerTypes.h"
 #include "intermediateCode.h"
 

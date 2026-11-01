@@ -8,11 +8,11 @@
 #ifndef KNOWN_CONSTANTS_TABLE_H
 #define KNOWN_CONSTANTS_TABLE_H
 
+
 #include "compilerTypes.h"
 #include "intermediateCode.h"
 
 #include <stddef.h>
-#include <stdbool.h>
 
 typedef struct {
     const char *name;
@@ -49,6 +49,6 @@ CompilerStatus knownConstantsTableInsert(KnownConstantsTable *table, KnownConsta
  * @param name The name of the constant to find.
  * @return A pointer to the found constant, or NULL if not found.
  */
-const KnownConstant *knownConstantsTableFind(const KnownConstantsTable *table, const char *name);
+KnownConstant *knownConstantsTableFind(const KnownConstantsTable *table, const char *name);
 
 #endif // KNOWN_CONSTANTS_TABLE_H

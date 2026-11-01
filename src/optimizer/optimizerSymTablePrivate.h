@@ -1,9 +1,6 @@
 #ifndef OPTIMIZER_SYM_TABLE_PRIVATE_H
 #define OPTIMIZER_SYM_TABLE_PRIVATE_H
 
-#include "optimizerSymTable.h"
-
-#include <stdbool.h>
 
 typedef struct Key Key;
 

@@ -8,8 +8,12 @@
 #include "knownConstantsTable.h"
 #include "knownConstantsTablePrivate.h"
 #include "avlTree.h"
-#include "memory.h"
 
+#include "memory.h"
+#include "compilerTypes.h"
+
+#include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 struct KnownConstantsTable {
@@ -22,7 +26,7 @@ struct KnownConstantKey {
 
 KnownConstantsTable *knownConstantsTableCreate(void)
 {
-    KnownConstantsTable *table = memoryAlloc(sizeof(KnownConstantsTable));
+    KnownConstantsTable *table = memoryAllocate(sizeof(KnownConstantsTable));
     if (table == NULL) {
         return NULL;
     }
@@ -65,7 +69,7 @@ CompilerStatus knownConstantsTableInsert(KnownConstantsTable *table, KnownConsta
     return COMPILER_OK;
 }
 
-const KnownConstant *knownConstantsTableFind(const KnownConstantsTable *table, const char *name)
+KnownConstant *knownConstantsTableFind(const KnownConstantsTable *table, const char *name)
 {
     if (table == NULL || name == NULL) {
         return NULL;
@@ -77,7 +81,7 @@ const KnownConstant *knownConstantsTableFind(const KnownConstantsTable *table, c
     }
 
     if (avlTreeSearch(table->tree, key)) {
-        const KnownConstant *constant = avlTreeGetData(table->tree, key);
+        KnownConstant *constant = avlTreeGetData(table->tree, key);
         free(key);
         return constant;
     }
@@ -106,7 +110,7 @@ void *knownConstantsTableMakeKey(const char *name)
         return NULL;
     }
 
-    KnownConstantKey *key = memoryAlloc(sizeof(KnownConstantKey));
+    KnownConstantKey *key = memoryAllocate(sizeof(KnownConstantKey));
     if (key == NULL) {
         return NULL;
     }

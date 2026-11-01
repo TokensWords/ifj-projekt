@@ -8,8 +8,12 @@
 #include "optimizerSymTable.h"
 #include "optimizerSymTablePrivate.h"
 #include "avlTree.h"
-#include "memory.h"
 
+#include "memory.h"
+#include "compilerTypes.h"
+
+#include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 
@@ -23,7 +27,7 @@ struct Key {
 
 OptimizerSymTable *optimizerSymTableCreate(void)
 {
-    OptimizerSymTable *table = memoryAlloc(sizeof(OptimizerSymTable));
+    OptimizerSymTable *table = memoryAllocate(sizeof(OptimizerSymTable));
     if (table == NULL) {
         return NULL;
     }
@@ -66,7 +70,7 @@ CompilerStatus optimizerSymTableInsert(OptimizerSymTable *table, OptimizerSymbol
     return COMPILER_OK;
 }
 
-const OptimizerSymbol *optimizerSymTableFind(const OptimizerSymTable *table, const char *name)
+OptimizerSymbol *optimizerSymTableFind(const OptimizerSymTable *table, const char *name)
 {
     if (table == NULL || name == NULL) {
         return NULL;
@@ -78,7 +82,7 @@ const OptimizerSymbol *optimizerSymTableFind(const OptimizerSymTable *table, con
     }
 
     if (avlTreeSearch(table->tree, key)) {
-        const OptimizerSymbol *symbol = avlTreeGetData(table->tree, key);
+        OptimizerSymbol *symbol = avlTreeGetData(table->tree, key);
         free(key);
         return symbol;
     }
@@ -107,7 +111,7 @@ void *optimizerSymTableMakeKey(const char *name)
         return NULL;
     }
 
-    struct Key *key = memoryAlloc(sizeof(struct Key));
+    struct Key *key = memoryAllocate(sizeof(struct Key));
     if (key == NULL) {
         return NULL;
     }

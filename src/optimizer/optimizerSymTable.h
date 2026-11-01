@@ -8,9 +8,10 @@
 #ifndef OPTIMIZER_SYM_TABLE_H
 #define OPTIMIZER_SYM_TABLE_H
 
-#include <stddef.h>
+
 #include "compilerTypes.h"
 
+#include <stddef.h>
 #include <stdbool.h>
 
 typedef struct {
@@ -47,6 +48,6 @@ CompilerStatus optimizerSymTableInsert(OptimizerSymTable *table, OptimizerSymbol
  * @param name The name of the symbol to find.
  * @return A pointer to the found symbol, or NULL if not found.
  */
-const OptimizerSymbol *optimizerSymTableFind(const OptimizerSymTable *table, const char *name);
+OptimizerSymbol *optimizerSymTableFind(const OptimizerSymTable *table, const char *name);
 
 #endif // OPTIMIZER_SYM_TABLE_H
