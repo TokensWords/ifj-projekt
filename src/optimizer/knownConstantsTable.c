@@ -71,13 +71,20 @@ CompilerStatus knownConstantsTableInsert(KnownConstantsTable *table, KnownConsta
 
 CompilerStatus knownConstantsTableRemove(KnownConstantsTable *table, const char *name)
 {
-    TAvlTree* result = avlTreeRemove(table->tree, name);
+    KnownConstantKey *key = knownConstantsTableMakeKey(name);
+    if (key == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    TAvlTree* result = avlTreeRemove(table->tree, key);
     if (result == NULL) {
+        free(key);
         return COMPILER_INTERNAL_ERROR;
     }
 
     table->tree = result;
 
+    free(key);
     return COMPILER_OK;
 }
 
@@ -104,6 +111,8 @@ KnownConstant *knownConstantsTableFind(const KnownConstantsTable *table, const c
 
 void knownConstantsTableOnRemoveAction(void *data, void *key)
 {
+    free(((KnownConstant*)data)->name);
+    free(((KnownConstant*)data)->stringValue);
     free(data);
     free(key);
 }

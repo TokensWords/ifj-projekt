@@ -15,8 +15,9 @@
 #include <stddef.h>
 
 typedef struct {
-    const char *name;
+    char *name;
     IntermediateOperandValue value;
+    char *stringValue;
     IntermediateOperandKind kind;
 } KnownConstant;
 

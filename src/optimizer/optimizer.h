@@ -16,8 +16,12 @@
 #include "intermediateCode.h"
 
 typedef struct BbtElem BbtElem;
-typedef enum OpcodeFlags OpcodeFlags;
-typedef enum OpcodeCategories OpcodeCategories;
+
+struct BbtElem {
+    size_t line;
+    bool live[3];
+    size_t nextUse[3];
+};
 
 /**
  * @brief Runs optimization on the intermediate program.
