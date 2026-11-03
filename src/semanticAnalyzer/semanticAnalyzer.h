@@ -47,10 +47,9 @@ void semAnalDataDestroy(SemAnalData *data);
 /**
  * @brief goes through functions in AST and checks semantics
  * @param program sorce program AST got from syntax analyser
- * @param symbols symbol table to work with
  * @return status of the program - error codes
  */
-CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symbols);
+CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program);
 
 /**
  * @brief Allocates a new symbol and initializes with default values.
@@ -137,10 +136,10 @@ CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalDa
 /**
  * @brief Declares a function parameter in the symbol table.
  * @param parameterNode The parameter AST node to declare.
- * @param symbols The symbol table in which to declare the parameter.
+ * @param data The semantic-analysis data to use.
  * @return status of the program - error codes
  */
-CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SymbolTable *symbols);
+CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SemAnalData *data);
 
 /**
  * @brief Resolves the statements in a block.

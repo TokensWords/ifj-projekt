@@ -31,7 +31,6 @@ typedef struct {
     DataType dataType;
     bool mutable;
     bool defined;
-    size_t scopeDepth;
     FunctionSignature function;
     size_t variableId;
 } Symbol;

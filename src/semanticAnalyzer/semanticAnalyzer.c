@@ -133,8 +133,8 @@ void semAnalDataDestroy(SemAnalData *data)
 }
 
 
-CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program, SymbolTable *symbols) {
-    if (program == NULL || symbols == NULL || program->root == NULL || program->root->type != ABSTRACT_SYNTAX_PROGRAM) {
+CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program) {
+    if (program == NULL || program->root == NULL || program->root->type != ABSTRACT_SYNTAX_PROGRAM) {
         return COMPILER_INTERNAL_ERROR;
     }
 
@@ -188,6 +188,8 @@ CompilerStatus semAnalDeclareFunctions(AbstractSyntaxNode *rootNode, SymbolTable
         return COMPILER_INTERNAL_ERROR;
     }
 
+    CompilerStatus status;
+
     bool hasMain = false;
 
     for (size_t funI = 0; funI < rootNode->childCount; ++funI) {
@@ -196,14 +198,14 @@ CompilerStatus semAnalDeclareFunctions(AbstractSyntaxNode *rootNode, SymbolTable
             return COMPILER_REDEFINITION_ERROR;
         }
 
-        // main not propper main
-        CompilerStatus status;
-        if ((hasMain = rootNode->children[funI]->isEntryFunction)) {
-            status = semAnalCheckMain(rootNode->children[funI]);
-            if (status != COMPILER_OK) {
-                return status;
-            }
+        // check if main is main, if not main then ok
+        status = semAnalCheckMain(rootNode->children[funI]);
+        if (status != COMPILER_OK) {
+            return status;
         }
+
+        // update hasMain
+        hasMain = hasMain || rootNode->children[funI]->isEntryFunction;
 
         // create symbol
         Symbol *symbolTmp = semAnalAstNodeToSymbol(rootNode->children[funI]);
@@ -269,7 +271,6 @@ Symbol *semAnalCreateSymbolDefault()
     symbol->dataType = DATA_TYPE_UNKNOWN;
     symbol->mutable = false;
     symbol->defined = false;
-    symbol->scopeDepth = 1;
     symbol->function.parameterTypes = NULL;
     symbol->function.parameterCount = 0;
     symbol->function.returnType = DATA_TYPE_UNKNOWN;
@@ -421,9 +422,9 @@ CompilerStatus semAnalResolveFunctionReturnType(AbstractSyntaxNode *functionNode
         functionSymbol->function.returnType = lastType;
     } else if (functionNode->variableType != DATA_TYPE_UNIT && functionSymbol->function.returnType != lastType) {
         return COMPILER_TYPE_ERROR;
-    } else{
-        functionNode->inferredType = functionSymbol->function.returnType;
     }
+
+    functionNode->inferredType = functionSymbol->function.returnType;
 
     return COMPILER_OK;
 }
@@ -452,7 +453,7 @@ CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalDa
 
     // declaring parameters - adding to symbol table
     for (size_t parmI = 0; parmI < functionNode->childCount - 1; ++parmI) {
-        status = semAnalDeclareParameter(functionNode->children[parmI], data->symbolTables[data->numberOfTables - 1]);
+        status = semAnalDeclareParameter(functionNode->children[parmI], data);
         if (status != COMPILER_OK) {
             return status;
         }
@@ -475,8 +476,8 @@ CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalDa
 }
 
 
-CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SymbolTable *symbols) {
-    if (parameterNode == NULL || symbols == NULL ||
+CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SemAnalData *data) {
+    if (parameterNode == NULL || data == NULL || data->symbolTables[data->numberOfTables - 1] == NULL ||
         parameterNode->type != ABSTRACT_SYNTAX_PARAMETER) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -488,13 +489,16 @@ CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, Symbol
         return COMPILER_INTERNAL_ERROR;
     }
 
-    parameterSymbol->scopeDepth = 1;
+    ++data->variableIdCounter;
+    parameterSymbol->variableId = data->variableIdCounter;
 
-    status = symbolTableInsert(symbols, parameterSymbol);
+    status = symbolTableInsert(data->symbolTables[data->numberOfTables - 1], parameterSymbol);
     if (status != COMPILER_OK) {
         semAnalFreeSymbol(parameterSymbol);
         return status;
     }
+
+    parameterNode->variableId = parameterSymbol->variableId;
 
     return status;
 }
@@ -689,7 +693,7 @@ int semAnalInRecursion(const char* funName, SemAnalData *data)
     }
 
     size_t i;
-    for (i = 0; strcmp(data->recursionList[i], funName) != 0 && i < data->numberOfTables; ++i) {}
+    for (i = 0; i < data->numberOfTables && strcmp(data->recursionList[i], funName) != 0; ++i) {}
     if (i == data->numberOfTables) {
         return -1; // not a reccurent function
     } else {
