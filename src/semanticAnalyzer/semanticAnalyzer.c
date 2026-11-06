@@ -353,21 +353,18 @@ bool semAnalCheckIfReturns(AbstractSyntaxNode *ifNode) {
         return false;
     }
 
-
-    AbstractSyntaxNode *thenBranch = ifNode->children[1];
-    bool thenReturns = semAnalNodeEndsWithReturn(thenBranch);
-
-    if (!thenReturns) {
-        return false;
+    if (ifNode->childCount < 3) {
+        return false; // missing else branch evaluates to unit in return evaluations
     }
 
-    // else branch
-    if (ifNode->childCount > 2 && ifNode->children[2] != NULL) {
-        AbstractSyntaxNode *elseBranch = ifNode->children[2];
-        return semAnalNodeEndsWithReturn(elseBranch);
+    bool allBranchesReturn = true;
+    for (size_t branchI = 1; branchI < ifNode->childCount; ++branchI) {
+        if (!semAnalNodeEndsWithReturn(ifNode->children[branchI])) {
+            allBranchesReturn = false;
+        }
     }
 
-    return false; // no else branch
+    return allBranchesReturn;
 }
 
 bool semAnalNodeEndsWithReturn(AbstractSyntaxNode *node) {
@@ -406,7 +403,9 @@ CompilerStatus semAnalResolveFunctionReturnType(AbstractSyntaxNode *functionNode
     }
     // if statement last logic
     if (lastNode->type == ABSTRACT_SYNTAX_IF) {
-        if (semAnalCheckIfReturns(lastNode)) {
+        if (functionNode->variableType == DATA_TYPE_UNIT) {
+            // explicit Unit return type - if is valid, no action needed
+        } else if (semAnalCheckIfReturns(lastNode)) {
             lastType = functionSymbol->function.returnType;
         } else if (lastNode->inferredType == DATA_TYPE_UNIT) {
             lastType = DATA_TYPE_UNIT;
@@ -610,18 +609,24 @@ CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
         return status;
     }
 
-    // resolve else block (if it exists)
-    if (ifNode->childCount > 2 && ifNode->children[2] != NULL) {
-        status = semAnalResolveNode(ifNode->children[2], data);
+    // resolve else blocks (if they exist)
+    for (size_t elseI = 2; elseI < ifNode->childCount; ++elseI) {
+        status = semAnalResolveNode(ifNode->children[elseI], data);
         if (status != COMPILER_OK) {
             return status;
         }
     }
 
-    if (semAnalEvaluatesToType(ifNode->children[1]) == DATA_TYPE_UNIT
-    && (ifNode->childCount == 0 || ifNode->children[2] != NULL || semAnalEvaluatesToType(ifNode->children[2]) == DATA_TYPE_UNIT)) {
+    bool allBranchesUnit = true;
+    for (size_t branchI = 1; branchI < ifNode->childCount; ++branchI) {
+        if (semAnalEvaluatesToType(ifNode->children[branchI]) != DATA_TYPE_UNIT) {
+            allBranchesUnit = false;
+        }
+    }
+
+    if (allBranchesUnit) {
         ifNode->inferredType = DATA_TYPE_UNIT;
-    } else{
+    } else {
         ifNode->inferredType = DATA_TYPE_UNKNOWN;
     }
 
@@ -908,8 +913,17 @@ CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBina
         return COMPILER_TYPE_ERROR;
     }
 
+    // bool logical operands
+    if (strcmp(expressionBinaryNode->text, "&&") == 0 || strcmp(expressionBinaryNode->text, "||") == 0) {
+       if (left->inferredType == DATA_TYPE_BOOLEAN && right->inferredType == DATA_TYPE_BOOLEAN) {
+            expressionBinaryNode->inferredType = DATA_TYPE_BOOLEAN;
+       } else {
+            return COMPILER_TYPE_ERROR;
+       }
+    }
+
     // only numbers expression
-    if (expressionBinaryNode->text[0] == '-' || expressionBinaryNode->text[0] == '*' || expressionBinaryNode->text[0] == '/') {
+    else if (expressionBinaryNode->text[0] == '-' || expressionBinaryNode->text[0] == '*' || expressionBinaryNode->text[0] == '/') {
         if (left->inferredType == DATA_TYPE_STRING || right->inferredType == DATA_TYPE_STRING) {
             return COMPILER_TYPE_ERROR;
         } else if (left->inferredType == DATA_TYPE_INT && right->inferredType == DATA_TYPE_INT){
@@ -932,12 +946,17 @@ CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBina
 
     // comparison
     else{
-        if (left->inferredType == right->inferredType) {
+        if (left->inferredType == right->inferredType) { // comparing the same
+            if ((strcmp(expressionBinaryNode->text, "==") != 0 && strcmp(expressionBinaryNode->text, "!=") != 0)
+            && left->inferredType == DATA_TYPE_BOOLEAN) {
+                return COMPILER_TYPE_ERROR; // comparing booleans < > <= >=
+            }
             expressionBinaryNode->inferredType = DATA_TYPE_BOOLEAN;
-        } else if (left->inferredType == DATA_TYPE_STRING || right->inferredType == DATA_TYPE_STRING){
-            return COMPILER_TYPE_ERROR;
+        } else if (left->inferredType == DATA_TYPE_STRING || right->inferredType == DATA_TYPE_STRING
+        || right->inferredType == DATA_TYPE_BOOLEAN || left->inferredType == DATA_TYPE_BOOLEAN) {
+            return COMPILER_TYPE_ERROR; // comparing string or bool with something else
         } else{
-            expressionBinaryNode->inferredType = DATA_TYPE_BOOLEAN;
+            expressionBinaryNode->inferredType = DATA_TYPE_BOOLEAN; // comparing ints and doubles
         }
     }
 
@@ -955,8 +974,18 @@ CompilerStatus semAnalResolveUnaryExpression(AbstractSyntaxNode *unaryExpression
         return status;
     }
 
-    // unary operator int or double only
-    if (operand->inferredType != DATA_TYPE_INT && operand->inferredType != DATA_TYPE_DOUBLE) {
+    // unary operator int or double or bool only
+    if (operand->inferredType != DATA_TYPE_INT && operand->inferredType != DATA_TYPE_DOUBLE && operand->inferredType != DATA_TYPE_BOOLEAN) {
+        return COMPILER_TYPE_ERROR;
+    }
+
+    // non bool type for bool unary operation
+    if (unaryExpressionNode->text[0] == '!' && operand->inferredType != DATA_TYPE_BOOLEAN) {
+        return COMPILER_TYPE_ERROR;
+    }
+
+    // bool type for non bool unary operations
+    if (unaryExpressionNode->text[0] != '!' && operand->inferredType == DATA_TYPE_BOOLEAN) {
         return COMPILER_TYPE_ERROR;
     }
 
@@ -1048,6 +1077,8 @@ CompilerStatus semAnalDefineBuiltinFunctions(SymbolTable *symbols)
     BUILTIN_FUN_MACRO("subStr", 3, DATA_TYPE_STRING, DATA_TYPE_STRING, DATA_TYPE_INT, DATA_TYPE_INT);
     BUILTIN_FUN_MACRO("ord", 2, DATA_TYPE_INT, DATA_TYPE_STRING, DATA_TYPE_INT, 0);
     BUILTIN_FUN_MACRO("chr", 1, DATA_TYPE_STRING, DATA_TYPE_INT, 0, 0);
+
+    BUILTIN_FUN_MACRO("readBoolean", 0, DATA_TYPE_BOOLEAN, 0, 0, 0);
 
     return COMPILER_OK;
 }
