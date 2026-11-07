@@ -1,3 +1,8 @@
+/*
+ * Project: IFJ26 compiler
+ * Authors: xkubanm00
+ */
+
 #ifndef STACK_H
 #define STACK_H
 
