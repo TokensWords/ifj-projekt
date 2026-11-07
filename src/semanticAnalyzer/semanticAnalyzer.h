@@ -111,6 +111,13 @@ CompilerStatus semAnalCheckMain(AbstractSyntaxNode *functionNode);
 bool semAnalNodeEndsWithReturn(AbstractSyntaxNode *node);
 
 /**
+ * @brief Checks whether an if node can be an expression.
+ * @param ifNode The if-statement AST node to check.
+ * @return true if the if node meets the rules, otherwise false.
+ */
+bool semAnalIsIfExpression(AbstractSyntaxNode *ifNode);
+
+/**
  * @brief Checks whether both branches of an if statement return.
  * @param ifNode The if-statement AST node to check.
  * @return true if all branches return, otherwise false.
@@ -165,6 +172,14 @@ CompilerStatus semAnalResolveNode(AbstractSyntaxNode *node, SemAnalData *data);
  * @return status of the program - error codes
  */
 CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data);
+
+/**
+ * @brief Resolves a for loop, including its generator, bounds, guards, and body.
+ * @param forNode The for-loop AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveFor(AbstractSyntaxNode *forNode, SemAnalData *data);
 
 /**
  * @brief Resolves a while statement and its body.

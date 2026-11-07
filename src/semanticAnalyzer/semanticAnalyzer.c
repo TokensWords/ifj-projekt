@@ -347,6 +347,22 @@ Symbol *semAnalAstNodeToSymbol(AbstractSyntaxNode *node) {
 }
 
 
+bool semAnalIsIfExpression(AbstractSyntaxNode *ifNode)
+{
+    if (ifNode == NULL || ifNode->type != ABSTRACT_SYNTAX_IF || ifNode->childCount < 2) {
+        return false;
+    }
+
+    if (ifNode->childCount < 3) {
+        return false; // missing else branch - not a expression
+    }
+
+    if (ifNode->inferredType == DATA_TYPE_UNKNOWN) {
+        return false; // branches do not return same types
+    }
+
+    return true;
+}
 
 bool semAnalCheckIfReturns(AbstractSyntaxNode *ifNode) {
     if (ifNode == NULL || ifNode->type != ABSTRACT_SYNTAX_IF || ifNode->childCount < 2) {
@@ -403,18 +419,17 @@ CompilerStatus semAnalResolveFunctionReturnType(AbstractSyntaxNode *functionNode
     }
     // if statement last logic
     if (lastNode->type == ABSTRACT_SYNTAX_IF) {
-        if (functionNode->variableType == DATA_TYPE_UNIT) {
-            // explicit Unit return type - if is valid, no action needed
-        } else if (semAnalCheckIfReturns(lastNode)) {
-            lastType = functionSymbol->function.returnType;
-        } else if (lastNode->inferredType == DATA_TYPE_UNIT) {
-            lastType = DATA_TYPE_UNIT;
-        } else{
+        if (functionNode->variableType == DATA_TYPE_UNIT || semAnalCheckIfReturns(lastNode)
+        || lastNode->inferredType == DATA_TYPE_UNIT || semAnalIsIfExpression(lastNode)) {
+            // explicit Unit return type - if is always valid
+            // if has explicit return in all branches
+            // all branches evaluate to Unit
+            // if is a vlaid expression
+            lastType = semAnalEvaluatesToType(lastNode);
+        } else {
             return COMPILER_TYPE_ERROR; // invalid if at the end
         }
     }
-    // valid last statement logic
-    lastType = semAnalEvaluatesToType(lastNode);
 
     // get the correct function type
     if (functionSymbol->function.returnType == DATA_TYPE_UNKNOWN) {
@@ -519,6 +534,7 @@ CompilerStatus semAnalResolveNode(AbstractSyntaxNode *node, SemAnalData *data) {
         case ABSTRACT_SYNTAX_EXPRESSION_BINARY: return semAnalResolveExpressionBinary(node, data);
         case ABSTRACT_SYNTAX_UNARY_EXPRESSION: return semAnalResolveUnaryExpression(node, data);
         case ABSTRACT_SYNTAX_IDENTIFIER: return semAnalResolveIdentifier(node, data);
+        case ABSTRACT_SYNTAX_FOR: return semAnalResolveFor(node, data);
         case ABSTRACT_SYNTAX_INT_LITERAL:
             node->inferredType = DATA_TYPE_INT;
             return COMPILER_OK;
@@ -617,18 +633,137 @@ CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
         }
     }
 
-    bool allBranchesUnit = true;
+    DataType allBranchesType = DATA_TYPE_UNKNOWN;
     for (size_t branchI = 1; branchI < ifNode->childCount; ++branchI) {
-        if (semAnalEvaluatesToType(ifNode->children[branchI]) != DATA_TYPE_UNIT) {
-            allBranchesUnit = false;
+        DataType branchType = semAnalEvaluatesToType(ifNode->children[branchI]);
+        if (branchType == DATA_TYPE_UNKNOWN) {
+            allBranchesType = DATA_TYPE_UNKNOWN; // when a branch evaluates to Unknown, then also the whole if statement
+            break;
         }
+        allBranchesType |= branchType;
     }
 
-    if (allBranchesUnit) {
-        ifNode->inferredType = DATA_TYPE_UNIT;
+    // get the evaluation type of the if statement
+    if ((allBranchesType & (allBranchesType - 1)) == 0) { // only one data type (or zero)
+        ifNode->inferredType = allBranchesType;
+    } else if (allBranchesType == (DATA_TYPE_INT | DATA_TYPE_DOUBLE)) { // only int or double
+        ifNode->inferredType = DATA_TYPE_DOUBLE;
     } else {
         ifNode->inferredType = DATA_TYPE_UNKNOWN;
     }
+
+    // not a expression evaluating as non Unit type
+    if (ifNode->inferredType != DATA_TYPE_UNIT && !semAnalIsIfExpression(ifNode)) {
+        ifNode->inferredType = DATA_TYPE_UNKNOWN;
+    }
+
+    return COMPILER_OK;
+}
+
+CompilerStatus semAnalResolveFor(AbstractSyntaxNode *forNode, SemAnalData *data) {
+    if (forNode == NULL || data == NULL || data->functionSymbols == NULL || forNode->childCount < 5) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    CompilerStatus status = COMPILER_OK;
+
+    // resolve generator bounds in the outer scope
+    status = semAnalResolveNode(forNode->children[1], data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    if (forNode->children[1]->inferredType != DATA_TYPE_INT) {
+        return COMPILER_TYPE_ERROR;
+    }
+
+    status = semAnalResolveNode(forNode->children[2], data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    if (forNode->children[2]->inferredType != DATA_TYPE_INT) {
+        return COMPILER_TYPE_ERROR;
+    }
+
+    // resolve optional step
+    if (forNode->children[3] != NULL) {
+        status = semAnalResolveNode(forNode->children[3], data);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        if (forNode->children[3]->inferredType != DATA_TYPE_INT) {
+            return COMPILER_TYPE_ERROR;
+        }
+    }
+
+    // push the inner scope for the loop body and guards
+    SymbolTable *currentTable = data->symbolTables[data->numberOfTables - 1];
+    status = symbolTableEnterScope(currentTable);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    // declare the generator variable inside the new scope
+    AbstractSyntaxNode *generatorNode = forNode->children[0];
+    if (generatorNode == NULL || generatorNode->type != ABSTRACT_SYNTAX_VARIABLE_DECLARATION || generatorNode->text == NULL) {
+        symbolTableLeaveScope(currentTable);
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    Symbol *tmpSymbol = symbolTableFindCurrentScope(currentTable, generatorNode->text);
+    if (tmpSymbol != NULL) {
+        symbolTableLeaveScope(currentTable);
+        return COMPILER_REDEFINITION_ERROR; // variable name already exists
+    }
+
+    // explicitly set type and mutability on node before converting to symbol
+    generatorNode->variableType = DATA_TYPE_INT;
+    generatorNode->isMutable = false;
+
+    // generator symbol creation
+    Symbol *generatorSymbol = semAnalAstNodeToSymbol(generatorNode);
+    if (generatorSymbol == NULL) {
+        symbolTableLeaveScope(currentTable);
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    ++data->variableIdCounter;
+    generatorSymbol->variableId = data->variableIdCounter;
+    generatorNode->variableId = generatorSymbol->variableId;
+    generatorNode->inferredType = DATA_TYPE_INT;
+
+    status = symbolTableInsert(currentTable, generatorSymbol);
+    if (status != COMPILER_OK) {
+        semAnalFreeSymbol(generatorSymbol);
+        symbolTableLeaveScope(currentTable);
+        return status;
+    }
+
+    // resolve guards in the inner scope
+    for (size_t guardI = 4; guardI < forNode->childCount - 1; ++guardI) {
+        AbstractSyntaxNode *guardNode = forNode->children[guardI];
+        status = semAnalResolveNode(guardNode, data);
+        if (status != COMPILER_OK) {
+            symbolTableLeaveScope(currentTable);
+            return status;
+        }
+        if (guardNode->inferredType != DATA_TYPE_BOOLEAN) {
+            symbolTableLeaveScope(currentTable);
+            return COMPILER_TYPE_ERROR;
+        }
+    }
+
+    // resolve the loop body
+    AbstractSyntaxNode *bodyNode = forNode->children[forNode->childCount - 1];
+    status = semAnalResolveNode(bodyNode, data);
+    if (status != COMPILER_OK) {
+        symbolTableLeaveScope(currentTable);
+        return status;
+    }
+
+    // clean up scope and set final type
+    symbolTableLeaveScope(currentTable);
+
+    forNode->inferredType = DATA_TYPE_UNIT;
 
     return COMPILER_OK;
 }
