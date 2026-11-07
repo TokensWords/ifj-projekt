@@ -1,3 +1,8 @@
+/*
+ * Project: IFJ26 compiler
+ * Authors: xkubanm00
+ */
+
 #include "stack.h"
 
 #include <stdlib.h>
