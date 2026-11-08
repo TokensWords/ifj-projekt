@@ -22,6 +22,7 @@ struct SemAnalData
 {
     size_t variableIdCounter;
     SymbolTable *functionSymbols;
+    SymbolTable *algebdtSymbols;
     size_t numberOfTables;
     SymbolTable **symbolTables;
     const char **recursionList;
@@ -43,6 +44,10 @@ CompilerStatus semAnalDataInit(SemAnalData *data)
     if (data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
+    data->algebdtSymbols = symbolTableCreate();
+    if (data->algebdtSymbols == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
 
     return COMPILER_OK;
 }
@@ -58,8 +63,7 @@ CompilerStatus semAnalListsBigger(SemAnalData *data)
         return COMPILER_INTERNAL_ERROR;
     }
 
-    SymbolTable **newTables = memoryResizeArray(
-        data->symbolTables, data->numberOfTables + 1, sizeof(SymbolTable *));
+    SymbolTable **newTables = memoryResizeArray(data->symbolTables, data->numberOfTables + 1, sizeof(SymbolTable *));
     if (newTables == NULL) {
         symbolTableDestroy(newTable);
         return COMPILER_INTERNAL_ERROR;
@@ -124,8 +128,10 @@ void semAnalDataDestroy(SemAnalData *data)
     free(data->symbolTables);
     free(data->recursionList);
     symbolTableDestroy(data->functionSymbols);
+    symbolTableDestroy(data->algebdtSymbols);
     data->variableIdCounter = 0;
     data->functionSymbols = NULL;
+    data->algebdtSymbols = NULL;
     data->numberOfTables = 0;
     data->symbolTables = NULL;
     data->recursionList = NULL;
@@ -154,7 +160,7 @@ CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program) {
         return status;
     }
 
-    status = semAnalDeclareFunctions(root, data.functionSymbols);
+    status = semAnalDeclareFunctions(root, &data);
     if (status != COMPILER_OK) {
         semAnalDataDestroy(&data);
         return status;
@@ -182,33 +188,99 @@ CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program) {
 }
 
 
-CompilerStatus semAnalDeclareFunctions(AbstractSyntaxNode *rootNode, SymbolTable *symbols)
+CompilerStatus semAnalResolveGlobalAlgebdt(AbstractSyntaxNode *algebdtNode, SemAnalData *data)
 {
-    if (rootNode == NULL || symbols == NULL) {
+    if (algebdtNode == NULL || data == NULL || data->algebdtSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
+    CompilerStatus status = COMPILER_OK;
+
+    // redefinition check
+    Symbol *varSymbol = symbolTableFind(data->algebdtSymbols, algebdtNode->text);
+    if (varSymbol != NULL) {
+        return COMPILER_REDEFINITION_ERROR;
+    }
+
+    Symbol *algebdtSymbol = semAnalAstNodeToSymbol(algebdtNode);
+    if (algebdtSymbol == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    status = symbolTableInsert(data->algebdtSymbols, algebdtSymbol);
+    if (status != COMPILER_OK) {
+        semAnalFreeSymbol(algebdtSymbol);
+        return status;
+    }
+
+    // adding the class constructor to functions
+    if (algebdtNode->type == ABSTRACT_SYNTAX_CASE_CLASS) {
+        // redefinition check
+        Symbol *varSymbol = symbolTableFind(data->functionSymbols, algebdtNode->text);
+        if (varSymbol != NULL) {
+            return COMPILER_REDEFINITION_ERROR;
+        }
+
+        algebdtNode->type = ABSTRACT_SYNTAX_FUNCTION;
+        Symbol *classConstructorSymbol = semAnalAstNodeToSymbol(algebdtNode);
+        if (classConstructorSymbol == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        classConstructorSymbol->kind = SYMBOL_TYPE;
+        classConstructorSymbol->defined = true;
+
+        status = symbolTableInsert(data->functionSymbols, classConstructorSymbol);
+        if (status != COMPILER_OK) {
+            semAnalFreeSymbol(classConstructorSymbol);
+            return status;
+        }
+
+        algebdtNode->type = ABSTRACT_SYNTAX_CASE_CLASS;
+    }
+
+    return COMPILER_OK;
+}
+
+CompilerStatus semAnalDeclareFunctions(AbstractSyntaxNode *rootNode, SemAnalData *data)
+{
+    if (rootNode == NULL || data == NULL || data->functionSymbols == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    SymbolTable *symbols = data->functionSymbols;
     CompilerStatus status;
 
     bool hasMain = false;
 
     for (size_t funI = 0; funI < rootNode->childCount; ++funI) {
+        AbstractSyntaxNode *currentNode = rootNode->children[funI];
+
+        // check for global scope algebraic types definitions (types/classes)
+        if (currentNode->type != ABSTRACT_SYNTAX_FUNCTION) {
+            status = semAnalResolveGlobalAlgebdt(currentNode, data);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+            continue; // node not a function - continuing
+        }
+
         // multiple mains
-        if (hasMain && rootNode->children[funI]->isEntryFunction) {
+        if (hasMain && currentNode->isEntryFunction) {
             return COMPILER_REDEFINITION_ERROR;
         }
 
         // check if main is main, if not main then ok
-        status = semAnalCheckMain(rootNode->children[funI]);
+        status = semAnalCheckMain(currentNode);
         if (status != COMPILER_OK) {
             return status;
         }
 
         // update hasMain
-        hasMain = hasMain || rootNode->children[funI]->isEntryFunction;
+        hasMain = hasMain || currentNode->isEntryFunction;
 
         // create symbol
-        Symbol *symbolTmp = semAnalAstNodeToSymbol(rootNode->children[funI]);
+        Symbol *symbolTmp = semAnalAstNodeToSymbol(currentNode);
         if (symbolTmp == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
@@ -237,8 +309,7 @@ CompilerStatus semAnalDeclareFunctions(AbstractSyntaxNode *rootNode, SymbolTable
 
 CompilerStatus semAnalCheckMain(AbstractSyntaxNode *functionNode)
 {
-    if (functionNode == NULL || functionNode->type != ABSTRACT_SYNTAX_FUNCTION ||
-        functionNode->childCount == 0) {
+    if (functionNode == NULL || functionNode->childCount == 0) {
         return COMPILER_INTERNAL_ERROR;
     }
 
@@ -272,6 +343,7 @@ Symbol *semAnalCreateSymbolDefault()
     symbol->mutable = false;
     symbol->defined = false;
     symbol->function.parameterTypes = NULL;
+    symbol->function.parameterNames = NULL;
     symbol->function.parameterCount = 0;
     symbol->function.returnType = DATA_TYPE_UNKNOWN;
 
@@ -281,6 +353,7 @@ Symbol *semAnalCreateSymbolDefault()
 void semAnalFreeSymbol(Symbol *symbol)
 {
     free(symbol->function.parameterTypes);
+    free(symbol->function.parameterNames);
     free(symbol);
 }
 
@@ -307,6 +380,28 @@ DataType *semAnalAstGetParameterTypes(AbstractSyntaxNode *node) {
     return types;
 }
 
+char **semAnalAstGetParameterNames(AbstractSyntaxNode *node) {
+    if (node == NULL || node->type != ABSTRACT_SYNTAX_FUNCTION) {
+        return NULL;
+    }
+
+    char **names = memoryAllocate(sizeof(char *) * (node->childCount - 1));
+    if (names == NULL) {
+        return NULL;
+    }
+
+    for (size_t parameterI = 0; parameterI < node->childCount - 1; parameterI++) {
+        if (node->children[parameterI] == NULL || node->children[parameterI]->type != ABSTRACT_SYNTAX_PARAMETER) {
+            free(names);
+            return NULL;
+        }
+
+        names[parameterI] = node->children[parameterI]->text;
+    }
+
+    return names;
+}
+
 
 Symbol *semAnalAstNodeToSymbol(AbstractSyntaxNode *node) {
     if (node == NULL) {
@@ -324,6 +419,8 @@ Symbol *semAnalAstNodeToSymbol(AbstractSyntaxNode *node) {
     } else if (node->kind == ABSTRACT_SYNTAX_PARAMETER ||
                node->kind == ABSTRACT_SYNTAX_VARIABLE_DECLARATION) {
         symbol->kind = SYMBOL_VARIABLE;
+    } else if (node->kind == ABSTRACT_SYNTAX_TYPE || node->kind == ABSTRACT_SYNTAX_CASE_CLASS) {
+        symbol->kind = SYMBOL_TYPE;
     } else {
         free(symbol);
         return NULL;
@@ -333,14 +430,25 @@ Symbol *semAnalAstNodeToSymbol(AbstractSyntaxNode *node) {
     symbol->dataType = node->variableType;
     symbol->mutable = node->isMutable;
 
-    if (symbol->kind == SYMBOL_FUNCTION) {
+    // case classes are treated structurally like functions here for parameter extraction
+    if (symbol->kind == SYMBOL_FUNCTION || node->kind == ABSTRACT_SYNTAX_CASE_CLASS) {
         symbol->function.parameterTypes = semAnalAstGetParameterTypes(node);
         if (symbol->function.parameterTypes == NULL) {
             free(symbol);
             return NULL;
         }
+        symbol->function.parameterNames = semAnalAstGetParameterNames(node);
+        if (symbol->function.parameterNames == NULL) {
+            free(symbol->function.parameterTypes);
+            free(symbol);
+            return NULL;
+        }
         symbol->function.parameterCount = node->childCount - 1;
         symbol->function.returnType = node->variableType;
+    }
+
+    if (symbol->kind == SYMBOL_TYPE) {
+        // class and type specific configuration to be implemented
     }
 
     return symbol;
@@ -434,7 +542,7 @@ CompilerStatus semAnalResolveFunctionReturnType(AbstractSyntaxNode *functionNode
     // get the correct function type
     if (functionSymbol->function.returnType == DATA_TYPE_UNKNOWN) {
         functionSymbol->function.returnType = lastType;
-    } else if (functionNode->variableType != DATA_TYPE_UNIT && functionSymbol->function.returnType != lastType) {
+    } else if (functionNode->variableType != DATA_TYPE_UNIT && !semAnalIsSubtype(functionSymbol->function.returnType, lastType)) {
         return COMPILER_TYPE_ERROR;
     }
 
@@ -518,6 +626,19 @@ CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SemAna
 }
 
 
+bool semAnalIsSubtype(DataType superType, DataType subType)
+{
+    if ((superType & subType) == subType) {
+        if ((subType & DATA_TYPE_TYPE) || (subType & DATA_TYPE_CASE_CLASS)) {
+            // class and type resolution logic to be implemented
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
 CompilerStatus semAnalResolveNode(AbstractSyntaxNode *node, SemAnalData *data) {
     if (node == NULL) {
         return COMPILER_OK;
@@ -535,6 +656,8 @@ CompilerStatus semAnalResolveNode(AbstractSyntaxNode *node, SemAnalData *data) {
         case ABSTRACT_SYNTAX_UNARY_EXPRESSION: return semAnalResolveUnaryExpression(node, data);
         case ABSTRACT_SYNTAX_IDENTIFIER: return semAnalResolveIdentifier(node, data);
         case ABSTRACT_SYNTAX_FOR: return semAnalResolveFor(node, data);
+        case ABSTRACT_SYNTAX_MEMBER_ACCESS: return semAnalResolveMemberAccess(node, data);
+        case ABSTRACT_SYNTAX_MATCH: return semAnalResolveMatch(node, data);
         case ABSTRACT_SYNTAX_INT_LITERAL:
             node->inferredType = DATA_TYPE_INT;
             return COMPILER_OK;
@@ -593,7 +716,8 @@ DataType semAnalEvaluatesToType(AbstractSyntaxNode *node)
     }
 
     if (node->type == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT || node->type == ABSTRACT_SYNTAX_FUNCTION_CALL
-        || node->type == ABSTRACT_SYNTAX_RETURN || node->type == ABSTRACT_SYNTAX_IF) {
+        || node->type == ABSTRACT_SYNTAX_RETURN || node->type == ABSTRACT_SYNTAX_IF
+        || node->type == ABSTRACT_SYNTAX_MATCH || node->type == ABSTRACT_SYNTAX_MEMBER_ACCESS) {
         return node->inferredType;
     }
 
@@ -741,14 +865,16 @@ CompilerStatus semAnalResolveFor(AbstractSyntaxNode *forNode, SemAnalData *data)
     // resolve guards in the inner scope
     for (size_t guardI = 4; guardI < forNode->childCount - 1; ++guardI) {
         AbstractSyntaxNode *guardNode = forNode->children[guardI];
-        status = semAnalResolveNode(guardNode, data);
-        if (status != COMPILER_OK) {
-            symbolTableLeaveScope(currentTable);
-            return status;
-        }
-        if (guardNode->inferredType != DATA_TYPE_BOOLEAN) {
-            symbolTableLeaveScope(currentTable);
-            return COMPILER_TYPE_ERROR;
+        if (guardNode != NULL) {
+            status = semAnalResolveNode(guardNode, data);
+            if (status != COMPILER_OK) {
+                symbolTableLeaveScope(currentTable);
+                return status;
+            }
+            if (guardNode->inferredType != DATA_TYPE_BOOLEAN) {
+                symbolTableLeaveScope(currentTable);
+                return COMPILER_TYPE_ERROR;
+            }
         }
     }
 
@@ -819,9 +945,247 @@ CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SemAnalData 
     }
 
     if (functionSymbol->function.returnType == DATA_TYPE_UNKNOWN
-        || (functionSymbol->function.returnType != DATA_TYPE_UNIT && functionSymbol->function.returnType != returnNode->inferredType)) {
+        || (functionSymbol->function.returnType != DATA_TYPE_UNIT && !semAnalIsSubtype(functionSymbol->function.returnType, returnNode->inferredType))) {
         return COMPILER_TYPE_ERROR;
     }
+
+    return COMPILER_OK;
+}
+
+CompilerStatus semAnalResolveMemberAccess(AbstractSyntaxNode *accessNode, SemAnalData *data) {
+    if (accessNode == NULL || data == NULL || accessNode->childCount != 2) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    CompilerStatus status = COMPILER_OK;
+
+    // resolve the object
+    AbstractSyntaxNode *objectNode = accessNode->children[0];
+    status = semAnalResolveNode(objectNode, data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    // TODO dynamic class lookup
+    // acting as if it finds a valid member for the class type if the object is a case class
+    if (objectNode->inferredType == DATA_TYPE_CASE_CLASS) {
+        accessNode->inferredType = DATA_TYPE_UNKNOWN; // the member access type
+    } else {
+        return COMPILER_TYPE_ERROR;
+    }
+
+    return COMPILER_OK;
+}
+
+CompilerStatus semAnalResolveCaseClassPattern(AbstractSyntaxNode *patternNode, SemAnalData *data, SymbolTable *currentTable) {
+    Symbol *caseClassSymbol = symbolTableFind(data->functionSymbols, patternNode->text);
+    if (caseClassSymbol == NULL) {
+        return COMPILER_UNDEFINED_SYMBOL_ERROR;
+    }
+
+    if (caseClassSymbol->kind != SYMBOL_TYPE) {
+        return COMPILER_TYPE_ERROR; // pattern is a normal function, not a case class
+    }
+
+    if (patternNode->childCount != caseClassSymbol->function.parameterCount) {
+        return COMPILER_ARGUMENT_ERROR;
+    }
+
+    for (size_t paramI = 0; paramI < patternNode->childCount; ++paramI) {
+        AbstractSyntaxNode *argNode = patternNode->children[paramI];
+
+        if (argNode == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        DataType extractedType = caseClassSymbol->function.parameterTypes[paramI];
+
+        if (argNode->type != ABSTRACT_SYNTAX_IDENTIFIER) {
+            return COMPILER_TYPE_ERROR;
+        }
+
+        // standard variable binding in pattern
+        Symbol *existingSymbol = symbolTableFindCurrentScope(currentTable, argNode->text);
+        if (existingSymbol != NULL) {
+            return COMPILER_REDEFINITION_ERROR;
+        }
+
+        // temporarily fake the kind so semAnalAstNodeToSymbol maps it to SYMBOL_VARIABLE
+        int originalKind = argNode->kind;
+        argNode->kind = ABSTRACT_SYNTAX_VARIABLE_DECLARATION;
+        argNode->variableType = extractedType;
+        argNode->isMutable = false;
+
+        Symbol *newSymbol = semAnalAstNodeToSymbol(argNode);
+        if (newSymbol == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        newSymbol->defined = true;
+
+        ++data->variableIdCounter;
+        newSymbol->variableId = data->variableIdCounter;
+
+        // restore the original kind
+        argNode->kind = originalKind;
+
+        argNode->variableId = newSymbol->variableId;
+        argNode->inferredType = extractedType;
+
+        CompilerStatus status = symbolTableInsert(currentTable, newSymbol);
+        if (status != COMPILER_OK) {
+            semAnalFreeSymbol(newSymbol);
+            return status;
+        }
+    }
+
+    return COMPILER_OK;
+}
+
+CompilerStatus semAnalResolveMatch(AbstractSyntaxNode *matchNode, SemAnalData *data) {
+    if (matchNode == NULL || data == NULL || data->functionSymbols == NULL || matchNode->childCount < 1) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    CompilerStatus status = COMPILER_OK;
+
+    // resolve scrutinee
+    AbstractSyntaxNode *scrutinee = matchNode->children[0];
+    status = semAnalResolveNode(scrutinee, data);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    DataType allBranchesType = DATA_TYPE_UNKNOWN;
+
+    // resolve branches
+    for (size_t branchI = 1; branchI < matchNode->childCount; ++branchI) {
+        AbstractSyntaxNode *branchNode = matchNode->children[branchI];
+        if (branchNode == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        SymbolTable *currentTable = data->symbolTables[data->numberOfTables - 1];
+        status = symbolTableEnterScope(currentTable);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        // resolve pattern and declare bindings in scope
+        AbstractSyntaxNode *patternNode = branchNode->children[0];
+        if (patternNode != NULL) {
+            if (patternNode->type == ABSTRACT_SYNTAX_VARIABLE_DECLARATION) {
+                // custom insertion for pattern variables (no initExpr to evaluate)
+                Symbol *existingSymbol = symbolTableFindCurrentScope(currentTable, patternNode->text);
+                if (existingSymbol != NULL) {
+                    symbolTableLeaveScope(currentTable);
+                    return COMPILER_REDEFINITION_ERROR;
+                }
+
+                // check overlap with the scrutinee
+                if ((scrutinee->inferredType & patternNode->variableType) == 0) {
+                    if (!((scrutinee->inferredType & DATA_TYPE_DOUBLE) && patternNode->variableType == DATA_TYPE_INT)) {
+                        symbolTableLeaveScope(currentTable);
+                        return COMPILER_TYPE_ERROR;
+                    }
+                }
+
+                Symbol *newSymbol = semAnalAstNodeToSymbol(patternNode);
+                if (newSymbol == NULL) {
+                    symbolTableLeaveScope(currentTable);
+                    return COMPILER_INTERNAL_ERROR;
+                }
+
+                newSymbol->defined = true;
+                ++data->variableIdCounter;
+                newSymbol->variableId = data->variableIdCounter;
+
+                patternNode->variableId = newSymbol->variableId;
+                patternNode->inferredType = patternNode->variableType;
+
+                status = symbolTableInsert(currentTable, newSymbol);
+                if (status != COMPILER_OK) {
+                    semAnalFreeSymbol(newSymbol);
+                    symbolTableLeaveScope(currentTable);
+                    return status;
+                }
+            } else if (patternNode->type == ABSTRACT_SYNTAX_FUNCTION_CALL) {
+                status = semAnalResolveCaseClassPattern(patternNode, data, currentTable);
+                if (status != COMPILER_OK) {
+                    symbolTableLeaveScope(currentTable);
+                    return status;
+                }
+            } else if (patternNode->type == ABSTRACT_SYNTAX_IDENTIFIER) {
+                // top-level wildcard '_' matches everything, no bindings needed
+                if (strcmp(patternNode->text, "_") == 0) {
+                    patternNode->inferredType = scrutinee->inferredType;
+                } else {
+                    symbolTableLeaveScope(currentTable);
+                    return COMPILER_TYPE_ERROR;
+                }
+            } else if (patternNode->type == ABSTRACT_SYNTAX_INT_LITERAL ||
+                       patternNode->type == ABSTRACT_SYNTAX_DOUBLE_LITERAL ||
+                       patternNode->type == ABSTRACT_SYNTAX_STRING_LITERAL ||
+                       patternNode->type == ABSTRACT_SYNTAX_BOOLEAN_LITERAL ||
+                       patternNode->type == ABSTRACT_SYNTAX_UNIT_LITERAL ||
+                       patternNode->type == ABSTRACT_SYNTAX_UNARY_EXPRESSION) {
+
+                status = semAnalResolveNode(patternNode, data);
+                if (status != COMPILER_OK) {
+                    symbolTableLeaveScope(currentTable);
+                    return status;
+                }
+
+                // literal must overlap with the scrutinee type
+                if ((scrutinee->inferredType & patternNode->inferredType) == 0) {
+                    // allow Int to match a scrutinee that expects Double
+                    if (!((scrutinee->inferredType & DATA_TYPE_DOUBLE) && patternNode->inferredType == DATA_TYPE_INT)) {
+                        symbolTableLeaveScope(currentTable);
+                        return COMPILER_TYPE_ERROR;
+                    }
+                }
+            } else {
+                // unsupported pattern type
+                symbolTableLeaveScope(currentTable);
+                return COMPILER_TYPE_ERROR;
+            }
+        }
+
+        // resolve optional guard
+        AbstractSyntaxNode *guardNode = branchNode->children[1];
+        if (guardNode != NULL) {
+            status = semAnalResolveNode(guardNode, data);
+            if (status != COMPILER_OK) {
+                symbolTableLeaveScope(currentTable);
+                return status;
+            }
+            if (guardNode->inferredType != DATA_TYPE_BOOLEAN) {
+                symbolTableLeaveScope(currentTable);
+                return COMPILER_TYPE_ERROR;
+            }
+        }
+
+        // resolve branch body
+        AbstractSyntaxNode *bodyNode = branchNode->children[2];
+        if (bodyNode != NULL) {
+            status = semAnalResolveNode(bodyNode, data);
+            if (status != COMPILER_OK) {
+                symbolTableLeaveScope(currentTable);
+                return status;
+            }
+
+            DataType branchType = semAnalEvaluatesToType(bodyNode);
+            if (branchType == DATA_TYPE_UNKNOWN) {
+                allBranchesType = DATA_TYPE_UNKNOWN;
+            } else {
+                allBranchesType |= branchType;
+            }
+        }
+
+        symbolTableLeaveScope(currentTable);
+    }
+
+    matchNode->inferredType = allBranchesType;
 
     return COMPILER_OK;
 }
@@ -865,7 +1229,7 @@ CompilerStatus semAnalResolveFunctionCall(AbstractSyntaxNode *functionCallNode, 
     }
 
     Symbol *funcSymbol = symbolTableFind(data->functionSymbols, functionCallNode->text);
-    if (funcSymbol == NULL || funcSymbol->kind != SYMBOL_FUNCTION) {
+    if (funcSymbol == NULL) {
         return COMPILER_UNDEFINED_SYMBOL_ERROR;
     }
 
@@ -886,8 +1250,8 @@ CompilerStatus semAnalResolveFunctionCall(AbstractSyntaxNode *functionCallNode, 
         DataType argType = argNode->inferredType;
         DataType expectedType = funcSymbol->function.parameterTypes[i];
 
-        if (expectedType != DATA_TYPE_UNKNOWN && expectedType != argType) {
-            if (expectedType == DATA_TYPE_DOUBLE && argType == DATA_TYPE_INT) {
+        if (expectedType != DATA_TYPE_UNKNOWN && !semAnalIsSubtype(expectedType, argType)) {
+            if ((expectedType & DATA_TYPE_DOUBLE) && argType == DATA_TYPE_INT) {
                 argNode->inferredType = DATA_TYPE_INT; // implicit conversion later
             } else {
                 return COMPILER_ARGUMENT_ERROR;
@@ -942,8 +1306,8 @@ CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDec
 
     // check for wrong types
     if (variableDeclarationNode->variableType != DATA_TYPE_UNKNOWN &&
-        initExpr->inferredType != variableDeclarationNode->variableType) {
-        if (variableDeclarationNode->variableType == DATA_TYPE_DOUBLE && initExpr->inferredType == DATA_TYPE_INT) {
+        !semAnalIsSubtype(variableDeclarationNode->variableType, initExpr->inferredType)) {
+        if ((variableDeclarationNode->variableType & DATA_TYPE_DOUBLE) && initExpr->inferredType == DATA_TYPE_INT) {
             initExpr->inferredType = DATA_TYPE_INT; // implicit conversion later
         } else {
             return COMPILER_TYPE_ERROR;
@@ -998,8 +1362,8 @@ CompilerStatus semAnalResolveAssignment(AbstractSyntaxNode *assignmentNode, SemA
     }
 
     // check types
-    if (varSymbol->dataType != assignExpr->inferredType) {
-        if (varSymbol->dataType == DATA_TYPE_DOUBLE && assignExpr->inferredType == DATA_TYPE_INT) {
+    if (!semAnalIsSubtype(varSymbol->dataType, assignExpr->inferredType)) {
+        if ((varSymbol->dataType & DATA_TYPE_DOUBLE) && assignExpr->inferredType == DATA_TYPE_INT) {
             assignExpr->inferredType = DATA_TYPE_INT; // implicit conversion later
         } else {
             return COMPILER_TYPE_ERROR;
@@ -1214,6 +1578,8 @@ CompilerStatus semAnalDefineBuiltinFunctions(SymbolTable *symbols)
     BUILTIN_FUN_MACRO("chr", 1, DATA_TYPE_STRING, DATA_TYPE_INT, 0, 0);
 
     BUILTIN_FUN_MACRO("readBoolean", 0, DATA_TYPE_BOOLEAN, 0, 0, 0);
+    BUILTIN_FUN_MACRO("readIntMaybe", 0, DATA_TYPE_INT | DATA_TYPE_UNIT, 0, 0, 0);
+    BUILTIN_FUN_MACRO("readDoubleMaybe", 0, DATA_TYPE_DOUBLE | DATA_TYPE_UNIT, 0, 0, 0);
 
     return COMPILER_OK;
 }

@@ -87,14 +87,23 @@ Symbol *semAnalAstNodeToSymbol(AbstractSyntaxNode *node);
 CompilerStatus semAnalDefineBuiltinFunctions(SymbolTable *symbols);
 
 /**
+ * @brief Resolves a global algebraic data type declaration.
+ * @param algebdtNode The algebraic data type AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveGlobalAlgebdt(AbstractSyntaxNode *algebdtNode, SemAnalData *data);
+
+/**
  * @brief Adds all user functions to the table of symbols.
  * It adds function name, explicit return type and parameters.
  * It does not check the function body or correct return semantics.
+ * It also calls a function to resolve definitions of types and classes if it encounters them.
  * @param rootNode Root node of the AST.
- * @param symbols Table of symbols to insert the functions to.
+ * @param data The semantic-analysis data to use. Contains the functions symbol table.
  * @return status of the program - error codes
  */
-CompilerStatus semAnalDeclareFunctions(AbstractSyntaxNode *rootNode, SymbolTable *symbols);
+CompilerStatus semAnalDeclareFunctions(AbstractSyntaxNode *rootNode, SemAnalData *data);
 
 /**
  * @brief Checks that an entry function has no parameters and returns unit.
@@ -149,6 +158,14 @@ CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalDa
 CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SemAnalData *data);
 
 /**
+ * @brief Checks whether one data type is a subtype of another.
+ * @param superType The type that accepts values of subType.
+ * @param subType The type to check.
+ * @return true if subType is a subtype of superType, otherwise false.
+ */
+bool semAnalIsSubtype(DataType superType, DataType subType);
+
+/**
  * @brief Resolves the statements in a block.
  * @param blockNode The block AST node to resolve.
  * @param data The semantic-analysis data to use.
@@ -196,6 +213,31 @@ CompilerStatus semAnalResolveWhile(AbstractSyntaxNode *whileNode, SemAnalData *d
  * @return status of the program - error codes
  */
 CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SemAnalData *data);
+
+/**
+ * @brief Resolves a member access expression and determines its type.
+ * @param accessNode The member-access AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveMemberAccess(AbstractSyntaxNode *accessNode, SemAnalData *data);
+
+/**
+ * @brief Resolves a case-class pattern and validates its bindings.
+ * @param patternNode The case-class pattern AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @param currentTable The symbol table scope for the pattern bindings.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveCaseClassPattern(AbstractSyntaxNode *patternNode, SemAnalData *data, SymbolTable *currentTable);
+
+/**
+ * @brief Resolves a match expression and its branches.
+ * @param matchNode The match-expression AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveMatch(AbstractSyntaxNode *matchNode, SemAnalData *data);
 
 /**
  * @brief Finds a function in the current recursion list.

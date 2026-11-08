@@ -21,6 +21,7 @@ typedef enum {
 
 typedef struct {
     DataType *parameterTypes;
+    char **parameterNames;
     size_t parameterCount;
     DataType returnType;
 } FunctionSignature;
@@ -29,6 +30,7 @@ typedef struct {
     const char *name;
     SymbolKind kind;
     DataType dataType;
+    DataType variableCurrentType;
     bool mutable;
     bool defined;
     FunctionSignature function;

@@ -176,9 +176,8 @@ Symbol *symbolTableFindCurrentScope(const SymbolTable *table, const char *name)
 
 void symbolTableOnRemoveAction(void *data, void *key)
 {
-    if (((Symbol *)data)->kind == SYMBOL_FUNCTION) {
-        free(((Symbol *)data)->function.parameterTypes);
-    }
+    free(((Symbol *)data)->function.parameterTypes);
+    free(((Symbol *)data)->function.parameterNames);
 
     free(data);
     free(key);
