@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <stddef.h>
+#include <string.h>
 
 typedef struct {
     TokenType type;
@@ -177,6 +178,64 @@ int main(void) {
     assert(expression->children[1]->text != NULL && expression->children[1]->text[0] == '*');
     abstractSyntaxNodeDestroy(expression);
 
+    static const TestToken nestedFunctionCallTokens[] = {
+        {TOKEN_INT_LITERAL, "2", 1, 1, 2},
+        TEST_TOKEN(TOKEN_OPERATOR, "*", 1, 3),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "factorial", 1, 5),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 14),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "readInt", 1, 15),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 22),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 23),
+        TEST_TOKEN(TOKEN_OPERATOR, "+", 1, 25),
+        {TOKEN_INT_LITERAL, "1", 1, 27, 1},
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 28),
+        TEST_TOKEN(TOKEN_EOF, NULL, 1, 29)};
+    expression = NULL;
+    assert(parseExpressionTokens(nestedFunctionCallTokens,
+                                 sizeof(nestedFunctionCallTokens) /
+                                     sizeof(nestedFunctionCallTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(expression->text[0] == '*');
+    AbstractSyntaxNode *factorialCall = expression->children[1];
+    assert(factorialCall->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
+    assert(strcmp(factorialCall->text, "factorial") == 0);
+    assert(factorialCall->childCount == 1);
+    AbstractSyntaxNode *argumentExpression = factorialCall->children[0];
+    assert(argumentExpression->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(argumentExpression->text[0] == '+');
+    assert(argumentExpression->children[0]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
+    assert(strcmp(argumentExpression->children[0]->text, "readInt") == 0);
+    assert(argumentExpression->children[0]->childCount == 0);
+    assert(argumentExpression->children[1]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    abstractSyntaxNodeDestroy(expression);
+
+    static const TestToken expressionArgumentsTokens[] = {
+        TEST_TOKEN(TOKEN_IDENTIFIER, "subStr", 1, 1),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 7),
+        TEST_TOKEN(TOKEN_STRING_LITERAL, "abcd", 1, 8),
+        TEST_TOKEN(TOKEN_COMMA, ",", 1, 14),
+        {TOKEN_INT_LITERAL, "1", 1, 16, 1},
+        TEST_TOKEN(TOKEN_OPERATOR, "+", 1, 18),
+        {TOKEN_INT_LITERAL, "1", 1, 20, 1},
+        TEST_TOKEN(TOKEN_COMMA, ",", 1, 21),
+        {TOKEN_INT_LITERAL, "3", 1, 23, 3},
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 24),
+        TEST_TOKEN(TOKEN_EOF, NULL, 1, 25)};
+    expression = NULL;
+    assert(parseExpressionTokens(expressionArgumentsTokens,
+                                 sizeof(expressionArgumentsTokens) /
+                                     sizeof(expressionArgumentsTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
+    assert(strcmp(expression->text, "subStr") == 0);
+    assert(expression->childCount == 3);
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_STRING_LITERAL);
+    assert(expression->children[1]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(expression->children[1]->text[0] == '+');
+    assert(expression->children[2]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    abstractSyntaxNodeDestroy(expression);
+
     static const TestToken unaryPrefixTokens[] = {
         TEST_TOKEN(TOKEN_OPERATOR, "+", 1, 1),    TEST_TOKEN(TOKEN_OPERATOR, "-", 1, 2),
         TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 3),  {TOKEN_INT_LITERAL, "5", 1, 4, 5},
@@ -245,8 +304,13 @@ int main(void) {
     expression = NULL;
     assert(parseExpressionTokens(callOperandTokens,
                                  sizeof(callOperandTokens) / sizeof(callOperandTokens[0]),
-                                 &expression) == COMPILER_SYNTAX_ERROR);
-    assert(expression == NULL);
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(expression->text[0] == '+');
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
+    assert(expression->children[0]->childCount == 0);
+    assert(expression->children[1]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    abstractSyntaxNodeDestroy(expression);
 
     struct LexicalAnalyzer lexerState = {
         .tokens = tokens, .tokenCount = sizeof(tokens) / sizeof(tokens[0]), .nextToken = 0};

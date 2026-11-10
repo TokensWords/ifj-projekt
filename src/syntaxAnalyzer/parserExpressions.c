@@ -177,8 +177,12 @@ CompilerStatus parseFunctionCall(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxN
 
     if (!currentIsType(syntaxAnalyzer, TOKEN_RIGHT_PAREN)) {
         for (;;) {
-            status = parseTerm(syntaxAnalyzer, &argument);
+            status = analyzerExpressionsParse(syntaxAnalyzer, &argument);
             if (status != COMPILER_OK) {
+                goto cleanup;
+            }
+            if (argument == NULL) {
+                status = COMPILER_INTERNAL_ERROR;
                 goto cleanup;
             }
             status = appendOwnedChild(call, argument);
@@ -229,16 +233,6 @@ CompilerStatus analyzerExpressionsParseValueOrCall(SyntaxAnalyzer *syntaxAnalyze
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
         return status;
-    }
-    if (isIdentifierToken(syntaxAnalyzer->currentToken)) {
-        status = ensureNextToken(syntaxAnalyzer);
-        if (status != COMPILER_OK) {
-            return status;
-        }
-        if (syntaxAnalyzer->nextToken != NULL &&
-            syntaxAnalyzer->nextToken->type == TOKEN_LEFT_PAREN) {
-            return parseFunctionCall(syntaxAnalyzer, outNode);
-        }
     }
     return analyzerExpressionsParse(syntaxAnalyzer, outNode);
 }
@@ -511,11 +505,21 @@ static CompilerStatus shiftExpressionToken(SyntaxAnalyzer *syntaxAnalyzer,
             }
             return advanceToken(syntaxAnalyzer);
         }
-        if (token->type == TOKEN_IDENTIFIER && syntaxAnalyzer->nextToken != NULL &&
-            syntaxAnalyzer->nextToken->type == TOKEN_LEFT_PAREN) {
-            return COMPILER_SYNTAX_ERROR;
+        CompilerStatus status;
+        if (token->type == TOKEN_IDENTIFIER) {
+            status = ensureNextToken(syntaxAnalyzer);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+            if (syntaxAnalyzer->nextToken != NULL &&
+                syntaxAnalyzer->nextToken->type == TOKEN_LEFT_PAREN) {
+                status = parseFunctionCall(syntaxAnalyzer, &entry.node);
+            } else {
+                status = parseTerm(syntaxAnalyzer, &entry.node);
+            }
+        } else {
+            status = parseTerm(syntaxAnalyzer, &entry.node);
         }
-        CompilerStatus status = parseTerm(syntaxAnalyzer, &entry.node);
         if (status != COMPILER_OK) {
             return status;
         }
