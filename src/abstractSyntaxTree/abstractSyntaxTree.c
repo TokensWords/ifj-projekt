@@ -51,6 +51,7 @@ AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType type, Source
     node->childCapacity = 0;
     node->variableId = 0;
     node->isEntryFunction = false;
+    node->isMutable = false;
     return node;
 }
 
