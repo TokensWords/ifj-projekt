@@ -449,6 +449,8 @@ CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer,
             goto cleanup;
         }
 
+        bool isCompoundStatement = statement->kind == ABSTRACT_SYNTAX_IF ||
+                                   statement->kind == ABSTRACT_SYNTAX_WHILE;
         status = appendOwnedChild(block, statement);
         statement = NULL;
         if (status != COMPILER_OK) {
@@ -460,7 +462,7 @@ CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer,
             if (status != COMPILER_OK) {
                 goto cleanup;
             }
-        } else if (!currentIsType(syntaxAnalyzer, TOKEN_DEDENT)) {
+        } else if (!currentIsType(syntaxAnalyzer, TOKEN_DEDENT) && !isCompoundStatement) {
             status = COMPILER_SYNTAX_ERROR;
             goto cleanup;
         }

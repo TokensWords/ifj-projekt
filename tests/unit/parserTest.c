@@ -130,9 +130,19 @@ int main(void) {
                                        TEST_TOKEN(TOKEN_UNIT_LITERAL, "()", 12, 7),
                                        TEST_TOKEN(TOKEN_NEWLINE, NULL, 12, 9),
                                        TEST_TOKEN(TOKEN_DEDENT, NULL, 13, 5),
+                                       TEST_TOKEN(TOKEN_IDENTIFIER, "print", 13, 5),
+                                       TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 13, 10),
+                                       {TOKEN_INT_LITERAL, "4", 13, 11, 4},
+                                       TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 13, 12),
+                                       TEST_TOKEN(TOKEN_NEWLINE, NULL, 13, 13),
                                        TEST_TOKEN(TOKEN_DEDENT, NULL, 13, 3),
-                                       TEST_TOKEN(TOKEN_DEDENT, NULL, 14, 1),
-                                       TEST_TOKEN(TOKEN_EOF, NULL, 14, 1)};
+                                       TEST_TOKEN(TOKEN_IDENTIFIER, "print", 14, 3),
+                                       TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 14, 8),
+                                       {TOKEN_INT_LITERAL, "5", 14, 9, 5},
+                                       TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 14, 10),
+                                       TEST_TOKEN(TOKEN_NEWLINE, NULL, 14, 11),
+                                       TEST_TOKEN(TOKEN_DEDENT, NULL, 15, 1),
+                                       TEST_TOKEN(TOKEN_EOF, NULL, 15, 1)};
     assert(syntaxPrecedenceRelation(EXPR_TERMINAL_MULTIPLY, EXPR_TERMINAL_ADD) ==
            PRECEDENCE_REDUCE);
     assert(syntaxPrecedenceRelation(EXPR_TERMINAL_ADD, EXPR_TERMINAL_MULTIPLY) == PRECEDENCE_SHIFT);
@@ -259,7 +269,7 @@ int main(void) {
 
     AbstractSyntaxNode *body = function->children[0];
     assert(body->kind == ABSTRACT_SYNTAX_BLOCK);
-    assert(body->childCount == 6);
+    assert(body->childCount == 7);
 
     AbstractSyntaxNode *declaration = body->children[0];
     assert(declaration->kind == ABSTRACT_SYNTAX_VARIABLE_DECLARATION);
@@ -298,7 +308,7 @@ int main(void) {
     assert(whileNode->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
     AbstractSyntaxNode *whileBody = whileNode->children[1];
     assert(whileBody->kind == ABSTRACT_SYNTAX_BLOCK);
-    assert(whileBody->childCount == 1);
+    assert(whileBody->childCount == 2);
 
     AbstractSyntaxNode *ifNode = whileBody->children[0];
     assert(ifNode->kind == ABSTRACT_SYNTAX_IF);
@@ -306,6 +316,8 @@ int main(void) {
     assert(ifNode->children[1]->kind == ABSTRACT_SYNTAX_BLOCK);
     assert(ifNode->children[2]->kind == ABSTRACT_SYNTAX_BLOCK);
     assert(ifNode->children[2]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT);
+    assert(whileBody->children[1]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
+    assert(body->children[6]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
 
     sourceProgramDestroy(program);
     syntaxAnalyzerDestroy(syntaxAnalyzer);
