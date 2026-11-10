@@ -802,7 +802,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         operand->value.dataType = 0;
 
         break;
-    case ABSTRACT_SYNTAX_BINARY_EXPRESSION: {
+    case ABSTRACT_SYNTAX_EXPRESSION_BINARY: {
         if (node->childCount != 2) {
             return COMPILER_INTERNAL_ERROR;
         }
