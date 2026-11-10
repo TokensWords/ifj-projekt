@@ -305,6 +305,31 @@ static bool hasOpenParenthesis(const ExpressionStackEntry *stack, size_t count) 
     return false;
 }
 
+static bool expressionExpectsOperand(const ExpressionStackEntry *stack, size_t count) {
+    /* A sign is unary at expression start or after a token that still needs an operand. */
+    while (count > 0) {
+        const ExpressionStackEntry *entry = &stack[--count];
+        if (entry->kind == EXPRESSION_STACK_MARKER) {
+            continue;
+        }
+        if (entry->kind != EXPRESSION_STACK_TERMINAL) {
+            return false;
+        }
+
+        ExpressionTerminal terminal = entry->terminal;
+        return terminal == EXPR_TERMINAL_END || terminal == EXPR_TERMINAL_LEFT_PAREN ||
+               terminal == EXPR_TERMINAL_UNARY_PLUS || terminal == EXPR_TERMINAL_UNARY_MINUS ||
+               (terminal >= EXPR_TERMINAL_MULTIPLY && terminal <= EXPR_TERMINAL_SUBTRACT) ||
+               (terminal >= EXPR_TERMINAL_LESS && terminal <= EXPR_TERMINAL_NOT_EQUAL);
+    }
+    return true;
+}
+
+static bool isBinaryExpressionOperator(ExpressionTerminal terminal) {
+    return (terminal >= EXPR_TERMINAL_MULTIPLY && terminal <= EXPR_TERMINAL_SUBTRACT) ||
+           (terminal >= EXPR_TERMINAL_LESS && terminal <= EXPR_TERMINAL_NOT_EQUAL);
+}
+
 static ExpressionTerminal terminalForToken(const Token *token, const ExpressionStackEntry *stack,
                                            size_t stackCount) {
     if (token == NULL) {
@@ -324,6 +349,14 @@ static ExpressionTerminal terminalForToken(const Token *token, const ExpressionS
     if (token->type == TOKEN_OPERATOR) {
         ExpressionTerminal terminal;
         if (syntaxOperatorFromToken(token, &terminal)) {
+            if (expressionExpectsOperand(stack, stackCount)) {
+                if (terminal == EXPR_TERMINAL_ADD) {
+                    return EXPR_TERMINAL_UNARY_PLUS;
+                }
+                if (terminal == EXPR_TERMINAL_SUBTRACT) {
+                    return EXPR_TERMINAL_UNARY_MINUS;
+                }
+            }
             return terminal;
         }
     }
@@ -374,10 +407,39 @@ static CompilerStatus reduceExpressionHandle(ExpressionStackEntry *stack, size_t
         return COMPILER_OK;
     }
 
+    if (handleLength == 2 && stack[handleStart].kind == EXPRESSION_STACK_TERMINAL &&
+        (stack[handleStart].terminal == EXPR_TERMINAL_UNARY_PLUS ||
+         stack[handleStart].terminal == EXPR_TERMINAL_UNARY_MINUS) &&
+        stack[handleStart + 1].kind == EXPRESSION_STACK_NONTERMINAL &&
+        stack[handleStart + 1].node != NULL) {
+        /* Keep prefix signs as unary AST nodes so semantic analysis sees the operator. */
+        AbstractSyntaxNode *operand = stack[handleStart + 1].node;
+        AbstractSyntaxNode *node =
+            createNode(ABSTRACT_SYNTAX_UNARY_EXPRESSION, stack[handleStart].location);
+        if (node == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+        CompilerStatus status = setNodeText(node, syntaxOperatorText(stack[handleStart].terminal));
+        if (status != COMPILER_OK) {
+            abstractSyntaxNodeDestroy(node);
+            return status;
+        }
+
+        stack[handleStart + 1].node = NULL;
+        status = appendOwnedChild(node, operand);
+        if (status != COMPILER_OK) {
+            abstractSyntaxNodeDestroy(node);
+            return status;
+        }
+        stack[markerIndex] =
+            (ExpressionStackEntry){.kind = EXPRESSION_STACK_NONTERMINAL, .node = node};
+        *stackCount = markerIndex + 1;
+        return COMPILER_OK;
+    }
+
     if (handleLength == 3 && stack[handleStart].kind == EXPRESSION_STACK_NONTERMINAL &&
         stack[handleStart + 1].kind == EXPRESSION_STACK_TERMINAL &&
-        stack[handleStart + 1].terminal >= EXPR_TERMINAL_MULTIPLY &&
-        stack[handleStart + 1].terminal <= EXPR_TERMINAL_NOT_EQUAL &&
+        isBinaryExpressionOperator(stack[handleStart + 1].terminal) &&
         stack[handleStart + 2].kind == EXPRESSION_STACK_NONTERMINAL) {
         AbstractSyntaxNode *left = stack[handleStart].node;
         AbstractSyntaxNode *right = stack[handleStart + 2].node;
