@@ -109,6 +109,11 @@ int main(void)
         TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 6, 16),
         TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 6, 17),
         TEST_TOKEN(TOKEN_NEWLINE, NULL, 6, 18),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "print", 7, 3),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 7, 8),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "total", 7, 9),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 7, 14),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 7, 15),
         TEST_TOKEN(TOKEN_KEYWORD, "while", 8, 3),
         TEST_TOKEN(TOKEN_IDENTIFIER, "total", 8, 9),
         TEST_TOKEN(TOKEN_OPERATOR, ">", 8, 15),
@@ -250,7 +255,7 @@ int main(void)
 
     AbstractSyntaxNode *body = function->children[0];
     assert(body->kind == ABSTRACT_SYNTAX_BLOCK);
-    assert(body->childCount == 5);
+    assert(body->childCount == 6);
 
     AbstractSyntaxNode *declaration = body->children[0];
     assert(declaration->kind == ABSTRACT_SYNTAX_VARIABLE_DECLARATION);
@@ -283,7 +288,7 @@ int main(void)
     assert(call->childCount == 1);
     assert(call->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
 
-    AbstractSyntaxNode *whileNode = body->children[4];
+    AbstractSyntaxNode *whileNode = body->children[5];
     assert(whileNode->kind == ABSTRACT_SYNTAX_WHILE);
     assert(whileNode->childCount == 2);
     assert(whileNode->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
