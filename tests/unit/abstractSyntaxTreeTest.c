@@ -19,6 +19,8 @@ int main(void)
     assert(root->location.line == 3);
     assert(root->location.column == 5);
     assert(root->inferredType == DATA_TYPE_UNKNOWN);
+    assert(!root->isMutable);
+    assert(!root->isEntryFunction);
     assert(root->text == NULL);
     assert(root->children == NULL);
     assert(root->childCount == 0);
