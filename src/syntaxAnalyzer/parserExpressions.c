@@ -108,6 +108,10 @@ CompilerStatus parseTerm(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **ou
         nodeType = ABSTRACT_SYNTAX_STRING_LITERAL;
         inferredType = DATA_TYPE_STRING;
         break;
+    case TOKEN_BOOL_LITERAL:
+        nodeType = ABSTRACT_SYNTAX_BOOLEAN_LITERAL;
+        inferredType = DATA_TYPE_BOOLEAN;
+        break;
     case TOKEN_UNIT_LITERAL:
         nodeType = ABSTRACT_SYNTAX_UNIT_LITERAL;
         inferredType = DATA_TYPE_UNIT;
@@ -131,6 +135,8 @@ CompilerStatus parseTerm(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **ou
         if (status != COMPILER_OK) {
             goto cleanup;
         }
+    } else if (nodeType == ABSTRACT_SYNTAX_BOOLEAN_LITERAL) {
+        node->value.boolValue = token->value.boolValue;
     }
 
     status = advanceToken(syntaxAnalyzer);
@@ -313,15 +319,18 @@ static bool expressionExpectsOperand(const ExpressionStackEntry *stack, size_t c
         ExpressionTerminal terminal = entry->terminal;
         return terminal == EXPR_TERMINAL_END || terminal == EXPR_TERMINAL_LEFT_PAREN ||
                terminal == EXPR_TERMINAL_UNARY_PLUS || terminal == EXPR_TERMINAL_UNARY_MINUS ||
+               terminal == EXPR_TERMINAL_LOGICAL_NOT ||
                (terminal >= EXPR_TERMINAL_MULTIPLY && terminal <= EXPR_TERMINAL_SUBTRACT) ||
-               (terminal >= EXPR_TERMINAL_LESS && terminal <= EXPR_TERMINAL_NOT_EQUAL);
+               (terminal >= EXPR_TERMINAL_LESS && terminal <= EXPR_TERMINAL_NOT_EQUAL) ||
+               terminal == EXPR_TERMINAL_LOGICAL_AND || terminal == EXPR_TERMINAL_LOGICAL_OR;
     }
     return true;
 }
 
 static bool isBinaryExpressionOperator(ExpressionTerminal terminal) {
     return (terminal >= EXPR_TERMINAL_MULTIPLY && terminal <= EXPR_TERMINAL_SUBTRACT) ||
-           (terminal >= EXPR_TERMINAL_LESS && terminal <= EXPR_TERMINAL_NOT_EQUAL);
+           (terminal >= EXPR_TERMINAL_LESS && terminal <= EXPR_TERMINAL_NOT_EQUAL) ||
+           terminal == EXPR_TERMINAL_LOGICAL_AND || terminal == EXPR_TERMINAL_LOGICAL_OR;
 }
 
 static ExpressionTerminal terminalForToken(const Token *token, const ExpressionStackEntry *stack,
@@ -331,7 +340,7 @@ static ExpressionTerminal terminalForToken(const Token *token, const ExpressionS
     }
     if (token->type == TOKEN_IDENTIFIER || token->type == TOKEN_INT_LITERAL ||
         token->type == TOKEN_DOUBLE_LITERAL || token->type == TOKEN_STRING_LITERAL ||
-        token->type == TOKEN_UNIT_LITERAL) {
+        token->type == TOKEN_BOOL_LITERAL || token->type == TOKEN_UNIT_LITERAL) {
         return EXPR_TERMINAL_OPERAND;
     }
     if (token->type == TOKEN_LEFT_PAREN) {
@@ -403,7 +412,8 @@ static CompilerStatus reduceExpressionHandle(ExpressionStackEntry *stack, size_t
 
     if (handleLength == 2 && stack[handleStart].kind == EXPRESSION_STACK_TERMINAL &&
         (stack[handleStart].terminal == EXPR_TERMINAL_UNARY_PLUS ||
-         stack[handleStart].terminal == EXPR_TERMINAL_UNARY_MINUS) &&
+         stack[handleStart].terminal == EXPR_TERMINAL_UNARY_MINUS ||
+         stack[handleStart].terminal == EXPR_TERMINAL_LOGICAL_NOT) &&
         stack[handleStart + 1].kind == EXPRESSION_STACK_NONTERMINAL &&
         stack[handleStart + 1].node != NULL) {
         /* Keep prefix signs as unary AST nodes so semantic analysis sees the operator. */

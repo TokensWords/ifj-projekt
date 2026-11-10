@@ -10,6 +10,7 @@
 
 #include "compilerTypes.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef enum {
@@ -41,6 +42,7 @@ typedef enum {
 typedef union {
     int intValue;
     double doubleValue;
+    bool boolValue;
 } TokenValue;
 
 typedef struct {
@@ -56,4 +58,3 @@ void tokenDestroy(Token *token);
 CompilerStatus tokenSetLexeme(Token *token, const char *lexeme);
 
 #endif
-

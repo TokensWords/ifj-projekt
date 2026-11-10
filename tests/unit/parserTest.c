@@ -1,4 +1,5 @@
 #include "parserExpressions.h"
+#include "parserStatements.h"
 #include "syntaxAnalyzer.h"
 #include "syntaxOperators.h"
 
@@ -34,7 +35,11 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
     token->type = testToken->type;
     token->location.line = testToken->line;
     token->location.column = testToken->column;
-    token->value.intValue = testToken->intValue;
+    if (testToken->type == TOKEN_BOOL_LITERAL) {
+        token->value.boolValue = testToken->intValue != 0;
+    } else {
+        token->value.intValue = testToken->intValue;
+    }
     if (testToken->lexeme != NULL && tokenSetLexeme(token, testToken->lexeme) != COMPILER_OK) {
         tokenDestroy(token);
         return COMPILER_INTERNAL_ERROR;
@@ -50,6 +55,17 @@ static CompilerStatus parseExpressionTokens(const TestToken *tokens, size_t toke
     SyntaxAnalyzer *syntaxAnalyzer = syntaxAnalyzerCreate((LexicalAnalyzer *)&lexerState);
     assert(syntaxAnalyzer != NULL);
     CompilerStatus status = analyzerExpressionsParse(syntaxAnalyzer, outNode);
+    syntaxAnalyzerDestroy(syntaxAnalyzer);
+    return status;
+}
+
+static CompilerStatus parseIfTokens(const TestToken *tokens, size_t tokenCount,
+                                    AbstractSyntaxNode **outNode) {
+    struct LexicalAnalyzer lexerState = {
+        .tokens = tokens, .tokenCount = tokenCount, .nextToken = 0};
+    SyntaxAnalyzer *syntaxAnalyzer = syntaxAnalyzerCreate((LexicalAnalyzer *)&lexerState);
+    assert(syntaxAnalyzer != NULL);
+    CompilerStatus status = parseIf(syntaxAnalyzer, outNode);
     syntaxAnalyzerDestroy(syntaxAnalyzer);
     return status;
 }
@@ -161,6 +177,17 @@ int main(void) {
     ExpressionTerminal comparisonTerminal;
     assert(syntaxOperatorFromToken(&comparisonToken, &comparisonTerminal));
     assert(comparisonTerminal == EXPR_TERMINAL_GREATER_EQUAL);
+    assert(syntaxOperatorFromToken(&(Token){.type = TOKEN_OPERATOR, .lexeme = "&&"},
+                                   &comparisonTerminal));
+    assert(comparisonTerminal == EXPR_TERMINAL_LOGICAL_AND);
+    assert(syntaxPrecedenceRelation(EXPR_TERMINAL_LESS, EXPR_TERMINAL_LOGICAL_AND) ==
+           PRECEDENCE_REDUCE);
+    assert(syntaxPrecedenceRelation(EXPR_TERMINAL_LOGICAL_AND, EXPR_TERMINAL_LOGICAL_OR) ==
+           PRECEDENCE_REDUCE);
+    assert(syntaxPrecedenceRelation(EXPR_TERMINAL_LOGICAL_OR, EXPR_TERMINAL_LOGICAL_AND) ==
+           PRECEDENCE_SHIFT);
+    assert(syntaxPrecedenceRelation(EXPR_TERMINAL_LOGICAL_NOT, EXPR_TERMINAL_MULTIPLY) ==
+           PRECEDENCE_REDUCE);
 
     static const TestToken parenthesizedExpressionTokens[] = {
         {TOKEN_INT_LITERAL, "1", 1, 1, 1},         TEST_TOKEN(TOKEN_OPERATOR, "+", 1, 3),
@@ -177,6 +204,104 @@ int main(void) {
     assert(expression->children[1]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
     assert(expression->children[1]->text != NULL && expression->children[1]->text[0] == '*');
     abstractSyntaxNodeDestroy(expression);
+
+    static const TestToken booleanOperatorExpressionTokens[] = {
+        {TOKEN_BOOL_LITERAL, "true", 1, 1, 1},   TEST_TOKEN(TOKEN_OPERATOR, "&&", 1, 6),
+        TEST_TOKEN(TOKEN_OPERATOR, "!", 1, 9),   {TOKEN_BOOL_LITERAL, "false", 1, 10, 0},
+        TEST_TOKEN(TOKEN_OPERATOR, "||", 1, 16), {TOKEN_BOOL_LITERAL, "false", 1, 19, 0},
+        TEST_TOKEN(TOKEN_EOF, NULL, 1, 24)};
+    expression = NULL;
+    assert(parseExpressionTokens(booleanOperatorExpressionTokens,
+                                 sizeof(booleanOperatorExpressionTokens) /
+                                     sizeof(booleanOperatorExpressionTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(strcmp(expression->text, "||") == 0);
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(strcmp(expression->children[0]->text, "&&") == 0);
+    assert(expression->children[0]->children[0]->kind == ABSTRACT_SYNTAX_BOOLEAN_LITERAL);
+    assert(expression->children[0]->children[0]->value.boolValue);
+    assert(expression->children[0]->children[1]->kind == ABSTRACT_SYNTAX_UNARY_EXPRESSION);
+    assert(strcmp(expression->children[0]->children[1]->text, "!") == 0);
+    assert(expression->children[0]->children[1]->children[0]->kind ==
+           ABSTRACT_SYNTAX_BOOLEAN_LITERAL);
+    assert(!expression->children[0]->children[1]->children[0]->value.boolValue);
+    abstractSyntaxNodeDestroy(expression);
+
+    static const TestToken notPrecedenceTokens[] = {TEST_TOKEN(TOKEN_OPERATOR, "!", 1, 1),
+                                                    {TOKEN_BOOL_LITERAL, "true", 1, 2, 1},
+                                                    TEST_TOKEN(TOKEN_OPERATOR, "*", 1, 7),
+                                                    {TOKEN_INT_LITERAL, "2", 1, 9, 2},
+                                                    TEST_TOKEN(TOKEN_EOF, NULL, 1, 10)};
+    expression = NULL;
+    assert(parseExpressionTokens(notPrecedenceTokens,
+                                 sizeof(notPrecedenceTokens) / sizeof(notPrecedenceTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(strcmp(expression->text, "*") == 0);
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_UNARY_EXPRESSION);
+    abstractSyntaxNodeDestroy(expression);
+
+    static const TestToken ifWithoutElseTokens[] = {
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 1),     {TOKEN_BOOL_LITERAL, "true", 1, 4, 1},
+        TEST_TOKEN(TOKEN_KEYWORD, "then", 1, 9),   TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 13),
+        TEST_TOKEN(TOKEN_INDENT, NULL, 2, 5),      TEST_TOKEN(TOKEN_IDENTIFIER, "print", 2, 5),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 2, 10),  {TOKEN_INT_LITERAL, "1", 2, 11, 1},
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 2, 12), TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 13),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 3, 1),      TEST_TOKEN(TOKEN_EOF, NULL, 3, 1)};
+    AbstractSyntaxNode *parsedIfNode = NULL;
+    assert(parseIfTokens(ifWithoutElseTokens,
+                         sizeof(ifWithoutElseTokens) / sizeof(ifWithoutElseTokens[0]),
+                         &parsedIfNode) == COMPILER_OK);
+    assert(parsedIfNode->kind == ABSTRACT_SYNTAX_IF);
+    assert(parsedIfNode->childCount == 3);
+    assert(parsedIfNode->children[2]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(parsedIfNode->children[2]->childCount == 0);
+    abstractSyntaxNodeDestroy(parsedIfNode);
+
+    static const TestToken elseIfTokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 1),
+                                             {TOKEN_BOOL_LITERAL, "true", 1, 4, 1},
+                                             TEST_TOKEN(TOKEN_KEYWORD, "then", 1, 9),
+                                             TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 13),
+                                             TEST_TOKEN(TOKEN_INDENT, NULL, 2, 5),
+                                             TEST_TOKEN(TOKEN_IDENTIFIER, "print", 2, 5),
+                                             TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 2, 10),
+                                             {TOKEN_INT_LITERAL, "1", 2, 11, 1},
+                                             TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 2, 12),
+                                             TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 13),
+                                             TEST_TOKEN(TOKEN_DEDENT, NULL, 3, 1),
+                                             TEST_TOKEN(TOKEN_KEYWORD, "else", 3, 1),
+                                             TEST_TOKEN(TOKEN_KEYWORD, "if", 3, 6),
+                                             {TOKEN_BOOL_LITERAL, "false", 3, 9, 0},
+                                             TEST_TOKEN(TOKEN_KEYWORD, "then", 3, 15),
+                                             TEST_TOKEN(TOKEN_NEWLINE, NULL, 3, 19),
+                                             TEST_TOKEN(TOKEN_INDENT, NULL, 4, 5),
+                                             TEST_TOKEN(TOKEN_IDENTIFIER, "print", 4, 5),
+                                             TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 4, 10),
+                                             {TOKEN_INT_LITERAL, "2", 4, 11, 2},
+                                             TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 4, 12),
+                                             TEST_TOKEN(TOKEN_NEWLINE, NULL, 4, 13),
+                                             TEST_TOKEN(TOKEN_DEDENT, NULL, 5, 1),
+                                             TEST_TOKEN(TOKEN_KEYWORD, "else", 5, 1),
+                                             TEST_TOKEN(TOKEN_NEWLINE, NULL, 5, 5),
+                                             TEST_TOKEN(TOKEN_INDENT, NULL, 6, 5),
+                                             TEST_TOKEN(TOKEN_IDENTIFIER, "print", 6, 5),
+                                             TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 6, 10),
+                                             {TOKEN_INT_LITERAL, "3", 6, 11, 3},
+                                             TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 6, 12),
+                                             TEST_TOKEN(TOKEN_NEWLINE, NULL, 6, 13),
+                                             TEST_TOKEN(TOKEN_DEDENT, NULL, 7, 1),
+                                             TEST_TOKEN(TOKEN_EOF, NULL, 7, 1)};
+    parsedIfNode = NULL;
+    assert(parseIfTokens(elseIfTokens, sizeof(elseIfTokens) / sizeof(elseIfTokens[0]),
+                         &parsedIfNode) == COMPILER_OK);
+    assert(parsedIfNode->kind == ABSTRACT_SYNTAX_IF);
+    assert(parsedIfNode->children[2]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(parsedIfNode->children[2]->childCount == 1);
+    assert(parsedIfNode->children[2]->children[0]->kind == ABSTRACT_SYNTAX_IF);
+    assert(parsedIfNode->children[2]->children[0]->children[2]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(parsedIfNode->children[2]->children[0]->children[2]->childCount == 1);
+    abstractSyntaxNodeDestroy(parsedIfNode);
 
     static const TestToken nestedFunctionCallTokens[] = {
         {TOKEN_INT_LITERAL, "2", 1, 1, 2},

@@ -42,6 +42,8 @@
 #define SYNTAX_OP_GREATER_EQUAL ">="
 #define SYNTAX_OP_EQUAL "=="
 #define SYNTAX_OP_NOT_EQUAL "!="
-
+#define SYNTAX_OP_LOGICAL_NOT "!"
+#define SYNTAX_OP_LOGICAL_AND "&&"
+#define SYNTAX_OP_LOGICAL_OR "||"
 
 #endif

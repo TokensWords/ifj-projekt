@@ -7,17 +7,16 @@
  * @author Matúš Čík
  */
 
+#include "parserStatements.h"
 #include "parserExpressions.h"
 #include "parserLiterals.h"
-#include "parserStatements.h"
 #include "syntax.h"
 #include "syntaxAnalyzerUtils.h"
 
 #include <string.h>
 
 static CompilerStatus parseVariableDeclaration(SyntaxAnalyzer *syntaxAnalyzer,
-                                               AbstractSyntaxNode **outNode)
-{
+                                               AbstractSyntaxNode **outNode) {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
         return status;
@@ -37,8 +36,7 @@ static CompilerStatus parseVariableDeclaration(SyntaxAnalyzer *syntaxAnalyzer,
         return COMPILER_SYNTAX_ERROR;
     }
 
-    AbstractSyntaxNode *declaration = createNode(ABSTRACT_SYNTAX_VARIABLE_DECLARATION,
-                                                 location);
+    AbstractSyntaxNode *declaration = createNode(ABSTRACT_SYNTAX_VARIABLE_DECLARATION, location);
     AbstractSyntaxNode *initializer = NULL;
     if (declaration == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -86,8 +84,7 @@ cleanup:
     return status;
 }
 
-static CompilerStatus expectBlockHeaderEnd(SyntaxAnalyzer *syntaxAnalyzer)
-{
+static CompilerStatus expectBlockHeaderEnd(SyntaxAnalyzer *syntaxAnalyzer) {
     if (!currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
         return COMPILER_SYNTAX_ERROR;
     }
@@ -99,9 +96,8 @@ static CompilerStatus expectBlockHeaderEnd(SyntaxAnalyzer *syntaxAnalyzer)
     return skipNewlines(syntaxAnalyzer);
 }
 
-CompilerStatus parseIf(SyntaxAnalyzer *syntaxAnalyzer,
-                       AbstractSyntaxNode **outNode)
-{
+static CompilerStatus parseIfAtColumn(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode,
+                                      size_t elseColumn) {
     if (syntaxAnalyzer == NULL || outNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -120,6 +116,7 @@ CompilerStatus parseIf(SyntaxAnalyzer *syntaxAnalyzer,
     AbstractSyntaxNode *condition = NULL;
     AbstractSyntaxNode *thenBlock = NULL;
     AbstractSyntaxNode *elseBlock = NULL;
+    AbstractSyntaxNode *elseIfNode = NULL;
 
     status = advanceToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
@@ -159,18 +156,41 @@ CompilerStatus parseIf(SyntaxAnalyzer *syntaxAnalyzer,
     if (status != COMPILER_OK) {
         goto cleanup;
     }
-    status = expectWord(syntaxAnalyzer, SYNTAX_KW_ELSE);
-    if (status != COMPILER_OK) {
-        goto cleanup;
-    }
-    status = expectBlockHeaderEnd(syntaxAnalyzer);
-    if (status != COMPILER_OK) {
-        goto cleanup;
-    }
+    if (!currentIsWord(syntaxAnalyzer, SYNTAX_KW_ELSE) ||
+        syntaxAnalyzer->currentToken->location.column != elseColumn) {
+        elseBlock = createNode(ABSTRACT_SYNTAX_BLOCK, location);
+        if (elseBlock == NULL) {
+            status = COMPILER_INTERNAL_ERROR;
+            goto cleanup;
+        }
+    } else {
+        SourceLocation elseLocation = syntaxAnalyzer->currentToken->location;
+        status = advanceToken(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
 
-    status = parseBlock(syntaxAnalyzer, &elseBlock);
-    if (status != COMPILER_OK) {
-        goto cleanup;
+        if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_IF)) {
+            elseBlock = createNode(ABSTRACT_SYNTAX_BLOCK, elseLocation);
+            if (elseBlock == NULL) {
+                status = COMPILER_INTERNAL_ERROR;
+                goto cleanup;
+            }
+            status = parseIfAtColumn(syntaxAnalyzer, &elseIfNode, elseColumn);
+            if (status != COMPILER_OK) {
+                goto cleanup;
+            }
+            status = appendOwnedChild(elseBlock, elseIfNode);
+            elseIfNode = NULL;
+        } else {
+            status = expectBlockHeaderEnd(syntaxAnalyzer);
+            if (status == COMPILER_OK) {
+                status = parseBlock(syntaxAnalyzer, &elseBlock);
+            }
+        }
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
     }
     status = appendOwnedChild(ifNode, elseBlock);
     elseBlock = NULL;
@@ -185,13 +205,24 @@ cleanup:
     abstractSyntaxNodeDestroy(condition);
     abstractSyntaxNodeDestroy(thenBlock);
     abstractSyntaxNodeDestroy(elseBlock);
+    abstractSyntaxNodeDestroy(elseIfNode);
     abstractSyntaxNodeDestroy(ifNode);
     return status;
 }
 
-CompilerStatus parseWhile(SyntaxAnalyzer *syntaxAnalyzer,
-                          AbstractSyntaxNode **outNode)
-{
+CompilerStatus parseIf(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode) {
+    if (syntaxAnalyzer == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    return parseIfAtColumn(syntaxAnalyzer, outNode, syntaxAnalyzer->currentToken->location.column);
+}
+
+CompilerStatus parseWhile(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode) {
     if (syntaxAnalyzer == NULL || outNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -253,9 +284,7 @@ cleanup:
     return status;
 }
 
-static CompilerStatus parseReturn(SyntaxAnalyzer *syntaxAnalyzer,
-                                  AbstractSyntaxNode **outNode)
-{
+static CompilerStatus parseReturn(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode) {
     if (syntaxAnalyzer == NULL || outNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -265,8 +294,8 @@ static CompilerStatus parseReturn(SyntaxAnalyzer *syntaxAnalyzer,
     if (status != COMPILER_OK) {
         return status;
     }
-    AbstractSyntaxNode *returnNode = createNode(ABSTRACT_SYNTAX_RETURN,
-                                                syntaxAnalyzer->currentToken->location);
+    AbstractSyntaxNode *returnNode =
+        createNode(ABSTRACT_SYNTAX_RETURN, syntaxAnalyzer->currentToken->location);
     if (returnNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -296,9 +325,7 @@ cleanup:
     return status;
 }
 
-CompilerStatus parseAssignment(SyntaxAnalyzer *syntaxAnalyzer,
-                               AbstractSyntaxNode **outNode)
-{
+CompilerStatus parseAssignment(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode) {
     if (syntaxAnalyzer == NULL || outNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -312,8 +339,8 @@ CompilerStatus parseAssignment(SyntaxAnalyzer *syntaxAnalyzer,
         return COMPILER_SYNTAX_ERROR;
     }
 
-    AbstractSyntaxNode *assignment = createNode(ABSTRACT_SYNTAX_ASSIGNMENT,
-                                                syntaxAnalyzer->currentToken->location);
+    AbstractSyntaxNode *assignment =
+        createNode(ABSTRACT_SYNTAX_ASSIGNMENT, syntaxAnalyzer->currentToken->location);
     AbstractSyntaxNode *value = NULL;
     if (assignment == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -350,9 +377,7 @@ cleanup:
     return status;
 }
 
-CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer,
-                              AbstractSyntaxNode **outNode)
-{
+CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode) {
     if (syntaxAnalyzer == NULL || outNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -381,8 +406,7 @@ CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer,
         if (status != COMPILER_OK) {
             return status;
         }
-        if (syntaxAnalyzer->nextToken != NULL &&
-            syntaxAnalyzer->nextToken->lexeme != NULL &&
+        if (syntaxAnalyzer->nextToken != NULL && syntaxAnalyzer->nextToken->lexeme != NULL &&
             strcmp(syntaxAnalyzer->nextToken->lexeme, SYNTAX_OP_ASSIGN) == 0) {
             return parseAssignment(syntaxAnalyzer, outNode);
         }
@@ -400,8 +424,8 @@ CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer,
     }
 
     AbstractSyntaxNode *expression = *outNode;
-    AbstractSyntaxNode *statement = createNode(ABSTRACT_SYNTAX_EXPRESSION_STATEMENT,
-                                               expression->location);
+    AbstractSyntaxNode *statement =
+        createNode(ABSTRACT_SYNTAX_EXPRESSION_STATEMENT, expression->location);
     if (statement == NULL) {
         abstractSyntaxNodeDestroy(expression);
         *outNode = NULL;
@@ -417,9 +441,7 @@ CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer,
     return COMPILER_OK;
 }
 
-CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer,
-                          AbstractSyntaxNode **outNode)
-{
+CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode) {
     if (syntaxAnalyzer == NULL || outNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -449,8 +471,8 @@ CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer,
             goto cleanup;
         }
 
-        bool isCompoundStatement = statement->kind == ABSTRACT_SYNTAX_IF ||
-                                   statement->kind == ABSTRACT_SYNTAX_WHILE;
+        bool isCompoundStatement =
+            statement->kind == ABSTRACT_SYNTAX_IF || statement->kind == ABSTRACT_SYNTAX_WHILE;
         status = appendOwnedChild(block, statement);
         statement = NULL;
         if (status != COMPILER_OK) {
