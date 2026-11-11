@@ -71,8 +71,9 @@ Boolean case class extension for List match type
 ```
 
 Keywords share `TOKEN_KEYWORD` and are distinguished by their lexeme. Exact `true` and
-`false` produce `TOKEN_BOOL_LITERAL`. A single `_` produces `TOKEN_UNDERSCORE`; longer
-identifiers such as `__`, `_1` and `trueValue` remain identifiers.
+`false` produce `TOKEN_BOOL_LITERAL`, with the truth value stored in `TokenValue.boolValue`.
+A single `_` produces `TOKEN_UNDERSCORE`; longer identifiers such as `__`, `_1` and
+`trueValue` remain identifiers.
 
 Operators share `TOKEN_OPERATOR` and retain their spelling:
 
@@ -175,4 +176,3 @@ The token vocabulary supports the lexical requirements of FUNEXP, BOOLTHEN, CONT
 ALGEBDT and LISTS. This does not imply that the parser, semantic analyzer or generated code
 implements those extensions. This module does not resolve symbols, assign data types,
 validate function arguments or generate IFJcode26.
-
