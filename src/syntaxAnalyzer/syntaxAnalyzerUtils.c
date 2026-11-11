@@ -13,8 +13,7 @@
 
 #include <string.h>
 
-static CompilerStatus readToken(SyntaxAnalyzer *syntaxAnalyzer, Token **outToken)
-{
+static CompilerStatus readToken(SyntaxAnalyzer *syntaxAnalyzer, Token **outToken) {
     *outToken = NULL;
     CompilerStatus status = lexicalAnalyzerNextToken(syntaxAnalyzer->lexicalAnalyzer, outToken);
     if (status != COMPILER_OK) {
@@ -30,16 +29,14 @@ static CompilerStatus readToken(SyntaxAnalyzer *syntaxAnalyzer, Token **outToken
 
 /* --- Loading and Advancing Tokens Functions --- */
 
-CompilerStatus ensureCurrentToken(SyntaxAnalyzer *syntaxAnalyzer)
-{
+CompilerStatus ensureCurrentToken(SyntaxAnalyzer *syntaxAnalyzer) {
     if (syntaxAnalyzer->currentToken != NULL) {
         return COMPILER_OK;
     }
     return readToken(syntaxAnalyzer, &syntaxAnalyzer->currentToken);
 }
 
-CompilerStatus ensureNextToken(SyntaxAnalyzer *syntaxAnalyzer)
-{
+CompilerStatus ensureNextToken(SyntaxAnalyzer *syntaxAnalyzer) {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK || syntaxAnalyzer->currentToken->type == TOKEN_EOF ||
         syntaxAnalyzer->nextToken != NULL) {
@@ -48,8 +45,7 @@ CompilerStatus ensureNextToken(SyntaxAnalyzer *syntaxAnalyzer)
     return readToken(syntaxAnalyzer, &syntaxAnalyzer->nextToken);
 }
 
-CompilerStatus advanceToken(SyntaxAnalyzer *syntaxAnalyzer)
-{
+CompilerStatus advanceToken(SyntaxAnalyzer *syntaxAnalyzer) {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
         return status;
@@ -70,8 +66,7 @@ CompilerStatus advanceToken(SyntaxAnalyzer *syntaxAnalyzer)
     return ensureCurrentToken(syntaxAnalyzer);
 }
 
-CompilerStatus skipNewlines(SyntaxAnalyzer *syntaxAnalyzer)
-{
+CompilerStatus skipNewlines(SyntaxAnalyzer *syntaxAnalyzer) {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     while (status == COMPILER_OK && currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
         status = advanceToken(syntaxAnalyzer);
@@ -81,28 +76,23 @@ CompilerStatus skipNewlines(SyntaxAnalyzer *syntaxAnalyzer)
 
 /* --- Current Token Validation Functions --- */
 
-bool tokenHasText(const Token *token, const char *text)
-{
+bool tokenHasText(const Token *token, const char *text) {
     return token != NULL && token->lexeme != NULL && strcmp(token->lexeme, text) == 0;
 }
 
-bool currentIsWord(const SyntaxAnalyzer *syntaxAnalyzer, const char *word)
-{
+bool currentIsWord(const SyntaxAnalyzer *syntaxAnalyzer, const char *word) {
     return tokenHasText(syntaxAnalyzer->currentToken, word);
 }
 
-bool currentIsOperator(const SyntaxAnalyzer *syntaxAnalyzer, const char *operatorText)
-{
+bool currentIsOperator(const SyntaxAnalyzer *syntaxAnalyzer, const char *operatorText) {
     return tokenHasText(syntaxAnalyzer->currentToken, operatorText);
 }
 
-bool currentIsType(const SyntaxAnalyzer *syntaxAnalyzer, TokenType type)
-{
+bool currentIsType(const SyntaxAnalyzer *syntaxAnalyzer, TokenType type) {
     return syntaxAnalyzer->currentToken != NULL && syntaxAnalyzer->currentToken->type == type;
 }
 
-CompilerStatus expectWord(SyntaxAnalyzer *syntaxAnalyzer, const char *word)
-{
+CompilerStatus expectWord(SyntaxAnalyzer *syntaxAnalyzer, const char *word) {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
         return status;
@@ -113,8 +103,7 @@ CompilerStatus expectWord(SyntaxAnalyzer *syntaxAnalyzer, const char *word)
     return advanceToken(syntaxAnalyzer);
 }
 
-CompilerStatus expectType(SyntaxAnalyzer *syntaxAnalyzer, TokenType type)
-{
+CompilerStatus expectType(SyntaxAnalyzer *syntaxAnalyzer, TokenType type) {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
         return status;
@@ -127,13 +116,11 @@ CompilerStatus expectType(SyntaxAnalyzer *syntaxAnalyzer, TokenType type)
 
 /* --- Token Validation Functions --- */
 
-bool isIdentifierToken(const Token *token)
-{
+bool isIdentifierToken(const Token *token) {
     return token != NULL && token->type == TOKEN_IDENTIFIER && token->lexeme != NULL;
 }
 
-bool isExpressionTerminator(const Token *token)
-{
+bool isExpressionTerminator(const Token *token) {
     return token == NULL || token->type == TOKEN_EOF || token->type == TOKEN_NEWLINE ||
            token->type == TOKEN_DEDENT || token->type == TOKEN_COMMA ||
            token->type == TOKEN_SEMICOLON || token->type == TOKEN_RIGHT_PAREN ||
@@ -142,8 +129,7 @@ bool isExpressionTerminator(const Token *token)
 
 /* --- AST Node Functions wrappers with guaranteed cleanup after failure --- */
 
-CompilerStatus appendOwnedChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *child)
-{
+CompilerStatus appendOwnedChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *child) {
     if (parent == NULL || child == NULL) {
         abstractSyntaxNodeDestroy(child);
         return COMPILER_INTERNAL_ERROR;
@@ -155,12 +141,10 @@ CompilerStatus appendOwnedChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *
     return status;
 }
 
-AbstractSyntaxNode *createNode(AbstractSyntaxNodeType type, SourceLocation location)
-{
+AbstractSyntaxNode *createNode(AbstractSyntaxNodeType type, SourceLocation location) {
     return abstractSyntaxNodeCreate(type, location);
 }
 
-CompilerStatus setNodeText(AbstractSyntaxNode *node, const char *text)
-{
+CompilerStatus setNodeText(AbstractSyntaxNode *node, const char *text) {
     return abstractSyntaxNodeSetText(node, text);
 }

@@ -11,7 +11,6 @@
 #include "syntaxAnalyzerUtils.h"
 
 /** @brief Parses a data type and stores it in outType. */
-CompilerStatus analyzerTypesParseDataType(SyntaxAnalyzer *syntaxAnalyzer,
-                                          DataType *outType);
+CompilerStatus analyzerTypesParseDataType(SyntaxAnalyzer *syntaxAnalyzer, DataType *outType);
 
 #endif

@@ -23,11 +23,9 @@ CompilerStatus parseFor(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **out
 CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
 
 /** @brief Parses an assignment. */
-CompilerStatus parseAssignment(SyntaxAnalyzer *syntaxAnalyzer,
-                               AbstractSyntaxNode **outNode);
+CompilerStatus parseAssignment(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
 
 /** @brief Parses block of statements. */
-CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer,
-                          AbstractSyntaxNode **outNode);
+CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
 
 #endif

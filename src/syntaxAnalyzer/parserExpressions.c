@@ -17,9 +17,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-static CompilerStatus parseIfExpression(SyntaxAnalyzer *syntaxAnalyzer,
-                                        AbstractSyntaxNode **outNode);
-
 static CompilerStatus parseIfExpressionBranch(SyntaxAnalyzer *syntaxAnalyzer,
                                               AbstractSyntaxNode **outNode, bool *outIsMultiline,
                                               bool isElseBranch) {
@@ -162,8 +159,7 @@ static CompilerStatus parseIfExpression(SyntaxAnalyzer *syntaxAnalyzer,
     }
 
     syntaxAnalyzer->newlineConsumed =
-        previousConsumedNewline || elseIsMultiline ||
-        syntaxAnalyzer->newlineConsumed;
+        previousConsumedNewline || elseIsMultiline || syntaxAnalyzer->newlineConsumed;
     *outNode = ifExpression;
     return COMPILER_OK;
 
@@ -493,16 +489,13 @@ static bool isBinaryExpressionOperator(ExpressionTerminal terminal) {
            terminal == EXPR_TERMINAL_LOGICAL_AND || terminal == EXPR_TERMINAL_LOGICAL_OR;
 }
 
-static ExpressionTerminal terminalForToken(const SyntaxAnalyzer *syntaxAnalyzer,
-                                           const Token *token,
-                                           const ExpressionStackEntry *stack,
-                                           size_t stackCount) {
+static ExpressionTerminal terminalForToken(const SyntaxAnalyzer *syntaxAnalyzer, const Token *token,
+                                           const ExpressionStackEntry *stack, size_t stackCount) {
     if (token == NULL) {
         return EXPR_TERMINAL_END;
     }
-    if (syntaxAnalyzer->newlineConsumed &&
-        token->type != TOKEN_EOF && token->type != TOKEN_NEWLINE &&
-        token->type != TOKEN_DEDENT && token->type != TOKEN_COMMA &&
+    if (syntaxAnalyzer->newlineConsumed && token->type != TOKEN_EOF &&
+        token->type != TOKEN_NEWLINE && token->type != TOKEN_DEDENT && token->type != TOKEN_COMMA &&
         token->type != TOKEN_RIGHT_PAREN) {
         return EXPR_TERMINAL_END;
     }

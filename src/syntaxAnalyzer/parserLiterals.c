@@ -6,12 +6,11 @@
  */
 
 #include "parserLiterals.h"
-#include "syntaxAnalyzerUtils.h"
 #include "syntax.h"
+#include "syntaxAnalyzerUtils.h"
 
 /* Shared parsing for declared types in signatures and declarations. */
-CompilerStatus analyzerTypesParseDataType(SyntaxAnalyzer *syntaxAnalyzer, DataType *outType)
-{
+CompilerStatus analyzerTypesParseDataType(SyntaxAnalyzer *syntaxAnalyzer, DataType *outType) {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
         return status;

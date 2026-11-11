@@ -9,8 +9,8 @@
 
 #include "syntaxAnalyzer.h"
 #include "parserFunctions.h"
-#include "syntaxAnalyzerUtils.h"
 #include "syntax.h"
+#include "syntaxAnalyzerUtils.h"
 
 #include "memory.h"
 
@@ -19,8 +19,7 @@
 
 /* --- Lifecycle --- */
 
-SyntaxAnalyzer *syntaxAnalyzerCreate(LexicalAnalyzer *lexicalAnalyzer)
-{
+SyntaxAnalyzer *syntaxAnalyzerCreate(LexicalAnalyzer *lexicalAnalyzer) {
     if (lexicalAnalyzer == NULL) {
         return NULL;
     }
@@ -37,8 +36,7 @@ SyntaxAnalyzer *syntaxAnalyzerCreate(LexicalAnalyzer *lexicalAnalyzer)
     return syntaxAnalyzer;
 }
 
-void syntaxAnalyzerDestroy(SyntaxAnalyzer *syntaxAnalyzer)
-{
+void syntaxAnalyzerDestroy(SyntaxAnalyzer *syntaxAnalyzer) {
     if (syntaxAnalyzer == NULL) {
         return;
     }
@@ -48,9 +46,7 @@ void syntaxAnalyzerDestroy(SyntaxAnalyzer *syntaxAnalyzer)
     free(syntaxAnalyzer);
 }
 
-
-static CompilerStatus parsePrologue(SyntaxAnalyzer *syntaxAnalyzer)
-{
+static CompilerStatus parsePrologue(SyntaxAnalyzer *syntaxAnalyzer) {
     CompilerStatus status = expectWord(syntaxAnalyzer, SYNTAX_KW_IMPORT);
     if (status != COMPILER_OK) {
         return status;
@@ -81,18 +77,15 @@ static CompilerStatus parsePrologue(SyntaxAnalyzer *syntaxAnalyzer)
     return COMPILER_OK;
 }
 
-
 /* --- Main parsing function --- */
 
-
-CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer, SourceProgram **outProgram)
-{
+CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer,
+                                          SourceProgram **outProgram) {
     if (syntaxAnalyzer == NULL || outProgram == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
     *outProgram = NULL;
-
 
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
@@ -109,14 +102,12 @@ CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer, Source
         return status;
     }
 
-
     SourceProgram *program = sourceProgramCreate();
     if (program == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
-    program->root = createNode(ABSTRACT_SYNTAX_PROGRAM,
-                               syntaxAnalyzer->currentToken->location);
+    program->root = createNode(ABSTRACT_SYNTAX_PROGRAM, syntaxAnalyzer->currentToken->location);
     if (program->root == NULL) {
         sourceProgramDestroy(program);
         return COMPILER_INTERNAL_ERROR;
@@ -124,7 +115,7 @@ CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer, Source
 
     bool hasEntryFunction = false;
     while (status == COMPILER_OK && !currentIsType(syntaxAnalyzer, TOKEN_EOF)) {
-        
+
         if (currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
             status = skipNewlines(syntaxAnalyzer);
             continue;
@@ -145,7 +136,7 @@ CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer, Source
             }
             hasEntryFunction = true;
         }
-    
+
         status = appendOwnedChild(program->root, functionNode);
         if (status != COMPILER_OK) {
             break;
