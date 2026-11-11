@@ -125,6 +125,8 @@ CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer,
         AbstractSyntaxNode *functionNode = NULL;
         if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_TYPE)) {
             status = analyzerTypesParseAlias(syntaxAnalyzer, &functionNode);
+        } else if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_CASE)) {
+            status = analyzerTypesParseCaseClass(syntaxAnalyzer, &functionNode);
         } else {
             status = parseFunction(syntaxAnalyzer, &functionNode);
         }

@@ -32,6 +32,8 @@
 #define SYNTAX_KW_BOOLEAN "Boolean"
 #define SYNTAX_KW_LIST "List"
 #define SYNTAX_KW_TYPE "type"
+#define SYNTAX_KW_CASE "case"
+#define SYNTAX_KW_CLASS "class"
 
 #define SYNTAX_PROLOG_NAME "ifj26"
 #define SYNTAX_ANNOTATION_MAIN "main"

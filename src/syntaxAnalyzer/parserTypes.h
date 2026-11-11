@@ -17,4 +17,8 @@ CompilerStatus analyzerTypesParseType(SyntaxAnalyzer *syntaxAnalyzer, TypeDescri
 CompilerStatus analyzerTypesParseAlias(SyntaxAnalyzer *syntaxAnalyzer,
                                        AbstractSyntaxNode **outNode);
 
+/** @brief Parses a top-level case-class declaration. */
+CompilerStatus analyzerTypesParseCaseClass(SyntaxAnalyzer *syntaxAnalyzer,
+                                           AbstractSyntaxNode **outNode);
+
 #endif

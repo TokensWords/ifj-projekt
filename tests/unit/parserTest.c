@@ -1151,6 +1151,97 @@ int main(void) {
     assert(unaryMinusNode->children[0]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
     sourceProgramDestroy(program);
     syntaxAnalyzerDestroy(syntaxAnalyzer);
+
+    static const TestToken caseClassTokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "import", 1, 1),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "ifj26", 1, 8),
+                                                TEST_TOKEN(TOKEN_DOT, ".", 1, 13),
+                                                TEST_TOKEN(TOKEN_OPERATOR, "*", 1, 14),
+                                                TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 15),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "case", 2, 1),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "class", 2, 6),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "Point", 2, 12),
+                                                TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 2, 17),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "x", 2, 18),
+                                                TEST_TOKEN(TOKEN_COLON, ":", 2, 19),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "Int", 2, 21),
+                                                TEST_TOKEN(TOKEN_COMMA, ",", 2, 24),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "y", 2, 26),
+                                                TEST_TOKEN(TOKEN_COLON, ":", 2, 27),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "Int", 2, 29),
+                                                TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 2, 32),
+                                                TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 33),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "case", 3, 1),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "class", 3, 6),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "Empty", 3, 12),
+                                                TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 3, 17),
+                                                TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 3, 18),
+                                                TEST_TOKEN(TOKEN_NEWLINE, NULL, 3, 19),
+                                                TEST_TOKEN(TOKEN_AT, "@", 4, 1),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "main", 4, 2),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "def", 4, 7),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "main", 4, 11),
+                                                TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 4, 15),
+                                                TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 4, 16),
+                                                TEST_TOKEN(TOKEN_COLON, ":", 4, 17),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "Unit", 4, 19),
+                                                TEST_TOKEN(TOKEN_OPERATOR, "=", 4, 24),
+                                                TEST_TOKEN(TOKEN_NEWLINE, NULL, 4, 25),
+                                                TEST_TOKEN(TOKEN_INDENT, NULL, 5, 1),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "val", 5, 3),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "i", 5, 7),
+                                                TEST_TOKEN(TOKEN_COLON, ":", 5, 9),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "Point", 5, 11),
+                                                TEST_TOKEN(TOKEN_OPERATOR, "=", 5, 17),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "Point", 5, 19),
+                                                TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 5, 24),
+                                                {TOKEN_INT_LITERAL, "10", 5, 25, 10},
+                                                TEST_TOKEN(TOKEN_COMMA, ",", 5, 27),
+                                                {TOKEN_INT_LITERAL, "20", 5, 29, 20},
+                                                TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 5, 31),
+                                                TEST_TOKEN(TOKEN_NEWLINE, NULL, 5, 32),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "print", 6, 3),
+                                                TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 6, 8),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "i", 6, 9),
+                                                TEST_TOKEN(TOKEN_DOT, ".", 6, 10),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "x", 6, 11),
+                                                TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 6, 12),
+                                                TEST_TOKEN(TOKEN_NEWLINE, NULL, 6, 13),
+                                                TEST_TOKEN(TOKEN_DEDENT, NULL, 7, 1),
+                                                TEST_TOKEN(TOKEN_EOF, NULL, 7, 1)};
+    struct LexicalAnalyzer caseClassLexerState = {.tokens = caseClassTokens,
+                                                  .tokenCount = sizeof(caseClassTokens) /
+                                                                sizeof(caseClassTokens[0]),
+                                                  .nextToken = 0};
+    syntaxAnalyzer = syntaxAnalyzerCreate((LexicalAnalyzer *)&caseClassLexerState);
+    assert(syntaxAnalyzer != NULL);
+    program = NULL;
+    assert(syntaxAnalyzerParseProgram(syntaxAnalyzer, &program) == COMPILER_OK);
+    assert(program->root->childCount == 3);
+    AbstractSyntaxNode *pointClass = program->root->children[0];
+    assert(pointClass->kind == ABSTRACT_SYNTAX_CASE_CLASS);
+    assert(strcmp(pointClass->text, "Point") == 0);
+    assert(pointClass->childCount == 2);
+    assert(pointClass->children[0]->kind == ABSTRACT_SYNTAX_CASE_CLASS_FIELD);
+    assert(strcmp(pointClass->children[0]->text, "x") == 0);
+    assert(typeDescriptorGetMask(pointClass->children[0]->variableType) == DATA_TYPE_INT);
+    assert(strcmp(pointClass->children[1]->text, "y") == 0);
+    AbstractSyntaxNode *emptyClass = program->root->children[1];
+    assert(emptyClass->kind == ABSTRACT_SYNTAX_CASE_CLASS);
+    assert(strcmp(emptyClass->text, "Empty") == 0 && emptyClass->childCount == 0);
+    AbstractSyntaxNode *caseMain = program->root->children[2];
+    AbstractSyntaxNode *caseBody = caseMain->children[0];
+    AbstractSyntaxNode *pointValue = caseBody->children[0];
+    assert(pointValue->kind == ABSTRACT_SYNTAX_VARIABLE_DECLARATION);
+    assert(typeDescriptorGetMask(pointValue->variableType) == DATA_TYPE_ALIAS);
+    assert(strcmp(typeDescriptorGetName(pointValue->variableType), "Point") == 0);
+    assert(pointValue->children[0]->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
+    assert(pointValue->children[0]->childCount == 3);
+    AbstractSyntaxNode *printCall = caseBody->children[1];
+    assert(printCall->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
+    assert(printCall->children[1]->kind == ABSTRACT_SYNTAX_MEMBER_ACCESS);
+    assert(strcmp(printCall->children[1]->text, "x") == 0);
+    sourceProgramDestroy(program);
+    syntaxAnalyzerDestroy(syntaxAnalyzer);
     return 0;
 }
 

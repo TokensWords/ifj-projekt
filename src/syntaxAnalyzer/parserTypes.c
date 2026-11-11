@@ -72,27 +72,33 @@ static CompilerStatus parseTypePrimary(SyntaxAnalyzer *syntaxAnalyzer, TypeDescr
     }
 
     TypeDescriptor *type = NULL;
+    TypeDescriptor *elementType = NULL;
     if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_LIST)) {
         type = typeDescriptorCreate(DATA_TYPE_LIST);
         if (type == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
         status = advanceToken(syntaxAnalyzer);
-        if (status == COMPILER_OK) {
-            status = expectType(syntaxAnalyzer, TOKEN_LEFT_SHARP_PAREN);
+        if (status != COMPILER_OK) {
+            goto cleanup;
         }
-        TypeDescriptor *elementType = NULL;
-        if (status == COMPILER_OK) {
-            status = parseTypeExpression(syntaxAnalyzer, &elementType);
+        status = expectType(syntaxAnalyzer, TOKEN_LEFT_SHARP_PAREN);
+        if (status != COMPILER_OK) {
+            goto cleanup;
         }
-        if (status == COMPILER_OK) {
-            status = typeDescriptorSetElementType(type, elementType);
-            if (status == COMPILER_OK) {
-                elementType = NULL;
-                status = expectType(syntaxAnalyzer, TOKEN_RIGHT_SHARP_PAREN);
-            }
+        status = parseTypeExpression(syntaxAnalyzer, &elementType);
+        if (status != COMPILER_OK) {
+            goto cleanup;
         }
-        typeDescriptorDestroy(elementType);
+        status = typeDescriptorSetElementType(type, elementType);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        elementType = NULL;
+        status = expectType(syntaxAnalyzer, TOKEN_RIGHT_SHARP_PAREN);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
     } else {
         type = typeDescriptorCreate(DATA_TYPE_UNKNOWN);
         if (type == NULL) {
@@ -110,26 +116,33 @@ static CompilerStatus parseTypePrimary(SyntaxAnalyzer *syntaxAnalyzer, TypeDescr
             status = typeDescriptorSetMask(type, DATA_TYPE_BOOLEAN);
         } else if (isIdentifierToken(syntaxAnalyzer->currentToken)) {
             status = typeDescriptorSetMask(type, DATA_TYPE_ALIAS);
-            if (status == COMPILER_OK) {
-                status = typeDescriptorSetName(type, syntaxAnalyzer->currentToken->lexeme);
-            }
             if (status != COMPILER_OK) {
-                typeDescriptorDestroy(type);
-                return status;
+                goto cleanup;
+            }
+            status = typeDescriptorSetName(type, syntaxAnalyzer->currentToken->lexeme);
+            if (status != COMPILER_OK) {
+                goto cleanup;
             }
         } else {
-            typeDescriptorDestroy(type);
-            return COMPILER_SYNTAX_ERROR;
+            status = COMPILER_SYNTAX_ERROR;
+            goto cleanup;
+        }
+        if (status != COMPILER_OK) {
+            goto cleanup;
         }
         status = advanceToken(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
     }
 
-    if (status != COMPILER_OK) {
-        typeDescriptorDestroy(type);
-        return status;
-    }
     *outType = type;
     return COMPILER_OK;
+
+cleanup:
+    typeDescriptorDestroy(elementType);
+    typeDescriptorDestroy(type);
+    return status;
 }
 
 static CompilerStatus parseTypeExpression(SyntaxAnalyzer *syntaxAnalyzer,
@@ -151,22 +164,24 @@ static CompilerStatus parseTypeExpression(SyntaxAnalyzer *syntaxAnalyzer,
         return COMPILER_INTERNAL_ERROR;
     }
     status = appendUnionMember(unionType, first);
-    while (status == COMPILER_OK && currentIsType(syntaxAnalyzer, TOKEN_OPERATOR) &&
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    while (currentIsType(syntaxAnalyzer, TOKEN_OPERATOR) &&
            tokenHasText(syntaxAnalyzer->currentToken, "|")) {
         status = advanceToken(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
         TypeDescriptor *member = NULL;
-        if (status == COMPILER_OK) {
-            status = parseTypePrimary(syntaxAnalyzer, &member);
+        status = parseTypePrimary(syntaxAnalyzer, &member);
+        if (status != COMPILER_OK) {
+            goto cleanup;
         }
-        if (status == COMPILER_OK) {
-            status = appendUnionMember(unionType, member);
-        } else {
-            typeDescriptorDestroy(member);
+        status = appendUnionMember(unionType, member);
+        if (status != COMPILER_OK) {
+            goto cleanup;
         }
-    }
-    if (status != COMPILER_OK) {
-        typeDescriptorDestroy(unionType);
-        return status;
     }
 
     if (typeDescriptorGetMemberCount(unionType) == 1) {
@@ -176,6 +191,10 @@ static CompilerStatus parseTypeExpression(SyntaxAnalyzer *syntaxAnalyzer,
         *outType = unionType;
     }
     return COMPILER_OK;
+
+cleanup:
+    typeDescriptorDestroy(unionType);
+    return status;
 }
 
 CompilerStatus analyzerTypesParseType(SyntaxAnalyzer *syntaxAnalyzer, TypeDescriptor **outType) {
@@ -207,20 +226,120 @@ CompilerStatus analyzerTypesParseAlias(SyntaxAnalyzer *syntaxAnalyzer,
         return COMPILER_INTERNAL_ERROR;
     }
     status = setNodeText(alias, syntaxAnalyzer->currentToken->lexeme);
-    if (status == COMPILER_OK) {
-        status = advanceToken(syntaxAnalyzer);
-    }
-    if (status == COMPILER_OK) {
-        status = expectWord(syntaxAnalyzer, "=");
-    }
-    if (status == COMPILER_OK) {
-        status = analyzerTypesParseType(syntaxAnalyzer, &alias->variableType);
-    }
     if (status != COMPILER_OK) {
-        abstractSyntaxNodeDestroy(alias);
-        return status;
+        goto cleanup;
+    }
+    status = advanceToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = expectWord(syntaxAnalyzer, "=");
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = analyzerTypesParseType(syntaxAnalyzer, &alias->variableType);
+    if (status != COMPILER_OK) {
+        goto cleanup;
     }
 
     *outNode = alias;
     return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(alias);
+    return status;
+}
+
+CompilerStatus analyzerTypesParseCaseClass(SyntaxAnalyzer *syntaxAnalyzer,
+                                           AbstractSyntaxNode **outNode) {
+    if (syntaxAnalyzer == NULL || outNode == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    *outNode = NULL;
+
+    CompilerStatus status = expectWord(syntaxAnalyzer, SYNTAX_KW_CASE);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    status = expectWord(syntaxAnalyzer, SYNTAX_KW_CLASS);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    if (!isIdentifierToken(syntaxAnalyzer->currentToken)) {
+        return COMPILER_SYNTAX_ERROR;
+    }
+
+    AbstractSyntaxNode *caseClass =
+        createNode(ABSTRACT_SYNTAX_CASE_CLASS, syntaxAnalyzer->currentToken->location);
+    if (caseClass == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    AbstractSyntaxNode *field = NULL;
+    status = setNodeText(caseClass, syntaxAnalyzer->currentToken->lexeme);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = advanceToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = expectType(syntaxAnalyzer, TOKEN_LEFT_PAREN);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    while (!currentIsType(syntaxAnalyzer, TOKEN_RIGHT_PAREN)) {
+        if (!isIdentifierToken(syntaxAnalyzer->currentToken)) {
+            status = COMPILER_SYNTAX_ERROR;
+            goto cleanup;
+        }
+
+        field =
+            createNode(ABSTRACT_SYNTAX_CASE_CLASS_FIELD, syntaxAnalyzer->currentToken->location);
+        if (field == NULL) {
+            status = COMPILER_INTERNAL_ERROR;
+            goto cleanup;
+        }
+        status = setNodeText(field, syntaxAnalyzer->currentToken->lexeme);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        status = advanceToken(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        status = expectType(syntaxAnalyzer, TOKEN_COLON);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        status = analyzerTypesParseType(syntaxAnalyzer, &field->variableType);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        status = appendOwnedChild(caseClass, field);
+        field = NULL;
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        if (currentIsType(syntaxAnalyzer, TOKEN_RIGHT_PAREN)) {
+            break;
+        }
+        status = expectType(syntaxAnalyzer, TOKEN_COMMA);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+    }
+
+    status = expectType(syntaxAnalyzer, TOKEN_RIGHT_PAREN);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    *outNode = caseClass;
+    return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(field);
+    abstractSyntaxNodeDestroy(caseClass);
+    return status;
 }

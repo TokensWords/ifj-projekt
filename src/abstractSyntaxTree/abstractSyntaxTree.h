@@ -20,7 +20,7 @@ typedef enum {
 
     /**
      * Represents the root of the abstract syntax tree
-     * @children - top-level functions in the program
+     * @children - top-level functions, type aliases, and case classes
      */
     ABSTRACT_SYNTAX_PROGRAM,
 
@@ -36,6 +36,20 @@ typedef enum {
 
     /** A top-level type alias; @text is its name and @variableType is its definition. */
     ABSTRACT_SYNTAX_TYPE_ALIAS,
+
+    /**
+     * A top-level case class declaration.
+     * @text - class name
+     * @children - its public immutable fields, in declaration order
+     */
+    ABSTRACT_SYNTAX_CASE_CLASS,
+
+    /**
+     * A public immutable case-class field.
+     * @text - field name
+     * @variableType - declared field type
+     */
+    ABSTRACT_SYNTAX_CASE_CLASS_FIELD,
 
     /**
      * Represents a function parameter
