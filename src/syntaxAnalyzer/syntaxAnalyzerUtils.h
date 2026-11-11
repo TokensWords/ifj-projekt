@@ -13,11 +13,15 @@
 #include "abstractSyntaxTree.h"
 #include "lexicalAnalyzer.h"
 
-/** @brief State holder representing parser. */
+/** @brief State holder representing parser. 
+ * @newlineConsumed is needed to parse inline 'if' expressions correctly, because
+ * it's body expression can be on a new line.
+*/
 typedef struct SyntaxAnalyzer {
     LexicalAnalyzer *lexicalAnalyzer;
     Token *currentToken;
     Token *nextToken;
+    bool newlineConsumed;
 } SyntaxAnalyzer;
 
 /* --- Loading and Advancing Tokens Functions --- */

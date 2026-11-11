@@ -33,6 +33,7 @@ SyntaxAnalyzer *syntaxAnalyzerCreate(LexicalAnalyzer *lexicalAnalyzer)
     syntaxAnalyzer->lexicalAnalyzer = lexicalAnalyzer;
     syntaxAnalyzer->currentToken = NULL;
     syntaxAnalyzer->nextToken = NULL;
+    syntaxAnalyzer->newlineConsumed = false;
     return syntaxAnalyzer;
 }
 

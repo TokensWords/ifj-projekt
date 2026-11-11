@@ -10,11 +10,171 @@
 #include "syntaxAnalyzerUtils.h"
 
 #include "memory.h"
+#include "syntax.h"
 #include "syntaxOperators.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+
+static CompilerStatus parseIfExpression(SyntaxAnalyzer *syntaxAnalyzer,
+                                        AbstractSyntaxNode **outNode);
+
+static CompilerStatus parseIfExpressionBranch(SyntaxAnalyzer *syntaxAnalyzer,
+                                              AbstractSyntaxNode **outNode, bool *outIsMultiline,
+                                              bool isElseBranch) {
+    if (syntaxAnalyzer == NULL || outNode == NULL || outIsMultiline == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    *outNode = NULL;
+    *outIsMultiline = false;
+
+    CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    if (currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
+        status = skipNewlines(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        if (!currentIsType(syntaxAnalyzer, TOKEN_INDENT)) {
+            return COMPILER_SYNTAX_ERROR;
+        }
+        status = advanceToken(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        *outIsMultiline = true;
+    }
+
+    status = analyzerExpressionsParse(syntaxAnalyzer, outNode);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    if (*outIsMultiline) {
+        if (!currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
+            abstractSyntaxNodeDestroy(*outNode);
+            *outNode = NULL;
+            return COMPILER_SYNTAX_ERROR;
+        }
+        status = skipNewlines(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            abstractSyntaxNodeDestroy(*outNode);
+            *outNode = NULL;
+            return status;
+        }
+        if (!currentIsType(syntaxAnalyzer, TOKEN_DEDENT)) {
+            abstractSyntaxNodeDestroy(*outNode);
+            *outNode = NULL;
+            return COMPILER_SYNTAX_ERROR;
+        }
+        status = advanceToken(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            abstractSyntaxNodeDestroy(*outNode);
+            *outNode = NULL;
+            return status;
+        }
+        if (isElseBranch) {
+            syntaxAnalyzer->newlineConsumed = true;
+        }
+    }
+
+    return COMPILER_OK;
+}
+
+static CompilerStatus parseIfExpression(SyntaxAnalyzer *syntaxAnalyzer,
+                                        AbstractSyntaxNode **outNode) {
+    if (syntaxAnalyzer == NULL || outNode == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    *outNode = NULL;
+
+    CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    SourceLocation location = syntaxAnalyzer->currentToken->location;
+    AbstractSyntaxNode *ifExpression = createNode(ABSTRACT_SYNTAX_IF_EXPRESSION, location);
+    AbstractSyntaxNode *condition = NULL;
+    AbstractSyntaxNode *thenExpression = NULL;
+    AbstractSyntaxNode *elseExpression = NULL;
+    bool thenIsMultiline = false;
+    bool elseIsMultiline = false;
+    bool previousConsumedNewline = syntaxAnalyzer->newlineConsumed;
+    syntaxAnalyzer->newlineConsumed = false;
+    if (ifExpression == NULL) {
+        syntaxAnalyzer->newlineConsumed = previousConsumedNewline;
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    status = advanceToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = analyzerExpressionsParse(syntaxAnalyzer, &condition);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    syntaxAnalyzer->newlineConsumed = false;
+
+    status = expectWord(syntaxAnalyzer, SYNTAX_KW_THEN);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = appendOwnedChild(ifExpression, condition);
+    condition = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    status = parseIfExpressionBranch(syntaxAnalyzer, &thenExpression, &thenIsMultiline, false);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = appendOwnedChild(ifExpression, thenExpression);
+    thenExpression = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    syntaxAnalyzer->newlineConsumed = false;
+
+    if (currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
+        status = skipNewlines(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+    }
+    status = expectWord(syntaxAnalyzer, SYNTAX_KW_ELSE);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    status = parseIfExpressionBranch(syntaxAnalyzer, &elseExpression, &elseIsMultiline, true);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = appendOwnedChild(ifExpression, elseExpression);
+    elseExpression = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    syntaxAnalyzer->newlineConsumed =
+        previousConsumedNewline || elseIsMultiline ||
+        syntaxAnalyzer->newlineConsumed;
+    *outNode = ifExpression;
+    return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(condition);
+    abstractSyntaxNodeDestroy(thenExpression);
+    abstractSyntaxNodeDestroy(elseExpression);
+    abstractSyntaxNodeDestroy(ifExpression);
+    syntaxAnalyzer->newlineConsumed = previousConsumedNewline;
+    return status;
+}
 
 CompilerStatus parseIdentifierNode(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode) {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
@@ -333,10 +493,21 @@ static bool isBinaryExpressionOperator(ExpressionTerminal terminal) {
            terminal == EXPR_TERMINAL_LOGICAL_AND || terminal == EXPR_TERMINAL_LOGICAL_OR;
 }
 
-static ExpressionTerminal terminalForToken(const Token *token, const ExpressionStackEntry *stack,
+static ExpressionTerminal terminalForToken(const SyntaxAnalyzer *syntaxAnalyzer,
+                                           const Token *token,
+                                           const ExpressionStackEntry *stack,
                                            size_t stackCount) {
     if (token == NULL) {
         return EXPR_TERMINAL_END;
+    }
+    if (syntaxAnalyzer->newlineConsumed &&
+        token->type != TOKEN_EOF && token->type != TOKEN_NEWLINE &&
+        token->type != TOKEN_DEDENT && token->type != TOKEN_COMMA &&
+        token->type != TOKEN_RIGHT_PAREN) {
+        return EXPR_TERMINAL_END;
+    }
+    if (token->type == TOKEN_KEYWORD && tokenHasText(token, SYNTAX_KW_IF)) {
+        return EXPR_TERMINAL_OPERAND;
     }
     if (token->type == TOKEN_IDENTIFIER || token->type == TOKEN_INT_LITERAL ||
         token->type == TOKEN_DOUBLE_LITERAL || token->type == TOKEN_STRING_LITERAL ||
@@ -498,6 +669,17 @@ static CompilerStatus shiftExpressionToken(SyntaxAnalyzer *syntaxAnalyzer,
     ExpressionStackEntry entry = {
         .kind = EXPRESSION_STACK_TERMINAL, .terminal = terminal, .location = token->location};
     if (terminal == EXPR_TERMINAL_OPERAND) {
+        if (token->type == TOKEN_KEYWORD && tokenHasText(token, SYNTAX_KW_IF)) {
+            CompilerStatus status = parseIfExpression(syntaxAnalyzer, &entry.node);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+            status = pushExpressionStack(stack, stackCount, stackCapacity, entry);
+            if (status != COMPILER_OK) {
+                abstractSyntaxNodeDestroy(entry.node);
+            }
+            return status;
+        }
         if (token->type == TOKEN_LEFT_PAREN) {
             AbstractSyntaxNode *unit = createNode(ABSTRACT_SYNTAX_UNIT_LITERAL, token->location);
             if (unit == NULL) {
@@ -544,6 +726,9 @@ static CompilerStatus shiftExpressionToken(SyntaxAnalyzer *syntaxAnalyzer,
     if (status != COMPILER_OK) {
         return status;
     }
+    if (terminal == EXPR_TERMINAL_RIGHT_PAREN) {
+        syntaxAnalyzer->newlineConsumed = false;
+    }
     return advanceToken(syntaxAnalyzer);
 }
 
@@ -581,7 +766,7 @@ CompilerStatus analyzerExpressionsParse(SyntaxAnalyzer *syntaxAnalyzer,
                                syntaxAnalyzer->nextToken->type == TOKEN_RIGHT_PAREN;
         }
 
-        ExpressionTerminal incoming = terminalForToken(token, stack, stackCount);
+        ExpressionTerminal incoming = terminalForToken(syntaxAnalyzer, token, stack, stackCount);
         if (emptyParentheses) {
             incoming = EXPR_TERMINAL_OPERAND;
         }
@@ -596,6 +781,9 @@ CompilerStatus analyzerExpressionsParse(SyntaxAnalyzer *syntaxAnalyzer,
             stack[1].kind == EXPRESSION_STACK_NONTERMINAL) {
             *outNode = stack[1].node;
             stack[1].node = NULL;
+            if (token != NULL && (token->type == TOKEN_COMMA || token->type == TOKEN_RIGHT_PAREN)) {
+                syntaxAnalyzer->newlineConsumed = false;
+            }
             destroyExpressionStack(stack, stackCount);
             return COMPILER_OK;
         }

@@ -755,7 +755,11 @@ CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **o
 
     while (!currentIsType(syntaxAnalyzer, TOKEN_DEDENT) &&
            !currentIsType(syntaxAnalyzer, TOKEN_EOF)) {
+        bool previousConsumedNewline = syntaxAnalyzer->newlineConsumed;
+        syntaxAnalyzer->newlineConsumed = false;
         status = parseStatement(syntaxAnalyzer, &statement);
+        bool statementConsumedNewline = syntaxAnalyzer->newlineConsumed;
+        syntaxAnalyzer->newlineConsumed = previousConsumedNewline;
         if (status != COMPILER_OK) {
             goto cleanup;
         }
@@ -774,7 +778,8 @@ CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **o
             if (status != COMPILER_OK) {
                 goto cleanup;
             }
-        } else if (!currentIsType(syntaxAnalyzer, TOKEN_DEDENT) && !isCompoundStatement) {
+        } else if (!currentIsType(syntaxAnalyzer, TOKEN_DEDENT) && !isCompoundStatement &&
+                   !statementConsumedNewline) {
             status = COMPILER_SYNTAX_ERROR;
             goto cleanup;
         }

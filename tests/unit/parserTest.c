@@ -81,6 +81,17 @@ static CompilerStatus parseForTokens(const TestToken *tokens, size_t tokenCount,
     return status;
 }
 
+static CompilerStatus parseBlockTokens(const TestToken *tokens, size_t tokenCount,
+                                       AbstractSyntaxNode **outNode) {
+    struct LexicalAnalyzer lexerState = {
+        .tokens = tokens, .tokenCount = tokenCount, .nextToken = 0};
+    SyntaxAnalyzer *syntaxAnalyzer = syntaxAnalyzerCreate((LexicalAnalyzer *)&lexerState);
+    assert(syntaxAnalyzer != NULL);
+    CompilerStatus status = parseBlock(syntaxAnalyzer, outNode);
+    syntaxAnalyzerDestroy(syntaxAnalyzer);
+    return status;
+}
+
 #define TEST_TOKEN(tokenType, tokenText, tokenLine, tokenColumn)                                   \
     {tokenType, tokenText, tokenLine, tokenColumn, 0}
 
@@ -525,6 +536,146 @@ int main(void) {
     assert(forClauses->children[3]->kind == ABSTRACT_SYNTAX_FOR_GUARD);
     assert(forNode->children[1]->kind == ABSTRACT_SYNTAX_BLOCK);
     abstractSyntaxNodeDestroy(forNode);
+
+    static const TestToken ifExpressionBlockTokens[] = {
+        TEST_TOKEN(TOKEN_INDENT, NULL, 1, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "var", 1, 1),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "x", 1, 5),
+        TEST_TOKEN(TOKEN_OPERATOR, "=", 1, 7),
+        TEST_TOKEN(TOKEN_OPERATOR, "-", 1, 9),
+        {TOKEN_INT_LITERAL, "5", 1, 10, 5},
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 11),
+
+        TEST_TOKEN(TOKEN_KEYWORD, "val", 2, 1),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "absolute", 2, 5),
+        TEST_TOKEN(TOKEN_OPERATOR, "=", 2, 14),
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 2, 16),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "x", 2, 19),
+        TEST_TOKEN(TOKEN_OPERATOR, "<", 2, 21),
+        {TOKEN_INT_LITERAL, "0", 2, 23, 0},
+        TEST_TOKEN(TOKEN_KEYWORD, "then", 2, 25),
+        {TOKEN_INT_LITERAL, "0", 2, 30, 0},
+        TEST_TOKEN(TOKEN_OPERATOR, "-", 2, 32),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "x", 2, 34),
+        TEST_TOKEN(TOKEN_KEYWORD, "else", 2, 36),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "x", 2, 41),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 42),
+
+        TEST_TOKEN(TOKEN_KEYWORD, "val", 3, 1),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "abs2", 3, 5),
+        TEST_TOKEN(TOKEN_OPERATOR, "=", 3, 10),
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 3, 12),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "x", 3, 15),
+        TEST_TOKEN(TOKEN_OPERATOR, "<", 3, 17),
+        {TOKEN_INT_LITERAL, "0", 3, 19, 0},
+        TEST_TOKEN(TOKEN_KEYWORD, "then", 3, 21),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 3, 25),
+        TEST_TOKEN(TOKEN_INDENT, NULL, 4, 3),
+        {TOKEN_INT_LITERAL, "0", 4, 3, 0},
+        TEST_TOKEN(TOKEN_OPERATOR, "-", 4, 5),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "x", 4, 7),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 4, 8),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 5, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "else", 5, 1),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 5, 5),
+        TEST_TOKEN(TOKEN_INDENT, NULL, 6, 3),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "x", 6, 3),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 6, 4),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 7, 1),
+
+        TEST_TOKEN(TOKEN_KEYWORD, "val", 7, 1),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "abs3", 7, 5),
+        TEST_TOKEN(TOKEN_OPERATOR, "=", 7, 10),
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 7, 12),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "x", 7, 15),
+        TEST_TOKEN(TOKEN_OPERATOR, "<", 7, 17),
+        {TOKEN_INT_LITERAL, "0", 7, 19, 0},
+        TEST_TOKEN(TOKEN_KEYWORD, "then", 7, 21),
+        {TOKEN_INT_LITERAL, "0", 7, 26, 0},
+        TEST_TOKEN(TOKEN_OPERATOR, "-", 7, 28),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "x", 7, 30),
+        TEST_TOKEN(TOKEN_KEYWORD, "else", 7, 32),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 7, 36),
+        TEST_TOKEN(TOKEN_INDENT, NULL, 8, 3),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "x", 8, 3),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 8, 4),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 9, 1),
+
+        TEST_TOKEN(TOKEN_KEYWORD, "val", 9, 1),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "abs4", 9, 5),
+        TEST_TOKEN(TOKEN_OPERATOR, "=", 9, 10),
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 9, 12),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "x", 9, 15),
+        TEST_TOKEN(TOKEN_OPERATOR, "<", 9, 17),
+        {TOKEN_INT_LITERAL, "0", 9, 19, 0},
+        TEST_TOKEN(TOKEN_KEYWORD, "then", 9, 21),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 9, 25),
+        TEST_TOKEN(TOKEN_INDENT, NULL, 10, 3),
+        {TOKEN_INT_LITERAL, "0", 10, 3, 0},
+        TEST_TOKEN(TOKEN_OPERATOR, "-", 10, 5),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "x", 10, 7),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 10, 8),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 11, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "else", 11, 1),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "x", 11, 6),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 11, 7),
+
+        TEST_TOKEN(TOKEN_IDENTIFIER, "print", 12, 1),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 12, 6),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "absolute", 12, 7),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 12, 15),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 12, 16),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 13, 1),
+        TEST_TOKEN(TOKEN_EOF, NULL, 13, 1)};
+    AbstractSyntaxNode *ifExpressionBlock = NULL;
+    assert(parseBlockTokens(ifExpressionBlockTokens,
+                            sizeof(ifExpressionBlockTokens) / sizeof(ifExpressionBlockTokens[0]),
+                            &ifExpressionBlock) == COMPILER_OK);
+    assert(ifExpressionBlock->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(ifExpressionBlock->childCount == 6);
+    for (size_t index = 1; index <= 4; index++) {
+        AbstractSyntaxNode *declaration = ifExpressionBlock->children[index];
+        assert(declaration->kind == ABSTRACT_SYNTAX_VARIABLE_DECLARATION);
+        AbstractSyntaxNode *ifExpression = declaration->children[0];
+        assert(ifExpression->kind == ABSTRACT_SYNTAX_IF_EXPRESSION);
+        assert(ifExpression->childCount == 3);
+        assert(ifExpression->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+        assert(ifExpression->children[1] != NULL);
+        assert(ifExpression->children[2] != NULL);
+    }
+    assert(ifExpressionBlock->children[5]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
+    abstractSyntaxNodeDestroy(ifExpressionBlock);
+
+    static const TestToken missingElseExpressionTokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 1),
+                                                            {TOKEN_BOOL_LITERAL, "true", 1, 4, 1},
+                                                            TEST_TOKEN(TOKEN_KEYWORD, "then", 1, 9),
+                                                            {TOKEN_INT_LITERAL, "1", 1, 14, 1},
+                                                            TEST_TOKEN(TOKEN_EOF, NULL, 1, 15)};
+    expression = NULL;
+    assert(parseExpressionTokens(missingElseExpressionTokens,
+                                 sizeof(missingElseExpressionTokens) /
+                                     sizeof(missingElseExpressionTokens[0]),
+                                 &expression) == COMPILER_SYNTAX_ERROR);
+    assert(expression == NULL);
+
+    static const TestToken ifExpressionAsOperandTokens[] = {
+        {TOKEN_INT_LITERAL, "1", 1, 1, 1},        TEST_TOKEN(TOKEN_OPERATOR, "+", 1, 3),
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 5),    {TOKEN_BOOL_LITERAL, "true", 1, 8, 1},
+        TEST_TOKEN(TOKEN_KEYWORD, "then", 1, 13), {TOKEN_INT_LITERAL, "2", 1, 18, 2},
+        TEST_TOKEN(TOKEN_KEYWORD, "else", 1, 20), {TOKEN_INT_LITERAL, "3", 1, 25, 3},
+        TEST_TOKEN(TOKEN_OPERATOR, "*", 1, 27),   {TOKEN_INT_LITERAL, "4", 1, 29, 4},
+        TEST_TOKEN(TOKEN_EOF, NULL, 1, 30)};
+    expression = NULL;
+    assert(parseExpressionTokens(ifExpressionAsOperandTokens,
+                                 sizeof(ifExpressionAsOperandTokens) /
+                                     sizeof(ifExpressionAsOperandTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(strcmp(expression->text, "+") == 0);
+    assert(expression->children[1]->kind == ABSTRACT_SYNTAX_IF_EXPRESSION);
+    assert(expression->children[1]->children[2]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(strcmp(expression->children[1]->children[2]->text, "*") == 0);
+    abstractSyntaxNodeDestroy(expression);
 
     struct LexicalAnalyzer lexerState = {
         .tokens = tokens, .tokenCount = sizeof(tokens) / sizeof(tokens[0]), .nextToken = 0};
