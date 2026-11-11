@@ -1242,6 +1242,128 @@ int main(void) {
     assert(strcmp(printCall->children[1]->text, "x") == 0);
     sourceProgramDestroy(program);
     syntaxAnalyzerDestroy(syntaxAnalyzer);
+
+    static const TestToken matchExpressionTokens[] = {
+        TEST_TOKEN(TOKEN_IDENTIFIER, "value", 1, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "match", 1, 7),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 12),
+        TEST_TOKEN(TOKEN_INDENT, NULL, 2, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "case", 2, 3),
+        {TOKEN_INT_LITERAL, "0", 2, 8, 0},
+        TEST_TOKEN(TOKEN_OPERATOR, "=>", 2, 10),
+        TEST_TOKEN(TOKEN_STRING_LITERAL, "zero", 2, 13),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 19),
+        TEST_TOKEN(TOKEN_KEYWORD, "case", 3, 3),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "n", 3, 8),
+        TEST_TOKEN(TOKEN_COLON, ":", 3, 9),
+        TEST_TOKEN(TOKEN_KEYWORD, "Int", 3, 11),
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 3, 15),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "n", 3, 18),
+        TEST_TOKEN(TOKEN_OPERATOR, ">", 3, 20),
+        {TOKEN_INT_LITERAL, "0", 3, 22, 0},
+        TEST_TOKEN(TOKEN_OPERATOR, "=>", 3, 24),
+        TEST_TOKEN(TOKEN_STRING_LITERAL, "positive", 3, 27),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 3, 37),
+        TEST_TOKEN(TOKEN_KEYWORD, "case", 4, 3),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "Point", 4, 8),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 4, 13),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "a", 4, 14),
+        TEST_TOKEN(TOKEN_COMMA, ",", 4, 15),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "Inner", 4, 17),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 4, 22),
+        TEST_TOKEN(TOKEN_INT_LITERAL, "1", 4, 23),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 4, 24),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 4, 25),
+        TEST_TOKEN(TOKEN_OPERATOR, "=>", 4, 27),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "a", 4, 30),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 4, 31),
+        TEST_TOKEN(TOKEN_KEYWORD, "case", 5, 3),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "text", 5, 8),
+        TEST_TOKEN(TOKEN_COLON, ":", 5, 12),
+        TEST_TOKEN(TOKEN_KEYWORD, "String", 5, 14),
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 5, 21),
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 5, 24),
+        TEST_TOKEN(TOKEN_BOOL_LITERAL, "true", 5, 27),
+        TEST_TOKEN(TOKEN_KEYWORD, "then", 5, 32),
+        TEST_TOKEN(TOKEN_BOOL_LITERAL, "true", 5, 37),
+        TEST_TOKEN(TOKEN_KEYWORD, "else", 5, 42),
+        TEST_TOKEN(TOKEN_BOOL_LITERAL, "false", 5, 47),
+        TEST_TOKEN(TOKEN_OPERATOR, "=>", 5, 53),
+        TEST_TOKEN(TOKEN_STRING_LITERAL, "guarded", 5, 56),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 5, 65),
+        TEST_TOKEN(TOKEN_KEYWORD, "case", 6, 3),
+        TEST_TOKEN(TOKEN_UNDERSCORE, "_", 6, 8),
+        TEST_TOKEN(TOKEN_OPERATOR, "=>", 6, 10),
+        TEST_TOKEN(TOKEN_STRING_LITERAL, "other", 6, 13),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 6, 20),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 7, 1),
+        TEST_TOKEN(TOKEN_EOF, NULL, 7, 1)};
+    AbstractSyntaxNode *matchExpression = NULL;
+    assert(parseExpressionTokens(matchExpressionTokens,
+                                 sizeof(matchExpressionTokens) / sizeof(matchExpressionTokens[0]),
+                                 &matchExpression) == COMPILER_OK);
+    assert(matchExpression->kind == ABSTRACT_SYNTAX_MATCH_EXPRESSION);
+    assert(matchExpression->childCount == 6);
+    assert(matchExpression->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    AbstractSyntaxNode *literalCase = matchExpression->children[1];
+    assert(literalCase->kind == ABSTRACT_SYNTAX_MATCH_CASE && literalCase->childCount == 2);
+    assert(literalCase->children[0]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    assert(literalCase->children[1]->kind == ABSTRACT_SYNTAX_STRING_LITERAL);
+    AbstractSyntaxNode *guardedCase = matchExpression->children[2];
+    assert(guardedCase->childCount == 3);
+    assert(guardedCase->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    assert(strcmp(guardedCase->children[0]->text, "n") == 0);
+    assert(typeDescriptorGetMask(guardedCase->children[0]->variableType) == DATA_TYPE_INT);
+    assert(guardedCase->children[1]->kind == ABSTRACT_SYNTAX_MATCH_GUARD);
+    assert(guardedCase->children[1]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    AbstractSyntaxNode *constructorCase = matchExpression->children[3];
+    assert(constructorCase->children[0]->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
+    assert(constructorCase->children[0]->childCount == 3);
+    assert(constructorCase->children[0]->children[1]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    assert(constructorCase->children[0]->children[2]->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
+    AbstractSyntaxNode *ifGuardedCase = matchExpression->children[4];
+    assert(ifGuardedCase->children[1]->kind == ABSTRACT_SYNTAX_MATCH_GUARD);
+    assert(ifGuardedCase->children[1]->children[0]->kind == ABSTRACT_SYNTAX_IF_EXPRESSION);
+    assert(matchExpression->children[5]->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    assert(strcmp(matchExpression->children[5]->children[0]->text, "_") == 0);
+    abstractSyntaxNodeDestroy(matchExpression);
+
+    static const TestToken matchWithoutDefaultTokens[] = {
+        TEST_TOKEN(TOKEN_IDENTIFIER, "value", 1, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "match", 1, 7),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 12),
+        TEST_TOKEN(TOKEN_INDENT, NULL, 2, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "case", 2, 3),
+        TEST_TOKEN(TOKEN_BOOL_LITERAL, "true", 2, 8),
+        TEST_TOKEN(TOKEN_OPERATOR, "=>", 2, 13),
+        TEST_TOKEN(TOKEN_BOOL_LITERAL, "false", 2, 16),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 21),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 3, 1),
+        TEST_TOKEN(TOKEN_EOF, NULL, 3, 1)};
+    assert(parseExpressionTokens(matchWithoutDefaultTokens,
+                                 sizeof(matchWithoutDefaultTokens) /
+                                     sizeof(matchWithoutDefaultTokens[0]),
+                                 &matchExpression) == COMPILER_SYNTAX_ERROR);
+    assert(matchExpression == NULL);
+
+    static const TestToken guardedWildcardTokens[] = {
+        TEST_TOKEN(TOKEN_IDENTIFIER, "value", 1, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "match", 1, 7),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 12),
+        TEST_TOKEN(TOKEN_INDENT, NULL, 2, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "case", 2, 3),
+        TEST_TOKEN(TOKEN_UNDERSCORE, "_", 2, 8),
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 2, 10),
+        TEST_TOKEN(TOKEN_BOOL_LITERAL, "true", 2, 13),
+        TEST_TOKEN(TOKEN_OPERATOR, "=>", 2, 18),
+        TEST_TOKEN(TOKEN_BOOL_LITERAL, "false", 2, 21),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 26),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 3, 1),
+        TEST_TOKEN(TOKEN_EOF, NULL, 3, 1)};
+    assert(parseExpressionTokens(guardedWildcardTokens,
+                                 sizeof(guardedWildcardTokens) / sizeof(guardedWildcardTokens[0]),
+                                 &matchExpression) == COMPILER_SYNTAX_ERROR);
+    assert(matchExpression == NULL);
     return 0;
 }
 

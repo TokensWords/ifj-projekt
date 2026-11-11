@@ -127,6 +127,21 @@ typedef enum {
     // --- expressions ---
 
     /**
+     * A match expression.
+     * @children - scrutinee followed by ordered case branches
+     */
+    ABSTRACT_SYNTAX_MATCH_EXPRESSION,
+
+    /**
+     * One match branch.
+     * @children - pattern, optional ABSTRACT_SYNTAX_MATCH_GUARD, result expression
+     */
+    ABSTRACT_SYNTAX_MATCH_CASE,
+
+    /** A guard expression attached to a match case; @children contains its expression. */
+    ABSTRACT_SYNTAX_MATCH_GUARD,
+
+    /**
      * Represents calling any expression.
      * @children - callee expression followed by argument expressions
      */
