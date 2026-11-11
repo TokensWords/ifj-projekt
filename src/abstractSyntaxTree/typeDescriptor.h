@@ -14,10 +14,9 @@
 typedef struct TypeDescriptor {
     DataType type;
     char *name;
-    struct TypeDescriptor **members;
-    size_t memberCount;
-    size_t memberCapacity;
+    struct TypeDescriptor *members;
     struct TypeDescriptor *elementType;
+    struct TypeDescriptor *nextMember;
 } TypeDescriptor;
 
 /** Creates an empty descriptor with the supplied type mask. */
@@ -44,10 +43,10 @@ CompilerStatus typeDescriptorSetName(TypeDescriptor *type, const char *name);
 /** Gets the number of union members. */
 size_t typeDescriptorGetMemberCount(const TypeDescriptor *type);
 
-/** Gets a borrowed union member, or NULL when the index is invalid. */
+/** Gets a borrowed union member by index, or NULL when the index is invalid. */
 const TypeDescriptor *typeDescriptorGetMember(const TypeDescriptor *type, size_t index);
 
-/** Appends member and takes ownership on success; unions their masks into the parent. */
+/** Appends member to the linked member list and takes ownership on success. */
 CompilerStatus typeDescriptorAddMember(TypeDescriptor *type, TypeDescriptor *member);
 
 /** Removes and returns a member, transferring ownership to the caller. */

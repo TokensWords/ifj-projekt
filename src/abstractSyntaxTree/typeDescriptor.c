@@ -19,9 +19,8 @@ TypeDescriptor *typeDescriptorCreate(DataType type) {
     descriptor->type = type;
     descriptor->name = NULL;
     descriptor->members = NULL;
-    descriptor->memberCount = 0;
-    descriptor->memberCapacity = 0;
     descriptor->elementType = NULL;
+    descriptor->nextMember = NULL;
     return descriptor;
 }
 
@@ -30,11 +29,14 @@ void typeDescriptorDestroy(TypeDescriptor *type) {
         return;
     }
 
-    for (size_t index = 0; index < type->memberCount; index++) {
-        typeDescriptorDestroy(type->members[index]);
+    TypeDescriptor *member = type->members;
+    while (member != NULL) {
+        TypeDescriptor *nextMember = member->nextMember;
+        member->nextMember = NULL;
+        typeDescriptorDestroy(member);
+        member = nextMember;
     }
     typeDescriptorDestroy(type->elementType);
-    free(type->members);
     free(type->name);
     free(type);
 }
@@ -69,49 +71,65 @@ CompilerStatus typeDescriptorSetName(TypeDescriptor *type, const char *name) {
 }
 
 size_t typeDescriptorGetMemberCount(const TypeDescriptor *type) {
-    return type == NULL ? 0 : type->memberCount;
+    size_t count = 0;
+    if (type != NULL) {
+        for (const TypeDescriptor *member = type->members; member != NULL;
+             member = member->nextMember) {
+            count++;
+        }
+    }
+    return count;
 }
 
 const TypeDescriptor *typeDescriptorGetMember(const TypeDescriptor *type, size_t index) {
-    if (type == NULL || index >= type->memberCount) {
+    if (type == NULL) {
         return NULL;
     }
-    return type->members[index];
+    const TypeDescriptor *member = type->members;
+    while (index > 0 && member != NULL) {
+        member = member->nextMember;
+        index--;
+    }
+    return member;
 }
 
 CompilerStatus typeDescriptorAddMember(TypeDescriptor *type, TypeDescriptor *member) {
-    if (type == NULL || member == NULL) {
+    if (type == NULL || member == NULL || member->nextMember != NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    if (type->memberCount == type->memberCapacity) {
-        size_t capacity = type->memberCapacity == 0 ? 2 : type->memberCapacity * 2;
-        TypeDescriptor **members =
-            memoryResizeArray(type->members, capacity, sizeof(TypeDescriptor *));
-        if (members == NULL) {
-            return COMPILER_INTERNAL_ERROR;
+    if (type->members == NULL) {
+        type->members = member;
+    } else {
+        TypeDescriptor *lastMember = type->members;
+        while (lastMember->nextMember != NULL) {
+            lastMember = lastMember->nextMember;
         }
-        type->members = members;
-        type->memberCapacity = capacity;
+        lastMember->nextMember = member;
     }
-    type->members[type->memberCount++] = member;
     type->type = (DataType)(type->type | member->type);
     return COMPILER_OK;
 }
 
 TypeDescriptor *typeDescriptorRemoveMember(TypeDescriptor *type, size_t index) {
-    if (type == NULL || index >= type->memberCount) {
+    if (type == NULL) {
         return NULL;
     }
 
-    TypeDescriptor *member = type->members[index];
-    if (index + 1 < type->memberCount) {
-        memmove(&type->members[index], &type->members[index + 1],
-                (type->memberCount - index - 1) * sizeof(TypeDescriptor *));
+    TypeDescriptor **memberLink = &type->members;
+    while (index > 0 && *memberLink != NULL) {
+        memberLink = &(*memberLink)->nextMember;
+        index--;
     }
-    type->memberCount--;
+    if (*memberLink == NULL) {
+        return NULL;
+    }
+    TypeDescriptor *member = *memberLink;
+    *memberLink = member->nextMember;
+    member->nextMember = NULL;
     type->type = DATA_TYPE_UNKNOWN;
-    for (size_t memberIndex = 0; memberIndex < type->memberCount; memberIndex++) {
-        type->type = (DataType)(type->type | type->members[memberIndex]->type);
+    for (TypeDescriptor *remaining = type->members; remaining != NULL;
+         remaining = remaining->nextMember) {
+        type->type = (DataType)(type->type | remaining->type);
     }
     return member;
 }
@@ -141,8 +159,9 @@ TypeDescriptor *typeDescriptorClone(const TypeDescriptor *type) {
         typeDescriptorDestroy(copy);
         return NULL;
     }
-    for (size_t index = 0; index < type->memberCount; index++) {
-        TypeDescriptor *member = typeDescriptorClone(type->members[index]);
+    for (const TypeDescriptor *sourceMember = type->members; sourceMember != NULL;
+         sourceMember = sourceMember->nextMember) {
+        TypeDescriptor *member = typeDescriptorClone(sourceMember);
         if (member == NULL || typeDescriptorAddMember(copy, member) != COMPILER_OK) {
             typeDescriptorDestroy(member);
             typeDescriptorDestroy(copy);
@@ -164,8 +183,7 @@ bool typeDescriptorEquals(const TypeDescriptor *left, const TypeDescriptor *righ
     if (left == right) {
         return true;
     }
-    if (left == NULL || right == NULL || left->type != right->type ||
-        left->memberCount != right->memberCount) {
+    if (left == NULL || right == NULL || left->type != right->type) {
         return false;
     }
     if ((left->name == NULL) != (right->name == NULL) ||
@@ -173,10 +191,17 @@ bool typeDescriptorEquals(const TypeDescriptor *left, const TypeDescriptor *righ
         ((left->elementType == NULL) != (right->elementType == NULL))) {
         return false;
     }
-    for (size_t index = 0; index < left->memberCount; index++) {
-        if (!typeDescriptorEquals(left->members[index], right->members[index])) {
+    const TypeDescriptor *leftMember = left->members;
+    const TypeDescriptor *rightMember = right->members;
+    while (leftMember != NULL && rightMember != NULL) {
+        if (!typeDescriptorEquals(leftMember, rightMember)) {
             return false;
         }
+        leftMember = leftMember->nextMember;
+        rightMember = rightMember->nextMember;
+    }
+    if (leftMember != NULL || rightMember != NULL) {
+        return false;
     }
     return left->elementType == NULL || typeDescriptorEquals(left->elementType, right->elementType);
 }
@@ -185,8 +210,9 @@ static bool typeDescriptorSubsetOfUnionMembers(const TypeDescriptor *subset,
                                                const TypeDescriptor *superset) {
     if (subset->name != NULL || subset->elementType != NULL ||
         (subset->type & (DATA_TYPE_LIST | DATA_TYPE_ALIAS | DATA_TYPE_CASE_CLASS)) != 0) {
-        for (size_t index = 0; index < superset->memberCount; index++) {
-            if (typeDescriptorIsSubset(subset, superset->members[index])) {
+        for (const TypeDescriptor *member = superset->members; member != NULL;
+             member = member->nextMember) {
+            if (typeDescriptorIsSubset(subset, member)) {
                 return true;
             }
         }
@@ -202,8 +228,9 @@ static bool typeDescriptorSubsetOfUnionMembers(const TypeDescriptor *subset,
         }
         TypeDescriptor atomicType = {.type = atomicTypes[typeIndex]};
         bool foundMember = false;
-        for (size_t memberIndex = 0; memberIndex < superset->memberCount; memberIndex++) {
-            if (typeDescriptorIsSubset(&atomicType, superset->members[memberIndex])) {
+        for (const TypeDescriptor *member = superset->members; member != NULL;
+             member = member->nextMember) {
+            if (typeDescriptorIsSubset(&atomicType, member)) {
                 foundMember = true;
                 break;
             }
@@ -223,15 +250,16 @@ bool typeDescriptorIsSubset(const TypeDescriptor *subset, const TypeDescriptor *
         return true;
     }
 
-    if (subset->memberCount > 0) {
-        for (size_t index = 0; index < subset->memberCount; index++) {
-            if (!typeDescriptorIsSubset(subset->members[index], superset)) {
+    if (subset->members != NULL) {
+        for (const TypeDescriptor *member = subset->members; member != NULL;
+             member = member->nextMember) {
+            if (!typeDescriptorIsSubset(member, superset)) {
                 return false;
             }
         }
         return true;
     }
-    if (superset->memberCount > 0) {
+    if (superset->members != NULL) {
         return typeDescriptorSubsetOfUnionMembers(subset, superset);
     }
 
