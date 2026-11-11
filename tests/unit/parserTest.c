@@ -346,14 +346,16 @@ int main(void) {
     assert(expression->text[0] == '*');
     AbstractSyntaxNode *factorialCall = expression->children[1];
     assert(factorialCall->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
-    assert(strcmp(factorialCall->text, "factorial") == 0);
-    assert(factorialCall->childCount == 1);
-    AbstractSyntaxNode *argumentExpression = factorialCall->children[0];
+    assert(factorialCall->childCount == 2);
+    assert(factorialCall->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    assert(strcmp(factorialCall->children[0]->text, "factorial") == 0);
+    AbstractSyntaxNode *argumentExpression = factorialCall->children[1];
     assert(argumentExpression->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
     assert(argumentExpression->text[0] == '+');
     assert(argumentExpression->children[0]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
-    assert(strcmp(argumentExpression->children[0]->text, "readInt") == 0);
-    assert(argumentExpression->children[0]->childCount == 0);
+    assert(argumentExpression->children[0]->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    assert(strcmp(argumentExpression->children[0]->children[0]->text, "readInt") == 0);
+    assert(argumentExpression->children[0]->childCount == 1);
     assert(argumentExpression->children[1]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
     abstractSyntaxNodeDestroy(expression);
 
@@ -375,12 +377,147 @@ int main(void) {
                                      sizeof(expressionArgumentsTokens[0]),
                                  &expression) == COMPILER_OK);
     assert(expression->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
-    assert(strcmp(expression->text, "subStr") == 0);
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    assert(strcmp(expression->children[0]->text, "subStr") == 0);
+    assert(expression->childCount == 4);
+    assert(expression->children[1]->kind == ABSTRACT_SYNTAX_STRING_LITERAL);
+    assert(expression->children[2]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(expression->children[2]->text[0] == '+');
+    assert(expression->children[3]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    abstractSyntaxNodeDestroy(expression);
+
+    static const TestToken listConstructorTokens[] = {
+        TEST_TOKEN(TOKEN_KEYWORD, "List", 1, 1), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 5),
+        {TOKEN_INT_LITERAL, "1", 1, 6, 1},       TEST_TOKEN(TOKEN_COMMA, ",", 1, 7),
+        {TOKEN_INT_LITERAL, "2", 1, 9, 2},       TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 10),
+        TEST_TOKEN(TOKEN_EOF, NULL, 1, 11)};
+    expression = NULL;
+    assert(parseExpressionTokens(listConstructorTokens,
+                                 sizeof(listConstructorTokens) / sizeof(listConstructorTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
     assert(expression->childCount == 3);
-    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_STRING_LITERAL);
-    assert(expression->children[1]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
-    assert(expression->children[1]->text[0] == '+');
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    assert(strcmp(expression->children[0]->text, "List") == 0);
+    assert(expression->children[1]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
     assert(expression->children[2]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    abstractSyntaxNodeDestroy(expression);
+
+    static const TestToken listRangeTokens[] = {
+        TEST_TOKEN(TOKEN_KEYWORD, "List", 1, 1),     TEST_TOKEN(TOKEN_DOT, ".", 1, 5),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "range", 1, 6), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 11),
+        {TOKEN_INT_LITERAL, "1", 1, 12, 1},          TEST_TOKEN(TOKEN_COMMA, ",", 1, 13),
+        {TOKEN_INT_LITERAL, "10", 1, 15, 10},        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 17),
+        TEST_TOKEN(TOKEN_EOF, NULL, 1, 18)};
+    expression = NULL;
+    assert(parseExpressionTokens(listRangeTokens,
+                                 sizeof(listRangeTokens) / sizeof(listRangeTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_MEMBER_ACCESS);
+    assert(strcmp(expression->children[0]->text, "range") == 0);
+    assert(expression->children[0]->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    abstractSyntaxNodeDestroy(expression);
+
+    static const TestToken memberOnCallTokens[] = {
+        TEST_TOKEN(TOKEN_IDENTIFIER, "factory", 1, 1), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 8),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 9),      TEST_TOKEN(TOKEN_DOT, ".", 1, 10),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "head", 1, 11),   TEST_TOKEN(TOKEN_EOF, NULL, 1, 15)};
+    expression = NULL;
+    assert(parseExpressionTokens(memberOnCallTokens,
+                                 sizeof(memberOnCallTokens) / sizeof(memberOnCallTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_MEMBER_ACCESS);
+    assert(strcmp(expression->text, "head") == 0);
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
+    abstractSyntaxNodeDestroy(expression);
+
+    static const TestToken chainedCallTokens[] = {
+        TEST_TOKEN(TOKEN_IDENTIFIER, "lst", 1, 1),  TEST_TOKEN(TOKEN_DOT, ".", 1, 4),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "drop", 1, 5), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 9),
+        {TOKEN_INT_LITERAL, "2", 1, 10, 2},         TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 11),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 12),   {TOKEN_INT_LITERAL, "0", 1, 13, 0},
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 14),  TEST_TOKEN(TOKEN_EOF, NULL, 1, 15)};
+    expression = NULL;
+    assert(parseExpressionTokens(chainedCallTokens,
+                                 sizeof(chainedCallTokens) / sizeof(chainedCallTokens[0]),
+                                 &expression) == COMPILER_SYNTAX_ERROR);
+    assert(expression == NULL);
+
+    static const TestToken groupedChainedCallTokens[] = {
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 1),   TEST_TOKEN(TOKEN_IDENTIFIER, "lst", 1, 2),
+        TEST_TOKEN(TOKEN_DOT, ".", 1, 5),          TEST_TOKEN(TOKEN_IDENTIFIER, "drop", 1, 6),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 10),  {TOKEN_INT_LITERAL, "2", 1, 11, 2},
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 12), TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 13),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 14),  {TOKEN_INT_LITERAL, "0", 1, 15, 0},
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 16), TEST_TOKEN(TOKEN_EOF, NULL, 1, 17)};
+    expression = NULL;
+    assert(parseExpressionTokens(groupedChainedCallTokens,
+                                 sizeof(groupedChainedCallTokens) /
+                                     sizeof(groupedChainedCallTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
+    abstractSyntaxNodeDestroy(expression);
+
+    static const TestToken rangeToListTokens[] = {
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 1),       {TOKEN_INT_LITERAL, "1", 1, 2, 1},
+        TEST_TOKEN(TOKEN_KEYWORD, "to", 1, 4),         {TOKEN_INT_LITERAL, "5", 1, 7, 5},
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 8),      TEST_TOKEN(TOKEN_DOT, ".", 1, 9),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "toList", 1, 10), TEST_TOKEN(TOKEN_EOF, NULL, 1, 16)};
+    expression = NULL;
+    assert(parseExpressionTokens(rangeToListTokens,
+                                 sizeof(rangeToListTokens) / sizeof(rangeToListTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_MEMBER_ACCESS);
+    assert(strcmp(expression->text, "toList") == 0);
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION);
+    abstractSyntaxNodeDestroy(expression);
+
+    static const TestToken steppedRangeExpressionTokens[] = {
+        {TOKEN_INT_LITERAL, "1", 1, 1, 1},   TEST_TOKEN(TOKEN_KEYWORD, "to", 1, 3),
+        {TOKEN_INT_LITERAL, "10", 1, 6, 10}, TEST_TOKEN(TOKEN_KEYWORD, "by", 1, 9),
+        {TOKEN_INT_LITERAL, "2", 1, 12, 2},  TEST_TOKEN(TOKEN_EOF, NULL, 1, 13)};
+    expression = NULL;
+    assert(parseExpressionTokens(steppedRangeExpressionTokens,
+                                 sizeof(steppedRangeExpressionTokens) /
+                                     sizeof(steppedRangeExpressionTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION);
+    assert(expression->childCount == 3);
+    assert(expression->children[2]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    assert(expression->children[2]->value.intValue == 2);
+    abstractSyntaxNodeDestroy(expression);
+
+    static const TestToken steppedToListTokens[] = {
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 1),       {TOKEN_INT_LITERAL, "2", 1, 2, 2},
+        TEST_TOKEN(TOKEN_KEYWORD, "to", 1, 4),         {TOKEN_INT_LITERAL, "20", 1, 7, 20},
+        TEST_TOKEN(TOKEN_KEYWORD, "by", 1, 10),        {TOKEN_INT_LITERAL, "4", 1, 13, 4},
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 14),     TEST_TOKEN(TOKEN_DOT, ".", 1, 15),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "toList", 1, 16), TEST_TOKEN(TOKEN_EOF, NULL, 1, 22)};
+    expression = NULL;
+    assert(parseExpressionTokens(steppedToListTokens,
+                                 sizeof(steppedToListTokens) / sizeof(steppedToListTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_MEMBER_ACCESS);
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION);
+    assert(expression->children[0]->childCount == 3);
+    abstractSyntaxNodeDestroy(expression);
+
+    static const TestToken steppedUntilToListTokens[] = {
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 1),       {TOKEN_INT_LITERAL, "2", 1, 2, 2},
+        TEST_TOKEN(TOKEN_KEYWORD, "until", 1, 4),      {TOKEN_INT_LITERAL, "20", 1, 10, 20},
+        TEST_TOKEN(TOKEN_KEYWORD, "by", 1, 13),        {TOKEN_INT_LITERAL, "4", 1, 16, 4},
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 17),     TEST_TOKEN(TOKEN_DOT, ".", 1, 18),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "toList", 1, 19), TEST_TOKEN(TOKEN_EOF, NULL, 1, 25)};
+    expression = NULL;
+    assert(parseExpressionTokens(steppedUntilToListTokens,
+                                 sizeof(steppedUntilToListTokens) /
+                                     sizeof(steppedUntilToListTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_MEMBER_ACCESS);
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION);
+    assert(expression->children[0]->childCount == 3);
     abstractSyntaxNodeDestroy(expression);
 
     static const TestToken unaryPrefixTokens[] = {
@@ -455,7 +592,8 @@ int main(void) {
     assert(expression->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
     assert(expression->text[0] == '+');
     assert(expression->children[0]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
-    assert(expression->children[0]->childCount == 0);
+    assert(expression->children[0]->childCount == 1);
+    assert(expression->children[0]->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
     assert(expression->children[1]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
     abstractSyntaxNodeDestroy(expression);
 
@@ -483,7 +621,7 @@ int main(void) {
     assert(strcmp(generator->text, "i") == 0);
     assert(generator->childCount == 1);
     AbstractSyntaxNode *range = generator->children[0];
-    assert(range->kind == ABSTRACT_SYNTAX_FOR_RANGE);
+    assert(range->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION);
     assert(strcmp(range->text, "to") == 0);
     assert(range->childCount == 3);
     assert(range->children[0]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
@@ -728,8 +866,9 @@ int main(void) {
 
     AbstractSyntaxNode *call = body->children[4];
     assert(call->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
-    assert(call->childCount == 1);
+    assert(call->childCount == 2);
     assert(call->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    assert(call->children[1]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
 
     AbstractSyntaxNode *whileNode = body->children[5];
     assert(whileNode->kind == ABSTRACT_SYNTAX_WHILE);

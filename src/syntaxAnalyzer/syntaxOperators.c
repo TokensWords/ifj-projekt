@@ -28,7 +28,10 @@ static const OperatorDefinition operators[] = {
     {EXPR_TERMINAL_NOT_EQUAL, SYNTAX_OP_NOT_EQUAL},
     {EXPR_TERMINAL_LOGICAL_NOT, SYNTAX_OP_LOGICAL_NOT},
     {EXPR_TERMINAL_LOGICAL_AND, SYNTAX_OP_LOGICAL_AND},
-    {EXPR_TERMINAL_LOGICAL_OR, SYNTAX_OP_LOGICAL_OR}};
+    {EXPR_TERMINAL_LOGICAL_OR, SYNTAX_OP_LOGICAL_OR},
+    {EXPR_TERMINAL_RANGE_TO, SYNTAX_KW_TO},
+    {EXPR_TERMINAL_RANGE_UNTIL, SYNTAX_KW_UNTIL},
+    {EXPR_TERMINAL_RANGE_BY, SYNTAX_KW_BY}};
 
 /* Unspecified entries are invalid precedence relations. */
 static const PrecedenceRelation precedenceTable[EXPR_TERMINAL_COUNT][EXPR_TERMINAL_COUNT] = {
@@ -321,7 +324,8 @@ static bool isPrefixOperator(ExpressionTerminal terminal) {
 static bool isBinaryOperator(ExpressionTerminal terminal) {
     return (terminal >= EXPR_TERMINAL_MULTIPLY && terminal <= EXPR_TERMINAL_SUBTRACT) ||
            (terminal >= EXPR_TERMINAL_LESS && terminal <= EXPR_TERMINAL_NOT_EQUAL) ||
-           terminal == EXPR_TERMINAL_LOGICAL_AND || terminal == EXPR_TERMINAL_LOGICAL_OR;
+           terminal == EXPR_TERMINAL_LOGICAL_AND || terminal == EXPR_TERMINAL_LOGICAL_OR ||
+           terminal == EXPR_TERMINAL_RANGE_TO || terminal == EXPR_TERMINAL_RANGE_UNTIL;
 }
 
 static int binaryOperatorPrecedence(ExpressionTerminal terminal) {
@@ -340,6 +344,9 @@ static int binaryOperatorPrecedence(ExpressionTerminal terminal) {
     case EXPR_TERMINAL_EQUAL:
     case EXPR_TERMINAL_NOT_EQUAL:
         return 2;
+    case EXPR_TERMINAL_RANGE_TO:
+    case EXPR_TERMINAL_RANGE_UNTIL:
+        return 2;
     case EXPR_TERMINAL_LOGICAL_AND:
         return 1;
     case EXPR_TERMINAL_LOGICAL_OR:
@@ -352,6 +359,60 @@ static int binaryOperatorPrecedence(ExpressionTerminal terminal) {
 PrecedenceRelation syntaxPrecedenceRelation(ExpressionTerminal stacked,
                                             ExpressionTerminal incoming) {
     if (stacked >= EXPR_TERMINAL_COUNT || incoming >= EXPR_TERMINAL_COUNT) {
+        return PRECEDENCE_ERROR;
+    }
+
+    bool stackedRange = stacked == EXPR_TERMINAL_RANGE_TO || stacked == EXPR_TERMINAL_RANGE_UNTIL;
+    bool incomingRange =
+        incoming == EXPR_TERMINAL_RANGE_TO || incoming == EXPR_TERMINAL_RANGE_UNTIL;
+    if (incoming == EXPR_TERMINAL_RANGE_BY) {
+        if (stacked == EXPR_TERMINAL_END) {
+            return PRECEDENCE_SHIFT;
+        }
+        if (stacked == EXPR_TERMINAL_OPERAND || stacked == EXPR_TERMINAL_RIGHT_PAREN ||
+            stackedRange || isBinaryOperator(stacked)) {
+            return PRECEDENCE_REDUCE;
+        }
+        return PRECEDENCE_ERROR;
+    }
+    if (stacked == EXPR_TERMINAL_RANGE_BY) {
+        if (incoming == EXPR_TERMINAL_OPERAND || incoming == EXPR_TERMINAL_LEFT_PAREN ||
+            isPrefixOperator(incoming)) {
+            return PRECEDENCE_SHIFT;
+        }
+        if (incoming == EXPR_TERMINAL_END || incoming == EXPR_TERMINAL_RIGHT_PAREN) {
+            return PRECEDENCE_REDUCE;
+        }
+        if (isBinaryOperator(incoming)) {
+            return binaryOperatorPrecedence(incoming) > 2 ? PRECEDENCE_SHIFT : PRECEDENCE_REDUCE;
+        }
+        return PRECEDENCE_ERROR;
+    }
+    if (stackedRange || incomingRange) {
+        if (stackedRange && incomingRange) {
+            return PRECEDENCE_ERROR;
+        }
+        if (stackedRange) {
+            if (incoming == EXPR_TERMINAL_OPERAND || incoming == EXPR_TERMINAL_LEFT_PAREN ||
+                isPrefixOperator(incoming)) {
+                return PRECEDENCE_SHIFT;
+            }
+            if (incoming == EXPR_TERMINAL_END || incoming == EXPR_TERMINAL_RIGHT_PAREN) {
+                return PRECEDENCE_REDUCE;
+            }
+            if (isBinaryOperator(incoming)) {
+                return binaryOperatorPrecedence(incoming) > 2 ? PRECEDENCE_SHIFT
+                                                              : PRECEDENCE_REDUCE;
+            }
+            return PRECEDENCE_ERROR;
+        }
+        if (stacked == EXPR_TERMINAL_END || stacked == EXPR_TERMINAL_LEFT_PAREN) {
+            return PRECEDENCE_SHIFT;
+        }
+        if (stacked == EXPR_TERMINAL_OPERAND || stacked == EXPR_TERMINAL_RIGHT_PAREN ||
+            isBinaryOperator(stacked)) {
+            return PRECEDENCE_REDUCE;
+        }
         return PRECEDENCE_ERROR;
     }
 

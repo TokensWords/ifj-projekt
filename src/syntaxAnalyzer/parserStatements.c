@@ -301,10 +301,7 @@ static CompilerStatus parseForGenerator(SyntaxAnalyzer *syntaxAnalyzer,
 
     SourceLocation generatorLocation = syntaxAnalyzer->currentToken->location;
     AbstractSyntaxNode *generator = createNode(ABSTRACT_SYNTAX_FOR_GENERATOR, generatorLocation);
-    AbstractSyntaxNode *range = NULL;
-    AbstractSyntaxNode *start = NULL;
-    AbstractSyntaxNode *end = NULL;
-    AbstractSyntaxNode *step = NULL;
+    AbstractSyntaxNode *source = NULL;
     if (generator == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -322,70 +319,12 @@ static CompilerStatus parseForGenerator(SyntaxAnalyzer *syntaxAnalyzer,
         goto cleanup;
     }
 
-    status = analyzerExpressionsParseValueOrCall(syntaxAnalyzer, &start);
+    status = analyzerExpressionsParse(syntaxAnalyzer, &source);
     if (status != COMPILER_OK) {
         goto cleanup;
     }
-
-    if (!currentIsWord(syntaxAnalyzer, SYNTAX_KW_TO) &&
-        !currentIsWord(syntaxAnalyzer, SYNTAX_KW_UNTIL)) {
-        status = COMPILER_SYNTAX_ERROR;
-        goto cleanup;
-    }
-    bool isInclusive = currentIsWord(syntaxAnalyzer, SYNTAX_KW_TO);
-    SourceLocation rangeLocation = syntaxAnalyzer->currentToken->location;
-    range = createNode(ABSTRACT_SYNTAX_FOR_RANGE, rangeLocation);
-    if (range == NULL) {
-        status = COMPILER_INTERNAL_ERROR;
-        goto cleanup;
-    }
-    status = setNodeText(range, isInclusive ? SYNTAX_KW_TO : SYNTAX_KW_UNTIL);
-    if (status != COMPILER_OK) {
-        goto cleanup;
-    }
-    status = advanceToken(syntaxAnalyzer);
-    if (status != COMPILER_OK) {
-        goto cleanup;
-    }
-
-    status = analyzerExpressionsParseValueOrCall(syntaxAnalyzer, &end);
-    if (status != COMPILER_OK) {
-        goto cleanup;
-    }
-
-    status = appendOwnedChild(range, start);
-    start = NULL;
-    if (status != COMPILER_OK) {
-        goto cleanup;
-    }
-    status = appendOwnedChild(range, end);
-    end = NULL;
-    if (status != COMPILER_OK) {
-        goto cleanup;
-    }
-
-    if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_BY)) {
-        if (!isInclusive) {
-            status = COMPILER_SYNTAX_ERROR;
-            goto cleanup;
-        }
-        status = advanceToken(syntaxAnalyzer);
-        if (status != COMPILER_OK) {
-            goto cleanup;
-        }
-        status = analyzerExpressionsParseValueOrCall(syntaxAnalyzer, &step);
-        if (status != COMPILER_OK) {
-            goto cleanup;
-        }
-        status = appendOwnedChild(range, step);
-        step = NULL;
-        if (status != COMPILER_OK) {
-            goto cleanup;
-        }
-    }
-
-    status = appendOwnedChild(generator, range);
-    range = NULL;
+    status = appendOwnedChild(generator, source);
+    source = NULL;
     if (status != COMPILER_OK) {
         goto cleanup;
     }
@@ -394,10 +333,7 @@ static CompilerStatus parseForGenerator(SyntaxAnalyzer *syntaxAnalyzer,
     return COMPILER_OK;
 
 cleanup:
-    abstractSyntaxNodeDestroy(start);
-    abstractSyntaxNodeDestroy(end);
-    abstractSyntaxNodeDestroy(step);
-    abstractSyntaxNodeDestroy(range);
+    abstractSyntaxNodeDestroy(source);
     abstractSyntaxNodeDestroy(generator);
     return status;
 }

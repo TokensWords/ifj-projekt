@@ -2,9 +2,11 @@
  * PROJECT: IFJ26 compiler
  * AUTHORS: Matúš Čík
  * BRIEF: Abstract syntax tree representation and ownership helpers
- * 
- * IDEA: Remove struct ASTNODE field isMutable and isEntryFunction by adding more ASTNODE types, example: ABSTRACT_SYNTAX_FUNCTION_ENTRY, ABSTRACT_SYNTAX_VARIABLE_DECLARATION_MUTABLE, ABSTRACT_SYNTAX_VARIABLE_DECLARATION_IMMUTABLE.
- * IDEA: Make ASTNODE easier to work with by introducing funtions of getters/setter for node types.
+ *
+ * IDEA: Remove struct ASTNODE field isMutable and isEntryFunction by adding more ASTNODE types,
+ * example: ABSTRACT_SYNTAX_FUNCTION_ENTRY, ABSTRACT_SYNTAX_VARIABLE_DECLARATION_MUTABLE,
+ * ABSTRACT_SYNTAX_VARIABLE_DECLARATION_IMMUTABLE. IDEA: Make ASTNODE easier to work with by
+ * introducing funtions of getters/setter for node types.
  */
 
 #ifndef ABSTRACT_SYNTAX_TREE_H
@@ -24,12 +26,14 @@ typedef enum {
      * @children - top-level functions in the program
      */
     ABSTRACT_SYNTAX_PROGRAM,
-    
+
     /**
      * Represents a function declaration
      * @text - name of the function
-     * @children - parameters and body of the function. Parameters are folowed by body. example: [param1, param2, body]. It must have a body
-     * @isEntryFunction - true if this function is the entry point of the program (taggeg by `@main`), else false
+     * @children - parameters and body of the function. Parameters are folowed by body. example:
+     * [param1, param2, body]. It must have a body
+     * @isEntryFunction - true if this function is the entry point of the program (taggeg by
+     * `@main`), else false
      */
     ABSTRACT_SYNTAX_FUNCTION,
 
@@ -48,13 +52,15 @@ typedef enum {
 
     /**
      * Represents an if statement
-     * @children - condition, then block, else block (optional). example: [condition, thenBlock, elseBlock]
+     * @children - condition, then block, else block (optional). example: [condition, thenBlock,
+     * elseBlock]
      */
     ABSTRACT_SYNTAX_IF,
 
     /**
      * Represents an if expression in assigment statement
-     * @children - condition, then expression, else expression. example: [condition, thenExpression, elseExpression]
+     * @children - condition, then expression, else expression. example: [condition, thenExpression,
+     * elseExpression]
      */
     ABSTRACT_SYNTAX_IF_EXPRESSION,
 
@@ -78,7 +84,7 @@ typedef enum {
     /**
      * Represents a generator binding
      * @text - binding name
-     * @children - its source (currently a range)
+     * @children - its source expression (a range or collection expression)
      */
     ABSTRACT_SYNTAX_FOR_GENERATOR,
 
@@ -89,11 +95,14 @@ typedef enum {
     ABSTRACT_SYNTAX_FOR_GUARD,
 
     /**
-     * Represents a numeric range source
+     * Represents a range expression.
      * @text - "to" (inclusive) or "until" (exclusive)
-     * @children - start, end, optional step
+     * @children - start, end, and optional step
      */
-    ABSTRACT_SYNTAX_FOR_RANGE,
+    ABSTRACT_SYNTAX_RANGE_EXPRESSION,
+
+   /* TODO: compability alias, remove */
+    ABSTRACT_SYNTAX_FOR_RANGE = ABSTRACT_SYNTAX_RANGE_EXPRESSION,
 
     /**
      * Represents a return statement
@@ -104,11 +113,20 @@ typedef enum {
     // --- expressions ---
 
     /**
-     * Represents a function call
-     * @text - name of the function
-     * @children - arguments to the function (optional)
+     * Represents calling any expression.
+     * @children - callee expression followed by argument expressions
      */
-    ABSTRACT_SYNTAX_FUNCTION_CALL,
+    ABSTRACT_SYNTAX_CALL_EXPRESSION,
+
+    /* TODO: compability alias, remove */
+    ABSTRACT_SYNTAX_FUNCTION_CALL = ABSTRACT_SYNTAX_CALL_EXPRESSION,
+
+    /**
+     * Represents member selection on an expression.
+     * @text - selected member name
+     * @children - receiver expression
+     */
+    ABSTRACT_SYNTAX_MEMBER_ACCESS,
 
     /**
      * Represents a variable declaration
@@ -211,7 +229,7 @@ typedef struct {
 
 SourceProgram *sourceProgramCreate(void);
 void sourceProgramDestroy(SourceProgram *program);
-AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType  type, SourceLocation location);
+AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType type, SourceLocation location);
 void abstractSyntaxNodeDestroy(AbstractSyntaxNode *node);
 CompilerStatus abstractSyntaxNodeSetText(AbstractSyntaxNode *node, const char *text);
 CompilerStatus abstractSyntaxNodeAddChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *child);
