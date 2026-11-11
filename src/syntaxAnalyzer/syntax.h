@@ -16,6 +16,10 @@
 #define SYNTAX_KW_THEN "then"
 #define SYNTAX_KW_ELSE "else"
 #define SYNTAX_KW_WHILE "while"
+#define SYNTAX_KW_FOR "for"
+#define SYNTAX_KW_TO "to"
+#define SYNTAX_KW_UNTIL "until"
+#define SYNTAX_KW_BY "by"
 #define SYNTAX_KW_DO "do"
 #define SYNTAX_KW_RETURN "return"
 #define SYNTAX_KW_VAL "val"
@@ -32,6 +36,7 @@
 
 #define SYNTAX_OP_LEFT_PAREN "("
 #define SYNTAX_OP_ASSIGN "="
+#define SYNTAX_OP_GENERATOR_ARROW "<-"
 #define SYNTAX_OP_PLUS "+"
 #define SYNTAX_OP_MINUS "-"
 #define SYNTAX_OP_MULTIPLY "*"

@@ -284,6 +284,292 @@ cleanup:
     return status;
 }
 
+static CompilerStatus parseForGenerator(SyntaxAnalyzer *syntaxAnalyzer,
+                                        AbstractSyntaxNode **outNode) {
+    if (syntaxAnalyzer == NULL || outNode == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    *outNode = NULL;
+
+    CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    if (!isIdentifierToken(syntaxAnalyzer->currentToken)) {
+        return COMPILER_SYNTAX_ERROR;
+    }
+
+    SourceLocation generatorLocation = syntaxAnalyzer->currentToken->location;
+    AbstractSyntaxNode *generator = createNode(ABSTRACT_SYNTAX_FOR_GENERATOR, generatorLocation);
+    AbstractSyntaxNode *range = NULL;
+    AbstractSyntaxNode *start = NULL;
+    AbstractSyntaxNode *end = NULL;
+    AbstractSyntaxNode *step = NULL;
+    if (generator == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    status = setNodeText(generator, syntaxAnalyzer->currentToken->lexeme);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = advanceToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = expectWord(syntaxAnalyzer, SYNTAX_OP_GENERATOR_ARROW);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    status = analyzerExpressionsParseValueOrCall(syntaxAnalyzer, &start);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    if (!currentIsWord(syntaxAnalyzer, SYNTAX_KW_TO) &&
+        !currentIsWord(syntaxAnalyzer, SYNTAX_KW_UNTIL)) {
+        status = COMPILER_SYNTAX_ERROR;
+        goto cleanup;
+    }
+    bool isInclusive = currentIsWord(syntaxAnalyzer, SYNTAX_KW_TO);
+    SourceLocation rangeLocation = syntaxAnalyzer->currentToken->location;
+    range = createNode(ABSTRACT_SYNTAX_FOR_RANGE, rangeLocation);
+    if (range == NULL) {
+        status = COMPILER_INTERNAL_ERROR;
+        goto cleanup;
+    }
+    status = setNodeText(range, isInclusive ? SYNTAX_KW_TO : SYNTAX_KW_UNTIL);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = advanceToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    status = analyzerExpressionsParseValueOrCall(syntaxAnalyzer, &end);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    status = appendOwnedChild(range, start);
+    start = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = appendOwnedChild(range, end);
+    end = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_BY)) {
+        if (!isInclusive) {
+            status = COMPILER_SYNTAX_ERROR;
+            goto cleanup;
+        }
+        status = advanceToken(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        status = analyzerExpressionsParseValueOrCall(syntaxAnalyzer, &step);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        status = appendOwnedChild(range, step);
+        step = NULL;
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+    }
+
+    status = appendOwnedChild(generator, range);
+    range = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    *outNode = generator;
+    return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(start);
+    abstractSyntaxNodeDestroy(end);
+    abstractSyntaxNodeDestroy(step);
+    abstractSyntaxNodeDestroy(range);
+    abstractSyntaxNodeDestroy(generator);
+    return status;
+}
+
+static CompilerStatus parseForGuard(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode) {
+    if (syntaxAnalyzer == NULL || outNode == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    *outNode = NULL;
+
+    CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    AbstractSyntaxNode *guard =
+        createNode(ABSTRACT_SYNTAX_FOR_GUARD, syntaxAnalyzer->currentToken->location);
+    AbstractSyntaxNode *condition = NULL;
+    if (guard == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    status = advanceToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = analyzerExpressionsParseValueOrCall(syntaxAnalyzer, &condition);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = appendOwnedChild(guard, condition);
+    condition = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    *outNode = guard;
+    return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(condition);
+    abstractSyntaxNodeDestroy(guard);
+    return status;
+}
+
+CompilerStatus parseFor(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode) {
+    if (syntaxAnalyzer == NULL || outNode == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    *outNode = NULL;
+
+    CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    SourceLocation location = syntaxAnalyzer->currentToken->location;
+    AbstractSyntaxNode *forNode = createNode(ABSTRACT_SYNTAX_FOR, location);
+    AbstractSyntaxNode *clauses = createNode(ABSTRACT_SYNTAX_FOR_CLAUSES, location);
+    AbstractSyntaxNode *body = NULL;
+    AbstractSyntaxNode *clause = NULL;
+    if (forNode == NULL || clauses == NULL) {
+        abstractSyntaxNodeDestroy(forNode);
+        abstractSyntaxNodeDestroy(clauses);
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    bool headerIndented = false;
+    status = advanceToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    if (currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
+        status = skipNewlines(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        if (currentIsType(syntaxAnalyzer, TOKEN_INDENT)) {
+            status = advanceToken(syntaxAnalyzer);
+            if (status != COMPILER_OK) {
+                goto cleanup;
+            }
+            headerIndented = true;
+        }
+    }
+
+    while (!currentIsWord(syntaxAnalyzer, SYNTAX_KW_DO) &&
+           !currentIsType(syntaxAnalyzer, TOKEN_EOF)) {
+        if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_IF)) {
+            status = parseForGuard(syntaxAnalyzer, &clause);
+        } else if (isIdentifierToken(syntaxAnalyzer->currentToken)) {
+            status = parseForGenerator(syntaxAnalyzer, &clause);
+        } else {
+            status = COMPILER_SYNTAX_ERROR;
+        }
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        status = appendOwnedChild(clauses, clause);
+        clause = NULL;
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+
+        if (currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
+            status = skipNewlines(syntaxAnalyzer);
+            if (status != COMPILER_OK) {
+                goto cleanup;
+            }
+            if (currentIsType(syntaxAnalyzer, TOKEN_INDENT)) {
+                status = advanceToken(syntaxAnalyzer);
+                if (status != COMPILER_OK) {
+                    goto cleanup;
+                }
+                headerIndented = true;
+            } else if (headerIndented && currentIsType(syntaxAnalyzer, TOKEN_DEDENT)) {
+                status = advanceToken(syntaxAnalyzer);
+                if (status != COMPILER_OK) {
+                    goto cleanup;
+                }
+                headerIndented = false;
+            }
+        } else if (currentIsType(syntaxAnalyzer, TOKEN_SEMICOLON)) {
+            status = advanceToken(syntaxAnalyzer);
+            if (status != COMPILER_OK) {
+                goto cleanup;
+            }
+        } else if (!currentIsWord(syntaxAnalyzer, SYNTAX_KW_DO) &&
+                   !currentIsWord(syntaxAnalyzer, SYNTAX_KW_IF) &&
+                   !isIdentifierToken(syntaxAnalyzer->currentToken)) {
+            status = COMPILER_SYNTAX_ERROR;
+            goto cleanup;
+        }
+    }
+
+    if (clauses->childCount == 0) {
+        status = COMPILER_SYNTAX_ERROR;
+        goto cleanup;
+    }
+    status = expectWord(syntaxAnalyzer, SYNTAX_KW_DO);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = expectBlockHeaderEnd(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = parseBlock(syntaxAnalyzer, &body);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    status = appendOwnedChild(forNode, clauses);
+    clauses = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = appendOwnedChild(forNode, body);
+    body = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    *outNode = forNode;
+    return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(clause);
+    abstractSyntaxNodeDestroy(body);
+    abstractSyntaxNodeDestroy(clauses);
+    abstractSyntaxNodeDestroy(forNode);
+    return status;
+}
+
 static CompilerStatus parseReturn(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode) {
     if (syntaxAnalyzer == NULL || outNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -401,6 +687,9 @@ CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode
     if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_WHILE)) {
         return parseWhile(syntaxAnalyzer, outNode);
     }
+    if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_FOR)) {
+        return parseFor(syntaxAnalyzer, outNode);
+    }
     if (isIdentifierToken(syntaxAnalyzer->currentToken)) {
         status = ensureNextToken(syntaxAnalyzer);
         if (status != COMPILER_OK) {
@@ -471,8 +760,9 @@ CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **o
             goto cleanup;
         }
 
-        bool isCompoundStatement =
-            statement->kind == ABSTRACT_SYNTAX_IF || statement->kind == ABSTRACT_SYNTAX_WHILE;
+        bool isCompoundStatement = statement->kind == ABSTRACT_SYNTAX_IF ||
+                                   statement->kind == ABSTRACT_SYNTAX_WHILE ||
+                                   statement->kind == ABSTRACT_SYNTAX_FOR;
         status = appendOwnedChild(block, statement);
         statement = NULL;
         if (status != COMPILER_OK) {

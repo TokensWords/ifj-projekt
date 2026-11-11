@@ -53,10 +53,47 @@ typedef enum {
     ABSTRACT_SYNTAX_IF,
 
     /**
+     * Represents an if expression in assigment statement
+     * @children - condition, then expression, else expression. example: [condition, thenExpression, elseExpression]
+     */
+    ABSTRACT_SYNTAX_IF_EXPRESSION,
+
+    /**
      * Represents a while loop
      * @children - condition then block of the loop. example: [condition, block]
      */
     ABSTRACT_SYNTAX_WHILE,
+
+    /**
+     * Represents a for loop
+     * @children - clauses and body, in that order
+     */
+    ABSTRACT_SYNTAX_FOR,
+
+    /**
+     * Ordered generator and guard clauses of a for loop
+     */
+    ABSTRACT_SYNTAX_FOR_CLAUSES,
+
+    /**
+     * Represents a generator binding
+     * @text - binding name
+     * @children - its source (currently a range)
+     */
+    ABSTRACT_SYNTAX_FOR_GENERATOR,
+
+    /**
+     * Represents a generator guard
+     * @children - guard condition
+     */
+    ABSTRACT_SYNTAX_FOR_GUARD,
+
+    /**
+     * Represents a numeric range source
+     * @text - "to" (inclusive) or "until" (exclusive)
+     * @children - start, end, optional step
+     */
+    ABSTRACT_SYNTAX_FOR_RANGE,
 
     /**
      * Represents a return statement
