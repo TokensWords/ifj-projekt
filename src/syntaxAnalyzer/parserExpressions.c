@@ -235,7 +235,11 @@ CompilerStatus parseTerm(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **ou
         if (unit == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
-        unit->inferredType = DATA_TYPE_UNIT;
+        status = abstractSyntaxNodeSetInferredType(unit, DATA_TYPE_UNIT);
+        if (status != COMPILER_OK) {
+            abstractSyntaxNodeDestroy(unit);
+            return status;
+        }
 
         status = advanceToken(syntaxAnalyzer);
         if (status == COMPILER_OK) {
@@ -280,7 +284,11 @@ CompilerStatus parseTerm(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **ou
     if (node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    node->inferredType = inferredType;
+    status = abstractSyntaxNodeSetInferredType(node, inferredType);
+    if (status != COMPILER_OK) {
+        abstractSyntaxNodeDestroy(node);
+        return status;
+    }
 
     if (nodeType == ABSTRACT_SYNTAX_INT_LITERAL) {
         node->value.intValue = token->value.intValue;
@@ -458,7 +466,11 @@ static CompilerStatus parseExpressionOperand(SyntaxAnalyzer *syntaxAnalyzer,
                 status = COMPILER_INTERNAL_ERROR;
                 goto cleanup;
             }
-            unit->inferredType = DATA_TYPE_UNIT;
+            status = abstractSyntaxNodeSetInferredType(unit, DATA_TYPE_UNIT);
+            if (status != COMPILER_OK) {
+                abstractSyntaxNodeDestroy(unit);
+                goto cleanup;
+            }
             *outNode = unit;
             status = advanceToken(syntaxAnalyzer);
             if (status == COMPILER_OK) {

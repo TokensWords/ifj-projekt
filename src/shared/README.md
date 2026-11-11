@@ -9,7 +9,7 @@ policy and never depends on higher-level modules.
 |---|---|---|
 | Allocation sizes | Owned pointer or `NULL` | Safe dynamic storage |
 | Compiler condition | `CompilerStatus` | Process exit classification |
-| Parsed type information | `DataType` | Shared type identity |
+| Type category | `DataType` | Bit mask shared by compiler modules |
 | Lexical-analyzer position | `SourceLocation` | Diagnostic origin |
 
 ## Structures
@@ -23,9 +23,9 @@ policy and never depends on higher-level modules.
 
 ### `DataType`
 
-`DATA_TYPE_UNKNOWN` exists only during construction and inference. Base-language values use
-`DATA_TYPE_INT`, `DATA_TYPE_DOUBLE`, `DATA_TYPE_STRING`, `DATA_TYPE_UNIT`, and internal
-`DATA_TYPE_BOOLEAN`.
+`DataType` values are bit flags. `DATA_TYPE_UNKNOWN` is the empty mask used before type
+information is available. Recursive descriptors are an AST-layer abstraction managed by
+`abstractSyntaxTree/typeDescriptor.h`.
 
 ### `CompilerStatus`
 

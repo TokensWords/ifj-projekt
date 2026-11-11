@@ -11,9 +11,9 @@
 #include "memory.h"
 
 #include <stdlib.h>
+#include <string.h>
 
-SourceProgram *sourceProgramCreate(void)
-{
+SourceProgram *sourceProgramCreate(void) {
     SourceProgram *program = memoryAllocate(sizeof(SourceProgram));
     if (program == NULL) {
         return NULL;
@@ -23,8 +23,7 @@ SourceProgram *sourceProgramCreate(void)
     return program;
 }
 
-void sourceProgramDestroy(SourceProgram *program)
-{
+void sourceProgramDestroy(SourceProgram *program) {
     if (program == NULL) {
         return;
     }
@@ -33,17 +32,16 @@ void sourceProgramDestroy(SourceProgram *program)
     free(program);
 }
 
-AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType type, SourceLocation location)
-{
+AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType type, SourceLocation location) {
     AbstractSyntaxNode *node = memoryAllocate(sizeof(AbstractSyntaxNode));
     if (node == NULL) {
         return NULL;
     }
 
-    node->type = type;
+    node->kind = type;
     node->location = location;
-    node->variableType = DATA_TYPE_UNKNOWN;
-    node->inferredType = DATA_TYPE_UNKNOWN;
+    node->variableType = NULL;
+    node->inferredType = NULL;
     node->text = NULL;
     node->value.intValue = 0;
     node->children = NULL;
@@ -55,8 +53,7 @@ AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType type, Source
     return node;
 }
 
-void abstractSyntaxNodeDestroy(AbstractSyntaxNode *node)
-{
+void abstractSyntaxNodeDestroy(AbstractSyntaxNode *node) {
     if (node == NULL) {
         return;
     }
@@ -67,11 +64,52 @@ void abstractSyntaxNodeDestroy(AbstractSyntaxNode *node)
 
     free(node->children);
     free(node->text);
+    typeDescriptorDestroy(node->variableType);
+    typeDescriptorDestroy(node->inferredType);
     free(node);
 }
 
-CompilerStatus abstractSyntaxNodeSetText(AbstractSyntaxNode *node, const char *text)
-{
+CompilerStatus abstractSyntaxNodeSetInferredType(AbstractSyntaxNode *node, DataType type) {
+    if (node == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    TypeDescriptor *descriptor = typeDescriptorCreate(type);
+    if (descriptor == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    typeDescriptorDestroy(node->inferredType);
+    node->inferredType = descriptor;
+    return COMPILER_OK;
+}
+
+CompilerStatus abstractSyntaxNodeCopyInferredType(AbstractSyntaxNode *node,
+                                                  const TypeDescriptor *type) {
+    if (node == NULL || type == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    TypeDescriptor *copy = typeDescriptorClone(type);
+    if (copy == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    typeDescriptorDestroy(node->inferredType);
+    node->inferredType = copy;
+    return COMPILER_OK;
+}
+
+CompilerStatus abstractSyntaxNodeSetVariableType(AbstractSyntaxNode *node, DataType type) {
+    if (node == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    TypeDescriptor *descriptor = typeDescriptorCreate(type);
+    if (descriptor == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    typeDescriptorDestroy(node->variableType);
+    node->variableType = descriptor;
+    return COMPILER_OK;
+}
+
+CompilerStatus abstractSyntaxNodeSetText(AbstractSyntaxNode *node, const char *text) {
     if (node == NULL || text == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -86,16 +124,15 @@ CompilerStatus abstractSyntaxNodeSetText(AbstractSyntaxNode *node, const char *t
     return COMPILER_OK;
 }
 
-CompilerStatus abstractSyntaxNodeAddChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *child)
-{
+CompilerStatus abstractSyntaxNodeAddChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *child) {
     if (parent == NULL || child == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
     if (parent->childCount == parent->childCapacity) {
         size_t newCapacity = parent->childCapacity == 0 ? 4 : parent->childCapacity * 2;
-        AbstractSyntaxNode **newChildren = memoryResizeArray(parent->children, newCapacity,
-                                                  sizeof(AbstractSyntaxNode *));
+        AbstractSyntaxNode **newChildren =
+            memoryResizeArray(parent->children, newCapacity, sizeof(AbstractSyntaxNode *));
         if (newChildren == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }

@@ -29,7 +29,9 @@
 #define SYNTAX_KW_DOUBLE "Double"
 #define SYNTAX_KW_STRING "String"
 #define SYNTAX_KW_UNIT "Unit"
+#define SYNTAX_KW_BOOLEAN "Boolean"
 #define SYNTAX_KW_LIST "List"
+#define SYNTAX_KW_TYPE "type"
 
 #define SYNTAX_PROLOG_NAME "ifj26"
 #define SYNTAX_ANNOTATION_MAIN "main"

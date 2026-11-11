@@ -8,6 +8,7 @@
 #include "intermediateCode.h"
 
 #include "memory.h"
+#include "typeDescriptor.h"
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -826,7 +827,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         } else if (strcmp(node->text, "*") == 0) {
             operationCode = INTERMEDIATE_MULTIPLY;
         } else if (strcmp(node->text, "/") == 0) {
-            if (node->children[0]->inferredType == DATA_TYPE_INT && node->children[1]->inferredType == DATA_TYPE_INT) {
+            if (typeDescriptorGetMask(node->children[0]->inferredType) == DATA_TYPE_INT && typeDescriptorGetMask(node->children[1]->inferredType) == DATA_TYPE_INT) {
                 operationCode = INTERMEDIATE_INTEGER_DIVIDE;
             } else {
                 operationCode = INTERMEDIATE_DIVIDE;
@@ -855,7 +856,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         if (status != COMPILER_OK) {
             return status;
         }
-        DataType leftType = node->children[0]->inferredType;
+        DataType leftType = typeDescriptorGetMask(node->children[0]->inferredType);
 
         IntermediateOperand rightOperand = {0};
         status = generateExpression(generator, &rightOperand, node->children[1]);
@@ -863,7 +864,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             intermediateOperandClear(&leftOperand);
             return status;
         }
-        DataType rightType = node->children[1]->inferredType;
+        DataType rightType = typeDescriptorGetMask(node->children[1]->inferredType);
 
         bool isComparison = operationCode == INTERMEDIATE_COMPARE_EQUAL || operationCode == INTERMEDIATE_COMPARE_LESS || operationCode == INTERMEDIATE_COMPARE_GREATER;
 
@@ -1006,7 +1007,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         break;
     }
     case ABSTRACT_SYNTAX_UNARY_EXPRESSION: {
-        if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL || node->text == NULL || strcmp(node->text, "-") != 0 || !isNumericType(node->children[0]->inferredType)) {
+        if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL || node->text == NULL || strcmp(node->text, "-") != 0 || !isNumericType(typeDescriptorGetMask(node->children[0]->inferredType))) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -1018,10 +1019,10 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
 
         IntermediateOperand negativeOperand = {0};
 
-        if (node->children[0]->inferredType == DATA_TYPE_INT) {
+        if (typeDescriptorGetMask(node->children[0]->inferredType) == DATA_TYPE_INT) {
             negativeOperand.kind = INTERMEDIATE_OPERAND_INT;
             negativeOperand.value.intValue = -1;
-        } else if (node->children[0]->inferredType == DATA_TYPE_DOUBLE) {
+        } else if (typeDescriptorGetMask(node->children[0]->inferredType) == DATA_TYPE_DOUBLE) {
             negativeOperand.kind = INTERMEDIATE_OPERAND_DOUBLE;
             negativeOperand.value.doubleValue = -1.0;
         } else {
@@ -1072,7 +1073,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             }
 
             const AbstractSyntaxNode *argument = node->children[0];
-            if (argument->inferredType != DATA_TYPE_INT && argument->inferredType != DATA_TYPE_DOUBLE && argument->inferredType != DATA_TYPE_STRING && argument->inferredType != DATA_TYPE_UNIT) {
+            if (typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_INT && typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_DOUBLE && typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_STRING && typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_UNIT) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1086,7 +1087,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             IntermediateInstruction printInstruction = fillInstruction(INTERMEDIATE_WRITE, 1, node->location);
             printInstruction.operands[0] = argumentOperand;
 
-            if (argument->inferredType == DATA_TYPE_UNIT) {
+            if (typeDescriptorGetMask(argument->inferredType) == DATA_TYPE_UNIT) {
                 printInstruction.operands[0] = (IntermediateOperand){
                     .kind = INTERMEDIATE_OPERAND_STRING,
                     .text = "()",
@@ -1150,7 +1151,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             }
 
             const AbstractSyntaxNode *argument = node->children[0];
-            if (argument->inferredType != DATA_TYPE_DOUBLE && argument->inferredType != DATA_TYPE_INT) {
+            if (typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_DOUBLE && typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_INT) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1160,7 +1161,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 return status;
             }
 
-            if (argument->inferredType == DATA_TYPE_INT) {
+            if (typeDescriptorGetMask(argument->inferredType) == DATA_TYPE_INT) {
                 status = convertIntToDouble(generator, &argumentOperand, node->location);
                 if (status != COMPILER_OK) {
                     intermediateOperandClear(&argumentOperand);
@@ -1195,7 +1196,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             }
 
             const AbstractSyntaxNode *argument = node->children[0];
-            if (argument->inferredType != DATA_TYPE_INT && argument->inferredType != DATA_TYPE_DOUBLE && argument->inferredType != DATA_TYPE_STRING && argument->inferredType != DATA_TYPE_UNIT) {
+            if (typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_INT && typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_DOUBLE && typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_STRING && typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_UNIT) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1205,13 +1206,13 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 return status;
             }
 
-            if (argument->inferredType == DATA_TYPE_STRING) {
+            if (typeDescriptorGetMask(argument->inferredType) == DATA_TYPE_STRING) {
                 *operand = argumentOperand;
 
                 return status;
             }
 
-            if (argument->inferredType == DATA_TYPE_UNIT) {
+            if (typeDescriptorGetMask(argument->inferredType) == DATA_TYPE_UNIT) {
                 intermediateOperandClear(&argumentOperand);
 
                 char *unitText = malloc(3 * sizeof(char));
@@ -1231,7 +1232,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             }
 
             IntermediateOpcode conversionOpcode = INTERMEDIATE_CONVERT_INT_TO_STRING;
-            if (argument->inferredType == DATA_TYPE_DOUBLE) {
+            if (typeDescriptorGetMask(argument->inferredType) == DATA_TYPE_DOUBLE) {
                 conversionOpcode = INTERMEDIATE_CONVERT_DOUBLE_TO_STRING;
             }
 
@@ -1262,7 +1263,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             }
 
             const AbstractSyntaxNode *argument = node->children[0];
-            if (argument->inferredType != DATA_TYPE_INT) {
+            if (typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_INT) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1299,7 +1300,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             }
 
             const AbstractSyntaxNode *argument = node->children[0];
-            if (argument->inferredType != DATA_TYPE_STRING) {
+            if (typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_STRING) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1343,7 +1344,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             while (counter < argumentCount) {
                 const AbstractSyntaxNode *argument = node->children[counter];
                 DataType argumentType = counter == 0 ? DATA_TYPE_STRING : DATA_TYPE_INT;
-                if (argument == NULL || argument->inferredType != argumentType) {
+                if (argument == NULL || typeDescriptorGetMask(argument->inferredType) != argumentType) {
                     return COMPILER_INTERNAL_ERROR;
                 }
 
@@ -1424,12 +1425,12 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 return COMPILER_INTERNAL_ERROR;
             }
 
-            if (parameter->variableType != DATA_TYPE_INT && parameter->variableType != DATA_TYPE_DOUBLE && parameter->variableType != DATA_TYPE_STRING && parameter->variableType != DATA_TYPE_UNIT) {
+            if (typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_INT && typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_DOUBLE && typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_STRING && typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_UNIT) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
-            if (argument->inferredType != parameter->variableType) {
-                if (argument->inferredType != DATA_TYPE_INT || parameter->variableType != DATA_TYPE_DOUBLE) {
+            if (typeDescriptorGetMask(argument->inferredType) != typeDescriptorGetMask(parameter->variableType)) {
+                if (typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_INT || typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_DOUBLE) {
                     return COMPILER_INTERNAL_ERROR;
                 }
             }
@@ -1449,7 +1450,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 return status;
             }
 
-            if (argument->inferredType == DATA_TYPE_INT && parameter->variableType == DATA_TYPE_DOUBLE) {
+            if (typeDescriptorGetMask(argument->inferredType) == DATA_TYPE_INT && typeDescriptorGetMask(parameter->variableType) == DATA_TYPE_DOUBLE) {
                 status = convertIntToDouble(generator, &argumentOperand, argument->location);
                 if (status != COMPILER_OK) {
                     intermediateOperandClear(&argumentOperand);
@@ -1585,7 +1586,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return status;
         }
 
-        if (node->variableType == DATA_TYPE_DOUBLE && node->children[0]->inferredType == DATA_TYPE_INT) {
+        if (typeDescriptorGetMask(node->variableType) == DATA_TYPE_DOUBLE && typeDescriptorGetMask(node->children[0]->inferredType) == DATA_TYPE_INT) {
             status = convertIntToDouble(generator, &initializerOperand, node->location);
             if (status != COMPILER_OK) {
                 intermediateOperandClear(&initializerOperand);
@@ -1634,7 +1635,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return status;
         }
 
-        if (node->variableType == DATA_TYPE_DOUBLE && node->children[0]->inferredType == DATA_TYPE_INT) {
+        if (typeDescriptorGetMask(node->variableType) == DATA_TYPE_DOUBLE && typeDescriptorGetMask(node->children[0]->inferredType) == DATA_TYPE_INT) {
             status = convertIntToDouble(generator, &valueOperand, node->location);
             if (status != COMPILER_OK) {
                 intermediateOperandClear(&valueOperand);
@@ -1668,7 +1669,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return COMPILER_INTERNAL_ERROR;
         }
 
-        if (node->children[0]->inferredType != DATA_TYPE_BOOLEAN) {
+        if (typeDescriptorGetMask(node->children[0]->inferredType) != DATA_TYPE_BOOLEAN) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -1763,7 +1764,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return COMPILER_INTERNAL_ERROR;
         }
 
-        if (node->children[0]->inferredType != DATA_TYPE_BOOLEAN) {
+        if (typeDescriptorGetMask(node->children[0]->inferredType) != DATA_TYPE_BOOLEAN) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -1882,7 +1883,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             returnOperand.kind = INTERMEDIATE_OPERAND_UNIT;
             returnOperand.value = (IntermediateOperandValue){0};
         } else {
-            DataType valueType = node->children[0]->inferredType;
+            DataType valueType = typeDescriptorGetMask(node->children[0]->inferredType);
             if (valueType != generator->returnType) {
                 if (valueType == DATA_TYPE_INT && generator->returnType == DATA_TYPE_DOUBLE) {
                     status = convertIntToDouble(generator, &returnOperand, node->location);
@@ -1977,7 +1978,7 @@ static CompilerStatus generateParameters(IntermediateGenerator *generator, const
             return COMPILER_INTERNAL_ERROR;
         }
 
-        if (parameter->variableType != DATA_TYPE_INT && parameter->variableType != DATA_TYPE_DOUBLE && parameter->variableType != DATA_TYPE_STRING && parameter->variableType != DATA_TYPE_UNIT) {
+        if (typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_INT && typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_DOUBLE && typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_STRING && typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_UNIT) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -2064,8 +2065,8 @@ static CompilerStatus generateFunctionBody(IntermediateGenerator *generator, con
         return status;
     }
 
-    if (expressionNode->inferredType != generator->returnType) {
-        if (expressionNode->inferredType == DATA_TYPE_INT && generator->returnType == DATA_TYPE_DOUBLE) {
+    if (typeDescriptorGetMask(expressionNode->inferredType) != generator->returnType) {
+        if (typeDescriptorGetMask(expressionNode->inferredType) == DATA_TYPE_INT && generator->returnType == DATA_TYPE_DOUBLE) {
             status = convertIntToDouble(generator, &returnOperand, expressionNode->location);
             if (status != COMPILER_OK) {
                 intermediateOperandClear(&returnOperand);
@@ -2118,7 +2119,7 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator, const A
     IntermediateGenerator functionGenerator = *generator;
     functionGenerator.program = functionBody;
     functionGenerator.functionDeclarations = functionDeclarations;
-    functionGenerator.returnType = node->inferredType;
+    functionGenerator.returnType = typeDescriptorGetMask(node->inferredType);
 
     CompilerStatus status = generateParameters(&functionGenerator, node);
     if (status != COMPILER_OK) {
@@ -2248,7 +2249,7 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program, Intermedia
         counter++;
     }
 
-    if (entryFunction == NULL || entryFunction->childCount != 1 || entryFunction->inferredType != DATA_TYPE_UNIT) {
+    if (entryFunction == NULL || entryFunction->childCount != 1 || typeDescriptorGetMask(entryFunction->inferredType) != DATA_TYPE_UNIT) {
         return COMPILER_INTERNAL_ERROR;
     }
 

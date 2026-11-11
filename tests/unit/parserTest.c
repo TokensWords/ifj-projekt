@@ -1,5 +1,6 @@
 #include "parserExpressions.h"
 #include "parserStatements.h"
+#include "parserTypes.h"
 #include "syntaxAnalyzer.h"
 #include "syntaxOperators.h"
 
@@ -95,7 +96,166 @@ static CompilerStatus parseBlockTokens(const TestToken *tokens, size_t tokenCoun
 #define TEST_TOKEN(tokenType, tokenText, tokenLine, tokenColumn)                                   \
     {tokenType, tokenText, tokenLine, tokenColumn, 0}
 
+static CompilerStatus parseTypeTokens(const TestToken *tokens, size_t tokenCount,
+                                      TypeDescriptor **outType) {
+    struct LexicalAnalyzer lexerState = {
+        .tokens = tokens, .tokenCount = tokenCount, .nextToken = 0};
+    SyntaxAnalyzer *syntaxAnalyzer = syntaxAnalyzerCreate((LexicalAnalyzer *)&lexerState);
+    assert(syntaxAnalyzer != NULL);
+    CompilerStatus status = analyzerTypesParseType(syntaxAnalyzer, outType);
+    syntaxAnalyzerDestroy(syntaxAnalyzer);
+    return status;
+}
+
 int main(void) {
+    static const TestToken flattenedUnionTokens[] = {
+        TEST_TOKEN(TOKEN_KEYWORD, "Int", 1, 1),    TEST_TOKEN(TOKEN_OPERATOR, "|", 1, 5),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 7),   TEST_TOKEN(TOKEN_KEYWORD, "Double", 1, 8),
+        TEST_TOKEN(TOKEN_OPERATOR, "|", 1, 15),    TEST_TOKEN(TOKEN_KEYWORD, "String", 1, 17),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 23), TEST_TOKEN(TOKEN_OPERATOR, "|", 1, 25),
+        TEST_TOKEN(TOKEN_KEYWORD, "Int", 1, 27),   TEST_TOKEN(TOKEN_EOF, NULL, 1, 30)};
+    TypeDescriptor *parsedType = NULL;
+    assert(parseTypeTokens(flattenedUnionTokens,
+                           sizeof(flattenedUnionTokens) / sizeof(flattenedUnionTokens[0]),
+                           &parsedType) == COMPILER_OK);
+    assert(typeDescriptorGetMask(parsedType) ==
+           (DATA_TYPE_INT | DATA_TYPE_DOUBLE | DATA_TYPE_STRING));
+    assert(typeDescriptorGetMemberCount(parsedType) == 3);
+    assert(typeDescriptorGetMask(typeDescriptorGetMember(parsedType, 0)) == DATA_TYPE_INT);
+    assert(typeDescriptorGetMask(typeDescriptorGetMember(parsedType, 1)) == DATA_TYPE_DOUBLE);
+    assert(typeDescriptorGetMask(typeDescriptorGetMember(parsedType, 2)) == DATA_TYPE_STRING);
+    TypeDescriptor *typeCopy = typeDescriptorClone(parsedType);
+    assert(typeCopy != NULL);
+    assert(typeCopy != parsedType);
+    assert(typeDescriptorEquals(typeCopy, parsedType));
+    AbstractSyntaxNode *typedNode =
+        abstractSyntaxNodeCreate(ABSTRACT_SYNTAX_IDENTIFIER, (SourceLocation){0});
+    assert(typedNode != NULL);
+    assert(abstractSyntaxNodeCopyInferredType(typedNode, parsedType) == COMPILER_OK);
+    assert(typedNode->inferredType != parsedType);
+    assert(typeDescriptorEquals(typedNode->inferredType, parsedType));
+    abstractSyntaxNodeDestroy(typedNode);
+    typeDescriptorDestroy(typeCopy);
+
+    TypeDescriptor *narrowUnion = typeDescriptorCreate(DATA_TYPE_UNKNOWN);
+    assert(narrowUnion != NULL);
+    TypeDescriptor *intType = typeDescriptorCreate(DATA_TYPE_INT);
+    TypeDescriptor *stringType = typeDescriptorCreate(DATA_TYPE_STRING);
+    assert(intType != NULL && stringType != NULL);
+    assert(typeDescriptorAddMember(narrowUnion, intType) == COMPILER_OK);
+    assert(typeDescriptorAddMember(narrowUnion, stringType) == COMPILER_OK);
+    assert(typeDescriptorIsSubset(narrowUnion, parsedType));
+    assert(!typeDescriptorIsSubset(parsedType, narrowUnion));
+    typeDescriptorDestroy(narrowUnion);
+    typeDescriptorDestroy(parsedType);
+
+    TypeDescriptor *firstAlias = typeDescriptorCreate(DATA_TYPE_ALIAS);
+    TypeDescriptor *sameAlias = typeDescriptorCreate(DATA_TYPE_ALIAS);
+    TypeDescriptor *differentAlias = typeDescriptorCreate(DATA_TYPE_ALIAS);
+    assert(firstAlias != NULL && sameAlias != NULL && differentAlias != NULL);
+    assert(typeDescriptorSetName(firstAlias, "First") == COMPILER_OK);
+    assert(typeDescriptorSetName(sameAlias, "First") == COMPILER_OK);
+    assert(typeDescriptorSetName(differentAlias, "Second") == COMPILER_OK);
+    assert(typeDescriptorIsSubset(firstAlias, sameAlias));
+    assert(!typeDescriptorIsSubset(firstAlias, differentAlias));
+    typeDescriptorDestroy(firstAlias);
+    typeDescriptorDestroy(sameAlias);
+    typeDescriptorDestroy(differentAlias);
+
+    TypeDescriptor *intList = typeDescriptorCreate(DATA_TYPE_LIST);
+    TypeDescriptor *unionList = typeDescriptorCreate(DATA_TYPE_LIST);
+    TypeDescriptor *intElement = typeDescriptorCreate(DATA_TYPE_INT);
+    TypeDescriptor *unionElement = typeDescriptorCreate(DATA_TYPE_UNKNOWN);
+    assert(intList != NULL && unionList != NULL && intElement != NULL && unionElement != NULL);
+    assert(typeDescriptorAddMember(unionElement, typeDescriptorCreate(DATA_TYPE_INT)) ==
+           COMPILER_OK);
+    assert(typeDescriptorAddMember(unionElement, typeDescriptorCreate(DATA_TYPE_STRING)) ==
+           COMPILER_OK);
+    assert(typeDescriptorSetElementType(intList, intElement) == COMPILER_OK);
+    assert(typeDescriptorSetElementType(unionList, unionElement) == COMPILER_OK);
+    assert(typeDescriptorIsSubset(intList, unionList));
+    typeDescriptorDestroy(intList);
+    typeDescriptorDestroy(unionList);
+
+    static const TestToken listUnionTypeTokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "List", 1, 1),
+                                                    TEST_TOKEN(TOKEN_LEFT_SHARP_PAREN, "[", 1, 5),
+                                                    TEST_TOKEN(TOKEN_KEYWORD, "Int", 1, 6),
+                                                    TEST_TOKEN(TOKEN_OPERATOR, "|", 1, 10),
+                                                    TEST_TOKEN(TOKEN_IDENTIFIER, "Scalar", 1, 12),
+                                                    TEST_TOKEN(TOKEN_RIGHT_SHARP_PAREN, "]", 1, 18),
+                                                    TEST_TOKEN(TOKEN_EOF, NULL, 1, 19)};
+    parsedType = NULL;
+    assert(parseTypeTokens(listUnionTypeTokens,
+                           sizeof(listUnionTypeTokens) / sizeof(listUnionTypeTokens[0]),
+                           &parsedType) == COMPILER_OK);
+    assert(typeDescriptorGetMask(parsedType) == DATA_TYPE_LIST);
+    const TypeDescriptor *elementType = typeDescriptorGetElementType(parsedType);
+    assert(elementType != NULL);
+    assert(typeDescriptorGetMemberCount(elementType) == 2);
+    assert(typeDescriptorGetMask(typeDescriptorGetMember(elementType, 1)) == DATA_TYPE_ALIAS);
+    assert(strcmp(typeDescriptorGetName(typeDescriptorGetMember(elementType, 1)), "Scalar") == 0);
+    typeDescriptorDestroy(parsedType);
+
+    static const TestToken typeAliasTokens[] = {
+        TEST_TOKEN(TOKEN_KEYWORD, "type", 1, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "Scalar", 1, 6),
+        TEST_TOKEN(TOKEN_OPERATOR, "=", 1, 13),  TEST_TOKEN(TOKEN_KEYWORD, "Int", 1, 15),
+        TEST_TOKEN(TOKEN_OPERATOR, "|", 1, 19),  TEST_TOKEN(TOKEN_KEYWORD, "String", 1, 21),
+        TEST_TOKEN(TOKEN_EOF, NULL, 1, 27)};
+    struct LexicalAnalyzer aliasLexerState = {.tokens = typeAliasTokens,
+                                              .tokenCount = sizeof(typeAliasTokens) /
+                                                            sizeof(typeAliasTokens[0]),
+                                              .nextToken = 0};
+    SyntaxAnalyzer *aliasSyntaxAnalyzer = syntaxAnalyzerCreate((LexicalAnalyzer *)&aliasLexerState);
+    assert(aliasSyntaxAnalyzer != NULL);
+    AbstractSyntaxNode *typeAlias = NULL;
+    assert(analyzerTypesParseAlias(aliasSyntaxAnalyzer, &typeAlias) == COMPILER_OK);
+    assert(typeAlias->kind == ABSTRACT_SYNTAX_TYPE_ALIAS);
+    assert(strcmp(typeAlias->text, "Scalar") == 0);
+    assert(typeDescriptorGetMemberCount(typeAlias->variableType) == 2);
+    assert(typeDescriptorGetMask(typeAlias->variableType) == (DATA_TYPE_INT | DATA_TYPE_STRING));
+    abstractSyntaxNodeDestroy(typeAlias);
+    syntaxAnalyzerDestroy(aliasSyntaxAnalyzer);
+
+    static const TestToken programWithAliasTokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "import", 1, 1),
+                                                       TEST_TOKEN(TOKEN_IDENTIFIER, "ifj26", 1, 8),
+                                                       TEST_TOKEN(TOKEN_DOT, ".", 1, 13),
+                                                       TEST_TOKEN(TOKEN_OPERATOR, "*", 1, 14),
+                                                       TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 15),
+                                                       TEST_TOKEN(TOKEN_KEYWORD, "type", 2, 1),
+                                                       TEST_TOKEN(TOKEN_IDENTIFIER, "Scalar", 2, 6),
+                                                       TEST_TOKEN(TOKEN_OPERATOR, "=", 2, 13),
+                                                       TEST_TOKEN(TOKEN_KEYWORD, "Int", 2, 15),
+                                                       TEST_TOKEN(TOKEN_OPERATOR, "|", 2, 19),
+                                                       TEST_TOKEN(TOKEN_KEYWORD, "String", 2, 21),
+                                                       TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 27),
+                                                       TEST_TOKEN(TOKEN_AT, "@", 3, 1),
+                                                       TEST_TOKEN(TOKEN_KEYWORD, "main", 3, 2),
+                                                       TEST_TOKEN(TOKEN_KEYWORD, "def", 3, 7),
+                                                       TEST_TOKEN(TOKEN_IDENTIFIER, "main", 3, 11),
+                                                       TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 3, 15),
+                                                       TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 3, 16),
+                                                       TEST_TOKEN(TOKEN_COLON, ":", 3, 17),
+                                                       TEST_TOKEN(TOKEN_KEYWORD, "Unit", 3, 19),
+                                                       TEST_TOKEN(TOKEN_OPERATOR, "=", 3, 24),
+                                                       TEST_TOKEN(TOKEN_IDENTIFIER, "print", 3, 26),
+                                                       TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 3, 31),
+                                                       TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 3, 32),
+                                                       TEST_TOKEN(TOKEN_EOF, NULL, 3, 33)};
+    struct LexicalAnalyzer programLexerState = {.tokens = programWithAliasTokens,
+                                                .tokenCount = sizeof(programWithAliasTokens) /
+                                                              sizeof(programWithAliasTokens[0]),
+                                                .nextToken = 0};
+    SyntaxAnalyzer *programSyntaxAnalyzer =
+        syntaxAnalyzerCreate((LexicalAnalyzer *)&programLexerState);
+    assert(programSyntaxAnalyzer != NULL);
+    SourceProgram *programWithAlias = NULL;
+    assert(syntaxAnalyzerParseProgram(programSyntaxAnalyzer, &programWithAlias) == COMPILER_OK);
+    assert(programWithAlias->root->childCount == 2);
+    assert(programWithAlias->root->children[0]->kind == ABSTRACT_SYNTAX_TYPE_ALIAS);
+    assert(programWithAlias->root->children[1]->kind == ABSTRACT_SYNTAX_FUNCTION);
+    sourceProgramDestroy(programWithAlias);
+    syntaxAnalyzerDestroy(programSyntaxAnalyzer);
+
     static const TestToken tokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "import", 1, 1),
                                        TEST_TOKEN(TOKEN_IDENTIFIER, "ifj26", 1, 8),
                                        TEST_TOKEN(TOKEN_DOT, ".", 1, 13),
@@ -841,7 +1001,7 @@ int main(void) {
     AbstractSyntaxNode *declaration = body->children[0];
     assert(declaration->kind == ABSTRACT_SYNTAX_VARIABLE_DECLARATION);
     assert(declaration->isMutable);
-    assert(declaration->variableType == DATA_TYPE_INT);
+    assert(typeDescriptorGetMask(declaration->variableType) == DATA_TYPE_INT);
     assert(declaration->childCount == 1);
 
     AbstractSyntaxNode *addition = declaration->children[0];

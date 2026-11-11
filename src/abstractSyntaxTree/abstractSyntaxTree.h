@@ -3,16 +3,13 @@
  * AUTHORS: Matúš Čík
  * BRIEF: Abstract syntax tree representation and ownership helpers
  *
- * IDEA: Remove struct ASTNODE field isMutable and isEntryFunction by adding more ASTNODE types,
- * example: ABSTRACT_SYNTAX_FUNCTION_ENTRY, ABSTRACT_SYNTAX_VARIABLE_DECLARATION_MUTABLE,
- * ABSTRACT_SYNTAX_VARIABLE_DECLARATION_IMMUTABLE. IDEA: Make ASTNODE easier to work with by
- * introducing funtions of getters/setter for node types.
  */
 
 #ifndef ABSTRACT_SYNTAX_TREE_H
 #define ABSTRACT_SYNTAX_TREE_H
 
 #include "compilerTypes.h"
+#include "typeDescriptor.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -36,6 +33,9 @@ typedef enum {
      * `@main`), else false
      */
     ABSTRACT_SYNTAX_FUNCTION,
+
+    /** A top-level type alias; @text is its name and @variableType is its definition. */
+    ABSTRACT_SYNTAX_TYPE_ALIAS,
 
     /**
      * Represents a function parameter
@@ -101,7 +101,7 @@ typedef enum {
      */
     ABSTRACT_SYNTAX_RANGE_EXPRESSION,
 
-   /* TODO: compability alias, remove */
+    /* TODO: compability alias, remove */
     ABSTRACT_SYNTAX_FOR_RANGE = ABSTRACT_SYNTAX_RANGE_EXPRESSION,
 
     /**
@@ -206,13 +206,10 @@ typedef union {
 } AbstractSyntaxValue;
 
 typedef struct AbstractSyntaxNode {
-    union {
-        AbstractSyntaxNodeType type;
-        AbstractSyntaxNodeType kind;
-    };
+    AbstractSyntaxNodeType kind;
     SourceLocation location;
-    DataType inferredType;
-    DataType variableType;
+    TypeDescriptor *inferredType;
+    TypeDescriptor *variableType;
     char *text;
     AbstractSyntaxValue value;
     struct AbstractSyntaxNode **children;
@@ -233,5 +230,8 @@ AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType type, Source
 void abstractSyntaxNodeDestroy(AbstractSyntaxNode *node);
 CompilerStatus abstractSyntaxNodeSetText(AbstractSyntaxNode *node, const char *text);
 CompilerStatus abstractSyntaxNodeAddChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *child);
-
+CompilerStatus abstractSyntaxNodeSetInferredType(AbstractSyntaxNode *node, DataType type);
+CompilerStatus abstractSyntaxNodeCopyInferredType(AbstractSyntaxNode *node,
+                                                  const TypeDescriptor *type);
+CompilerStatus abstractSyntaxNodeSetVariableType(AbstractSyntaxNode *node, DataType type);
 #endif

@@ -24,12 +24,15 @@ typedef enum {
 } CompilerStatus;
 
 typedef enum {
-    DATA_TYPE_UNKNOWN,
-    DATA_TYPE_INT,
-    DATA_TYPE_DOUBLE,
-    DATA_TYPE_STRING,
-    DATA_TYPE_UNIT,
-    DATA_TYPE_BOOLEAN
+    DATA_TYPE_UNKNOWN = 0,
+    DATA_TYPE_INT = 1u << 0,
+    DATA_TYPE_DOUBLE = 1u << 1,
+    DATA_TYPE_STRING = 1u << 2,
+    DATA_TYPE_UNIT = 1u << 3,
+    DATA_TYPE_BOOLEAN = 1u << 4,
+    DATA_TYPE_LIST = 1u << 5,
+    DATA_TYPE_ALIAS = 1u << 6,
+    DATA_TYPE_CASE_CLASS = 1u << 7
 } DataType;
 
 typedef struct {
@@ -38,4 +41,3 @@ typedef struct {
 } SourceLocation;
 
 #endif
-
