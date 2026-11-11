@@ -101,7 +101,7 @@ typedef enum {
      */
     ABSTRACT_SYNTAX_RANGE_EXPRESSION,
 
-   /* TODO: compability alias, remove */
+    /* TODO: compability alias, remove */
     ABSTRACT_SYNTAX_FOR_RANGE = ABSTRACT_SYNTAX_RANGE_EXPRESSION,
 
     /**
@@ -206,13 +206,13 @@ typedef union {
 } AbstractSyntaxValue;
 
 typedef struct AbstractSyntaxNode {
-    union {
-        AbstractSyntaxNodeType type;
-        AbstractSyntaxNodeType kind;
-    };
+    AbstractSyntaxNodeType kind;
     SourceLocation location;
     DataType inferredType;
+    /* Root kind retained for current semantic/codegen code; declaredType holds the full tree. */
     DataType variableType;
+    /* Complete declared type, including nested List element types; NULL when inferred. */
+    TypeDescriptor *declaredType;
     char *text;
     AbstractSyntaxValue value;
     struct AbstractSyntaxNode **children;
@@ -230,6 +230,8 @@ typedef struct {
 SourceProgram *sourceProgramCreate(void);
 void sourceProgramDestroy(SourceProgram *program);
 AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType type, SourceLocation location);
+TypeDescriptor *abstractSyntaxTypeCreate(DataType kind);
+void abstractSyntaxTypeDestroy(TypeDescriptor *type);
 void abstractSyntaxNodeDestroy(AbstractSyntaxNode *node);
 CompilerStatus abstractSyntaxNodeSetText(AbstractSyntaxNode *node, const char *text);
 CompilerStatus abstractSyntaxNodeAddChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *child);

@@ -56,10 +56,11 @@ static CompilerStatus parseVariableDeclaration(SyntaxAnalyzer *syntaxAnalyzer,
         if (status != COMPILER_OK) {
             goto cleanup;
         }
-        status = analyzerTypesParseDataType(syntaxAnalyzer, &declaration->variableType);
+        status = analyzerTypesParseType(syntaxAnalyzer, &declaration->declaredType);
         if (status != COMPILER_OK) {
             goto cleanup;
         }
+        declaration->variableType = declaration->declaredType->kind;
     }
     status = expectWord(syntaxAnalyzer, SYNTAX_OP_ASSIGN);
     if (status != COMPILER_OK) {
@@ -644,7 +645,7 @@ CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode
     if (*outNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    if ((*outNode)->type == ABSTRACT_SYNTAX_FUNCTION_CALL) {
+    if ((*outNode)->kind == ABSTRACT_SYNTAX_FUNCTION_CALL) {
         return COMPILER_OK;
     }
 

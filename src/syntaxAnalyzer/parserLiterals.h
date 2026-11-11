@@ -10,7 +10,7 @@
 
 #include "syntaxAnalyzerUtils.h"
 
-/** @brief Parses a data type and stores it in outType. */
-CompilerStatus analyzerTypesParseDataType(SyntaxAnalyzer *syntaxAnalyzer, DataType *outType);
+/** @brief Parses a scalar type or recursive List[T] type into outType. */
+CompilerStatus analyzerTypesParseType(SyntaxAnalyzer *syntaxAnalyzer, TypeDescriptor **outType);
 
 #endif

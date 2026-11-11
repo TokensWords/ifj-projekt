@@ -29,8 +29,15 @@ typedef enum {
     DATA_TYPE_DOUBLE,
     DATA_TYPE_STRING,
     DATA_TYPE_UNIT,
-    DATA_TYPE_BOOLEAN
+    DATA_TYPE_BOOLEAN,
+    DATA_TYPE_LIST
 } DataType;
+
+/** Recursive Of Datatype */
+typedef struct TypeDescriptor {
+    DataType kind;
+    struct TypeDescriptor *elementType;
+} TypeDescriptor;
 
 typedef struct {
     size_t line;
@@ -38,4 +45,3 @@ typedef struct {
 } SourceLocation;
 
 #endif
-

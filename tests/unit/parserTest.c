@@ -784,6 +784,35 @@ int main(void) {
     assert(ifExpressionBlock->children[5]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
     abstractSyntaxNodeDestroy(ifExpressionBlock);
 
+    static const TestToken listTypedDeclarationTokens[] = {
+        TEST_TOKEN(TOKEN_INDENT, NULL, 1, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "val", 1, 3),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "empty", 1, 7),
+        TEST_TOKEN(TOKEN_COLON, ":", 1, 12),
+        TEST_TOKEN(TOKEN_KEYWORD, "List", 1, 14),
+        TEST_TOKEN(TOKEN_LEFT_SHARP_PAREN, "[", 1, 18),
+        TEST_TOKEN(TOKEN_KEYWORD, "Int", 1, 19),
+        TEST_TOKEN(TOKEN_RIGHT_SHARP_PAREN, "]", 1, 22),
+        TEST_TOKEN(TOKEN_OPERATOR, "=", 1, 24),
+        TEST_TOKEN(TOKEN_KEYWORD, "List", 1, 26),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 30),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 31),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 32),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 2, 1),
+        TEST_TOKEN(TOKEN_EOF, NULL, 2, 1)};
+    AbstractSyntaxNode *typedBlock = NULL;
+    assert(
+        parseBlockTokens(listTypedDeclarationTokens,
+                         sizeof(listTypedDeclarationTokens) / sizeof(listTypedDeclarationTokens[0]),
+                         &typedBlock) == COMPILER_OK);
+    AbstractSyntaxNode *typedDeclaration = typedBlock->children[0];
+    assert(typedDeclaration->variableType == DATA_TYPE_LIST);
+    assert(typedDeclaration->declaredType != NULL);
+    assert(typedDeclaration->declaredType->kind == DATA_TYPE_LIST);
+    assert(typedDeclaration->declaredType->elementType != NULL);
+    assert(typedDeclaration->declaredType->elementType->kind == DATA_TYPE_INT);
+    abstractSyntaxNodeDestroy(typedBlock);
+
     static const TestToken missingElseExpressionTokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 1),
                                                             {TOKEN_BOOL_LITERAL, "true", 1, 4, 1},
                                                             TEST_TOKEN(TOKEN_KEYWORD, "then", 1, 9),

@@ -42,10 +42,11 @@ static CompilerStatus parseParameter(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyn
     if (status != COMPILER_OK) {
         goto cleanup;
     }
-    status = analyzerTypesParseDataType(syntaxAnalyzer, &parameter->variableType);
+    status = analyzerTypesParseType(syntaxAnalyzer, &parameter->declaredType);
     if (status != COMPILER_OK) {
         goto cleanup;
     }
+    parameter->variableType = parameter->declaredType->kind;
 
     *outNode = parameter;
     return COMPILER_OK;
@@ -131,7 +132,11 @@ static CompilerStatus parseFunctionReturnType(SyntaxAnalyzer *syntaxAnalyzer,
     if (status != COMPILER_OK) {
         return status;
     }
-    return analyzerTypesParseDataType(syntaxAnalyzer, &function->variableType);
+    status = analyzerTypesParseType(syntaxAnalyzer, &function->declaredType);
+    if (status == COMPILER_OK) {
+        function->variableType = function->declaredType->kind;
+    }
+    return status;
 }
 
 static CompilerStatus parseFunctionBody(SyntaxAnalyzer *syntaxAnalyzer,
