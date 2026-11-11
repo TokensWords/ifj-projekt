@@ -1,7 +1,8 @@
 /**
  * @file  syntaxAnalyzerUtils.h
  *
- * @brief Collection of utility functions for the syntax analyzer (parser). Includes token management, AST node creation, and parsing helpers.
+ * @brief Collection of utility functions for the syntax analyzer (parser). Includes token
+ * management, AST node creation, and parsing helpers.
  *
  * @project IFJ26 compiler
  * @author Matúš Čík
@@ -13,11 +14,15 @@
 #include "abstractSyntaxTree.h"
 #include "lexicalAnalyzer.h"
 
-/** @brief State holder representing parser. */
+/** @brief State holder representing parser.
+ * @newlineConsumed is needed to parse inline 'if' expressions correctly, because
+ * it's body expression can be on a new line.
+ */
 typedef struct SyntaxAnalyzer {
     LexicalAnalyzer *lexicalAnalyzer;
     Token *currentToken;
     Token *nextToken;
+    bool newlineConsumed;
 } SyntaxAnalyzer;
 
 /* --- Loading and Advancing Tokens Functions --- */
@@ -25,7 +30,8 @@ typedef struct SyntaxAnalyzer {
 /** @brief If currentToken is NULL, load next token from lexicalAnalyzer, else does nothing. */
 CompilerStatus ensureCurrentToken(SyntaxAnalyzer *syntaxAnalyzer);
 
-/** @brief If nextToken is NULL, runs ensureCurrentToken then loads next one from lexicalAnalyzer, else does nothing. */
+/** @brief If nextToken is NULL, runs ensureCurrentToken then loads next one from lexicalAnalyzer,
+ * else does nothing. */
 CompilerStatus ensureNextToken(SyntaxAnalyzer *syntaxAnalyzer);
 
 /** @brief Consumes the current token and loads next. */
@@ -33,7 +39,6 @@ CompilerStatus advanceToken(SyntaxAnalyzer *syntaxAnalyzer);
 
 /** @brief Consumes consecutive newline tokens. */
 CompilerStatus skipNewlines(SyntaxAnalyzer *syntaxAnalyzer);
-
 
 /* --- Current Token Validation Functions --- */
 

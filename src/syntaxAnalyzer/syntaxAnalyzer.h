@@ -28,7 +28,6 @@ SyntaxAnalyzer *syntaxAnalyzerCreate(LexicalAnalyzer *lexicalAnalyzer);
  */
 void syntaxAnalyzerDestroy(SyntaxAnalyzer *syntaxAnalyzer);
 
-
 /**
  * @brief Parses a source program into an abstract syntax tree.
  * @param syntaxAnalyzer the syntax analyzer to use for parsing.
@@ -36,6 +35,7 @@ void syntaxAnalyzerDestroy(SyntaxAnalyzer *syntaxAnalyzer);
  * @return COMPILER_OK on success else coresponding compiler error message.
  * @note Parser fails on invalid syntax programs.
  */
-CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer, SourceProgram **outProgram);
+CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer,
+                                          SourceProgram **outProgram);
 
 #endif

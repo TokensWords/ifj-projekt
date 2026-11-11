@@ -10,14 +10,11 @@
 
 #include "syntaxAnalyzerUtils.h"
 
-CompilerStatus parseIdentifierNode(SyntaxAnalyzer *syntaxAnalyzer,
-                                   AbstractSyntaxNode **outNode);
+CompilerStatus parseIdentifierNode(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
 
-CompilerStatus parseTerm(SyntaxAnalyzer *syntaxAnalyzer,
-                         AbstractSyntaxNode **outNode);
+CompilerStatus parseTerm(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
 
-CompilerStatus parseFunctionCall(SyntaxAnalyzer *syntaxAnalyzer,
-                                 AbstractSyntaxNode **outNode);
+CompilerStatus parseFunctionCall(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
 
 CompilerStatus analyzerExpressionsParse(SyntaxAnalyzer *syntaxAnalyzer,
                                         AbstractSyntaxNode **outNode);

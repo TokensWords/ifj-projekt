@@ -10,7 +10,6 @@
 
 #include "syntaxAnalyzer.h"
 
-CompilerStatus parseFunction(SyntaxAnalyzer *syntaxAnalyzer,
-                             AbstractSyntaxNode **outNode);
+CompilerStatus parseFunction(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
 
 #endif

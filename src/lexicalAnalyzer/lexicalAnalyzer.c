@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NUM_OF_KEYWORDS 22
+#define NUM_OF_KEYWORDS 25
 #define LEN_OF_KEYWORDS 10
 
 static int tokenLexemeCapacity = 100; // Default capacity of token lexeme
@@ -23,7 +23,7 @@ static int tokenLexemeCapacity = 100; // Default capacity of token lexeme
 static const char keywords[NUM_OF_KEYWORDS][LEN_OF_KEYWORDS] = {
     "def",    "do",        "Double", "else", "if",    "import", "Int",     "return",
     "String", "then",      "Unit",   "val",  "var",   "while",  "Boolean", "case",
-    "class",  "extension", "for",    "List", "match", "type"};
+    "class",  "extension", "for",    "List", "match", "type", "to", "until", "by"};
 
 // All possible states of FSM
 enum State {

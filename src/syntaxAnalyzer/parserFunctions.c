@@ -8,16 +8,14 @@
 #include "parserFunctions.h"
 
 #include "parserExpressions.h"
-#include "parserStatements.h"
 #include "parserLiterals.h"
+#include "parserStatements.h"
 #include "syntax.h"
 #include "syntaxAnalyzerUtils.h"
 
 #include <stdbool.h>
 
-static CompilerStatus parseParameter(SyntaxAnalyzer *syntaxAnalyzer,
-                                     AbstractSyntaxNode **outNode)
-{
+static CompilerStatus parseParameter(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode) {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
         return status;
@@ -26,8 +24,8 @@ static CompilerStatus parseParameter(SyntaxAnalyzer *syntaxAnalyzer,
         return COMPILER_SYNTAX_ERROR;
     }
 
-    AbstractSyntaxNode *parameter = createNode(ABSTRACT_SYNTAX_PARAMETER,
-                                               syntaxAnalyzer->currentToken->location);
+    AbstractSyntaxNode *parameter =
+        createNode(ABSTRACT_SYNTAX_PARAMETER, syntaxAnalyzer->currentToken->location);
     if (parameter == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -58,8 +56,7 @@ cleanup:
 }
 
 /* Validates and consumes an adjacent @main annotation. */
-static CompilerStatus parseMainAnnotation(SyntaxAnalyzer *syntaxAnalyzer)
-{
+static CompilerStatus parseMainAnnotation(SyntaxAnalyzer *syntaxAnalyzer) {
     CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
         return status;
@@ -88,8 +85,7 @@ static CompilerStatus parseMainAnnotation(SyntaxAnalyzer *syntaxAnalyzer)
 }
 
 static CompilerStatus parseFunctionParameters(SyntaxAnalyzer *syntaxAnalyzer,
-                                              AbstractSyntaxNode *function)
-{
+                                              AbstractSyntaxNode *function) {
     CompilerStatus status = expectType(syntaxAnalyzer, TOKEN_LEFT_PAREN);
     if (status != COMPILER_OK) {
         return status;
@@ -126,8 +122,7 @@ static CompilerStatus parseFunctionParameters(SyntaxAnalyzer *syntaxAnalyzer,
 }
 
 static CompilerStatus parseFunctionReturnType(SyntaxAnalyzer *syntaxAnalyzer,
-                                              AbstractSyntaxNode *function)
-{
+                                              AbstractSyntaxNode *function) {
     if (!currentIsType(syntaxAnalyzer, TOKEN_COLON)) {
         return COMPILER_OK;
     }
@@ -140,8 +135,7 @@ static CompilerStatus parseFunctionReturnType(SyntaxAnalyzer *syntaxAnalyzer,
 }
 
 static CompilerStatus parseFunctionBody(SyntaxAnalyzer *syntaxAnalyzer,
-                                        AbstractSyntaxNode **outBody)
-{
+                                        AbstractSyntaxNode **outBody) {
     *outBody = NULL;
     if (currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
         CompilerStatus status = advanceToken(syntaxAnalyzer);
@@ -158,8 +152,7 @@ static CompilerStatus parseFunctionBody(SyntaxAnalyzer *syntaxAnalyzer,
     AbstractSyntaxNode *bodyValue = NULL;
     AbstractSyntaxNode *body = NULL;
     AbstractSyntaxNode *statement = NULL;
-    CompilerStatus status = analyzerExpressionsParseValueOrCall(syntaxAnalyzer,
-                                                                &bodyValue);
+    CompilerStatus status = analyzerExpressionsParseValueOrCall(syntaxAnalyzer, &bodyValue);
     if (status != COMPILER_OK) {
         goto cleanup;
     }
@@ -176,8 +169,7 @@ static CompilerStatus parseFunctionBody(SyntaxAnalyzer *syntaxAnalyzer,
             goto cleanup;
         }
     } else {
-        statement = createNode(ABSTRACT_SYNTAX_EXPRESSION_STATEMENT,
-                               bodyValue->location);
+        statement = createNode(ABSTRACT_SYNTAX_EXPRESSION_STATEMENT, bodyValue->location);
         if (statement == NULL) {
             status = COMPILER_INTERNAL_ERROR;
             goto cleanup;
@@ -204,9 +196,7 @@ cleanup:
     return status;
 }
 
-CompilerStatus parseFunction(SyntaxAnalyzer *syntaxAnalyzer,
-                             AbstractSyntaxNode **outNode)
-{
+CompilerStatus parseFunction(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode) {
     if (syntaxAnalyzer == NULL || outNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -241,8 +231,8 @@ CompilerStatus parseFunction(SyntaxAnalyzer *syntaxAnalyzer,
         return COMPILER_SYNTAX_ERROR;
     }
 
-    AbstractSyntaxNode *function = createNode(ABSTRACT_SYNTAX_FUNCTION,
-                                              syntaxAnalyzer->currentToken->location);
+    AbstractSyntaxNode *function =
+        createNode(ABSTRACT_SYNTAX_FUNCTION, syntaxAnalyzer->currentToken->location);
     AbstractSyntaxNode *body = NULL;
     if (function == NULL) {
         return COMPILER_INTERNAL_ERROR;
