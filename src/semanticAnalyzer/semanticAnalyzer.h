@@ -11,11 +11,56 @@
 #include "abstractSyntaxTree.h"
 #include "compilerTypes.h"
 #include "symbolTable.h"
+#include "typeDescriptor.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 
 typedef struct SemAnalData SemAnalData;
+
+/**
+ * @brief Creates a type descriptor with the specified datatype.
+ * @param type The datatype to initialize the descriptor with.
+ * @return The created type descriptor, or NULL on allocation failure.
+ */
+TypeDescriptor *semAnalInitTypeDescriptor(DataType type);
+
+/**
+ * @brief Creates a deep copy of a type descriptor.
+ * @param src The descriptor to copy.
+ * @return The copied descriptor, or NULL if src is NULL or allocation fails.
+ */
+TypeDescriptor *semAnalCopyTypeDescriptor(const TypeDescriptor *src);
+
+/**
+ * @brief Frees a type descriptor and its contents.
+ * @param desc The descriptor to destroy.
+ */
+void semAnalDestroyTypeDescriptor(TypeDescriptor *desc);
+
+/**
+ * @brief Resolves aliases and case-class names in a type descriptor.
+ * @param desc The descriptor to normalize.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalNormalizeTypeDescriptor(TypeDescriptor *desc, SemAnalData *data);
+
+/**
+ * @brief Checks whether one type descriptor is a subtype of another.
+ * @param superType The type that accepts values of subType.
+ * @param subType The type to check.
+ * @return true if subType is a subtype of superType, otherwise false.
+ */
+bool semAnalIsSubtype(TypeDescriptor *superType, TypeDescriptor *subType);
+
+/**
+ * @brief Creates a type descriptor representing the union of two types.
+ * @param typeA The first type descriptor.
+ * @param typeB The second type descriptor.
+ * @return The unified descriptor, or NULL on allocation failure.
+ */
+TypeDescriptor *semAnalUnifyTypes(TypeDescriptor *typeA, TypeDescriptor *typeB);
 
 /**
  * @brief Initializes semantic-analysis data and creates its function symbol table.
@@ -66,16 +111,23 @@ void semAnalFreeSymbol(Symbol *symbol);
 /**
  * @brief gets parameter types from AST node
  * @param node pointer to AST function node to get parameter types from
- * @return array of data types
+ * @return An array of copied parameter type descriptors.
  */
-DataType *semAnalAstGetParameterTypes(AbstractSyntaxNode *node);
+TypeDescriptor **semAnalAstGetParameterTypes(AbstractSyntaxNode *node);
+
+/**
+ * @brief Gets parameter names from an AST function or case-class node.
+ * @param node The AST node to get parameter names from.
+ * @return An array of parameter names, or NULL if there are no parameters or node is invalid.
+ */
+char **semAnalAstGetParameterNames(AbstractSyntaxNode *node);
 
 /**
  * @brief Extracts information from current ast node to a new symbol.
  * This function does only extract information from the node + function parameter types from
  * function nodes. It does NOT set coresponding scope depth (default 0). It sets defined to false.
  * @param node node to be extracted from
- * @return status of the program - error codes
+ * @return The created symbol, or NULL if the node cannot be converted.
  */
 Symbol *semAnalAstNodeToSymbol(AbstractSyntaxNode *node);
 
@@ -158,14 +210,6 @@ CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalDa
 CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SemAnalData *data);
 
 /**
- * @brief Checks whether one data type is a subtype of another.
- * @param superType The type that accepts values of subType.
- * @param subType The type to check.
- * @return true if subType is a subtype of superType, otherwise false.
- */
-bool semAnalIsSubtype(DataType superType, DataType subType);
-
-/**
  * @brief Resolves the statements in a block.
  * @param blockNode The block AST node to resolve.
  * @param data The semantic-analysis data to use.
@@ -181,6 +225,14 @@ CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *d
  * @return status of the program - error codes
  */
 CompilerStatus semAnalResolveNode(AbstractSyntaxNode *node, SemAnalData *data);
+
+/**
+ * @brief Resolves a case-class declaration and its constructor symbol.
+ * @param classNode The case-class AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolvecCaseClass(AbstractSyntaxNode *classNode, SemAnalData *data);
 
 /**
  * @brief Resolves an if statement and its branches.
@@ -215,6 +267,22 @@ CompilerStatus semAnalResolveWhile(AbstractSyntaxNode *whileNode, SemAnalData *d
 CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SemAnalData *data);
 
 /**
+ * @brief Resolves a for-loop generator clause and declares its binding.
+ * @param clause The generator clause to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveForGenerator(AbstractSyntaxNode *clause, SemAnalData *data);
+
+/**
+ * @brief Resolves and validates a for-loop guard clause.
+ * @param clause The guard clause to resolve.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveForGuard(AbstractSyntaxNode *clause, SemAnalData *data);
+
+/**
  * @brief Resolves a member access expression and determines its type.
  * @param accessNode The member-access AST node to resolve.
  * @param data The semantic-analysis data to use.
@@ -226,10 +294,18 @@ CompilerStatus semAnalResolveMemberAccess(AbstractSyntaxNode *accessNode, SemAna
  * @brief Resolves a case-class pattern and validates its bindings.
  * @param patternNode The case-class pattern AST node to resolve.
  * @param data The semantic-analysis data to use.
- * @param currentTable The symbol table scope for the pattern bindings.
  * @return status of the program - error codes
  */
-CompilerStatus semAnalResolveCaseClassPattern(AbstractSyntaxNode *patternNode, SemAnalData *data, SymbolTable *currentTable);
+CompilerStatus semAnalResolveCaseClassPattern(AbstractSyntaxNode *patternNode, SemAnalData *data);
+
+/**
+ * @brief Resolves a match-pattern node against its scrutinee.
+ * @param patternNode The pattern AST node to resolve.
+ * @param scrutinee The expression whose value is being matched.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveMatchPattern(AbstractSyntaxNode *patternNode, AbstractSyntaxNode *scrutinee, SemAnalData *data);
 
 /**
  * @brief Resolves a match expression and its branches.
@@ -237,7 +313,7 @@ CompilerStatus semAnalResolveCaseClassPattern(AbstractSyntaxNode *patternNode, S
  * @param data The semantic-analysis data to use.
  * @return status of the program - error codes
  */
-CompilerStatus semAnalResolveMatch(AbstractSyntaxNode *matchNode, SemAnalData *data);
+CompilerStatus semAnalResolveMatchExpression(AbstractSyntaxNode *matchNode, SemAnalData *data);
 
 /**
  * @brief Finds a function in the current recursion list.
@@ -254,6 +330,42 @@ int semAnalInRecursion(const char *funName, SemAnalData *data);
  * @return status of the program - error codes
  */
 CompilerStatus semAnalCheckRecursion(size_t recursionI, SemAnalData *data);
+
+/**
+ * @brief Resolves indexed access to a list value.
+ * @param functionCallNode The list-access call AST node.
+ * @param data The semantic-analysis data to use.
+ * @param varSymbol The symbol for the list being accessed.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveListAccess(AbstractSyntaxNode *functionCallNode, SemAnalData *data, Symbol *varSymbol);
+
+/**
+ * @brief Resolves a list-constructor call and infers its element type.
+ * @param functionCallNode The list-constructor call AST node.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveListConstructor(AbstractSyntaxNode *functionCallNode, SemAnalData *data);
+
+/**
+ * @brief Resolves a regular function call and checks its arguments.
+ * @param functionCallNode The function-call AST node.
+ * @param data The semantic-analysis data to use.
+ * @param callee The function identifier AST node.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveStandardCall(AbstractSyntaxNode *functionCallNode, SemAnalData *data, AbstractSyntaxNode *callee);
+
+/**
+ * @brief Resolves a method call on a list value.
+ * @param callNode The method-call AST node.
+ * @param data The semantic-analysis data to use.
+ * @param receiver The list expression receiving the method call.
+ * @param methodName The name of the list method.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveListMethodCall(AbstractSyntaxNode *callNode, SemAnalData *data, AbstractSyntaxNode *receiver, const char *methodName);
 
 /**
  * @brief Resolves a function call and checks its arguments.
@@ -312,10 +424,10 @@ CompilerStatus semAnalResolveUnaryExpression(AbstractSyntaxNode *unaryExpression
 CompilerStatus semAnalResolveIdentifier(AbstractSyntaxNode *identifierNode, SemAnalData *data);
 
 /**
- * @brief Gets the data type to which a "line of code" should be evaluated to.
+ * @brief Gets the type descriptor produced by a "line of code".
  * @param node The AST node to evaluate.
- * @return The data type produced by the node.
+ * @return The resulting type descriptor, or NULL if it cannot be determined.
  */
-DataType semAnalEvaluatesToType(AbstractSyntaxNode *node);
+TypeDescriptor *semAnalEvaluatesToType(AbstractSyntaxNode *node);
 
 #endif
