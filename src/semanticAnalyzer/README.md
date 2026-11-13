@@ -11,7 +11,7 @@ Semantic analysis validates meaning and annotates the abstract syntax tree.
 
 ## Output
 
-The same program remains owned by the caller. Every expression receives an `inferredType`.
+The same program remains owned by the caller. Each AST node stores its type descriptor.
 Errors return the exact required `CompilerStatus`.
 
 ## Function

@@ -40,8 +40,7 @@ AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType type, Source
 
     node->kind = type;
     node->location = location;
-    node->variableType = NULL;
-    node->inferredType = NULL;
+    typeDescriptorInit(&node->type);
     node->text = NULL;
     node->value.intValue = 0;
     node->children = NULL;
@@ -64,8 +63,7 @@ void abstractSyntaxNodeDestroy(AbstractSyntaxNode *node) {
 
     free(node->children);
     free(node->text);
-    typeDescriptorDestroy(node->variableType);
-    typeDescriptorDestroy(node->inferredType);
+    typeDescriptorFree(&node->type);
     free(node);
 }
 
@@ -73,12 +71,8 @@ CompilerStatus abstractSyntaxNodeSetInferredType(AbstractSyntaxNode *node, DataT
     if (node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    TypeDescriptor *descriptor = typeDescriptorCreate(type);
-    if (descriptor == NULL) {
-        return COMPILER_INTERNAL_ERROR;
-    }
-    typeDescriptorDestroy(node->inferredType);
-    node->inferredType = descriptor;
+    typeDescriptorFree(&node->type);
+    node->type.datatypeBitflag = type;
     return COMPILER_OK;
 }
 
@@ -87,12 +81,41 @@ CompilerStatus abstractSyntaxNodeCopyInferredType(AbstractSyntaxNode *node,
     if (node == NULL || type == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    TypeDescriptor *copy = typeDescriptorClone(type);
-    if (copy == NULL) {
-        return COMPILER_INTERNAL_ERROR;
+    typeDescriptorFree(&node->type);
+    node->type.datatypeBitflag = type->datatypeBitflag;
+    for (const TypeDescriptorAliasNode *source = type->aliases; source != NULL;
+         source = source->next) {
+        TypeDescriptorAliasNode *copy = NULL;
+        CompilerStatus status = typeDescriptorAliasNodeInit(&copy, source->name);
+        if (status != COMPILER_OK ||
+            (status = typeDescriptorAddAlias(&node->type, copy)) != COMPILER_OK) {
+            typeDescriptorAliasNodeFree(copy);
+            typeDescriptorFree(&node->type);
+            return status;
+        }
     }
-    typeDescriptorDestroy(node->inferredType);
-    node->inferredType = copy;
+    for (const TypeDescriptorAliasNode *source = type->classes; source != NULL;
+         source = source->next) {
+        TypeDescriptorAliasNode *copy = NULL;
+        CompilerStatus status = typeDescriptorAliasNodeInit(&copy, source->name);
+        if (status != COMPILER_OK ||
+            (status = typeDescriptorAddClass(&node->type, copy)) != COMPILER_OK) {
+            typeDescriptorAliasNodeFree(copy);
+            typeDescriptorFree(&node->type);
+            return status;
+        }
+    }
+    for (const TypeDescriptorRecursiveNode *source = type->recursiveTypes; source != NULL;
+         source = source->next) {
+        TypeDescriptorRecursiveNode *copy = NULL;
+        CompilerStatus status = typeDescriptorRecursiveNodeInit(&copy, &source->elementType);
+        if (status != COMPILER_OK ||
+            (status = typeDescriptorAddRecursiveType(&node->type, copy)) != COMPILER_OK) {
+            typeDescriptorRecursiveNodeFree(copy);
+            typeDescriptorFree(&node->type);
+            return status;
+        }
+    }
     return COMPILER_OK;
 }
 
@@ -100,13 +123,7 @@ CompilerStatus abstractSyntaxNodeSetVariableType(AbstractSyntaxNode *node, DataT
     if (node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    TypeDescriptor *descriptor = typeDescriptorCreate(type);
-    if (descriptor == NULL) {
-        return COMPILER_INTERNAL_ERROR;
-    }
-    typeDescriptorDestroy(node->variableType);
-    node->variableType = descriptor;
-    return COMPILER_OK;
+    return abstractSyntaxNodeSetInferredType(node, type);
 }
 
 CompilerStatus abstractSyntaxNodeSetText(AbstractSyntaxNode *node, const char *text) {

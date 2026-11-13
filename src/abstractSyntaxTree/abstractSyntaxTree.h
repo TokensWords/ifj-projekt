@@ -34,7 +34,7 @@ typedef enum {
      */
     ABSTRACT_SYNTAX_FUNCTION,
 
-    /** A top-level type alias; @text is its name and @variableType is its definition. */
+    /** A top-level type alias; @text is its name and @type is its definition. */
     ABSTRACT_SYNTAX_TYPE_ALIAS,
 
     /**
@@ -47,14 +47,14 @@ typedef enum {
     /**
      * A public immutable case-class field.
      * @text - field name
-     * @variableType - declared field type
+     * @type - declared field type
      */
     ABSTRACT_SYNTAX_CASE_CLASS_FIELD,
 
     /**
      * Represents a function parameter
      * @text - name of the parameter
-     * @variableType - type of the parameter
+     * @type - type of the parameter
      */
     ABSTRACT_SYNTAX_PARAMETER,
 
@@ -160,7 +160,7 @@ typedef enum {
     /**
      * Represents a variable declaration
      * @text - name of the variable
-     * @variableType - type of the variable
+     * @type - declared or inferred type of the variable
      */
     ABSTRACT_SYNTAX_VARIABLE_DECLARATION,
 
@@ -237,8 +237,7 @@ typedef union {
 typedef struct AbstractSyntaxNode {
     AbstractSyntaxNodeType kind;
     SourceLocation location;
-    TypeDescriptor *inferredType;
-    TypeDescriptor *variableType;
+    TypeDescriptor type;
     char *text;
     AbstractSyntaxValue value;
     struct AbstractSyntaxNode **children;

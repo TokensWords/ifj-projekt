@@ -1,6 +1,6 @@
 /**
  * @file typeDescriptor.c
- * @brief Ownership and mutation operations for recursive type descriptors.
+ * @brief Management of literal flags and linked type descriptor nodes.
  */
 
 #include "typeDescriptor.h"
@@ -10,273 +10,339 @@
 #include <stdlib.h>
 #include <string.h>
 
-TypeDescriptor *typeDescriptorCreate(DataType type) {
-    TypeDescriptor *descriptor = memoryAllocate(sizeof(TypeDescriptor));
-    if (descriptor == NULL) {
-        return NULL;
-    }
+#define LITERAL_TYPE_MASK                                                                          \
+    ((uint32_t)(DATA_TYPE_INT | DATA_TYPE_DOUBLE | DATA_TYPE_STRING | DATA_TYPE_UNIT |              \
+                DATA_TYPE_BOOLEAN))
 
-    descriptor->type = type;
-    descriptor->name = NULL;
-    descriptor->members = NULL;
-    descriptor->elementType = NULL;
-    descriptor->nextMember = NULL;
-    return descriptor;
-}
+static CompilerStatus typeDescriptorCopyInto(TypeDescriptor *destination,
+                                             const TypeDescriptor *source);
+static bool typeDescriptorEquals(const TypeDescriptor *left, const TypeDescriptor *right);
 
-void typeDescriptorDestroy(TypeDescriptor *type) {
+void typeDescriptorInit(TypeDescriptor *type) {
     if (type == NULL) {
         return;
     }
+    type->datatypeBitflag = DATA_TYPE_UNKNOWN;
+    type->aliases = NULL;
+    type->classes = NULL;
+    type->recursiveTypes = NULL;
+}
 
-    TypeDescriptor *member = type->members;
-    while (member != NULL) {
-        TypeDescriptor *nextMember = member->nextMember;
-        member->nextMember = NULL;
-        typeDescriptorDestroy(member);
-        member = nextMember;
+void typeDescriptorAliasNodeFree(TypeDescriptorAliasNode *node) {
+    if (node == NULL) {
+        return;
     }
-    typeDescriptorDestroy(type->elementType);
-    free(type->name);
-    free(type);
+    free(node->name);
+    free(node);
 }
 
-DataType typeDescriptorGetMask(const TypeDescriptor *type) {
-    return type == NULL ? DATA_TYPE_UNKNOWN : type->type;
+void typeDescriptorRecursiveNodeFree(TypeDescriptorRecursiveNode *node) {
+    if (node == NULL) {
+        return;
+    }
+    typeDescriptorFree(&node->elementType);
+    free(node);
 }
 
-CompilerStatus typeDescriptorSetMask(TypeDescriptor *type, DataType mask) {
+void typeDescriptorFree(TypeDescriptor *type) {
     if (type == NULL) {
-        return COMPILER_INTERNAL_ERROR;
+        return;
     }
-    type->type = mask;
+    TypeDescriptorAliasNode *alias = type->aliases;
+    while (alias != NULL) {
+        TypeDescriptorAliasNode *next = alias->next;
+        alias->next = NULL;
+        typeDescriptorAliasNodeFree(alias);
+        alias = next;
+    }
+    TypeDescriptorAliasNode *classType = type->classes;
+    while (classType != NULL) {
+        TypeDescriptorAliasNode *next = classType->next;
+        classType->next = NULL;
+        typeDescriptorAliasNodeFree(classType);
+        classType = next;
+    }
+    TypeDescriptorRecursiveNode *recursive = type->recursiveTypes;
+    while (recursive != NULL) {
+        TypeDescriptorRecursiveNode *next = recursive->next;
+        recursive->next = NULL;
+        typeDescriptorRecursiveNodeFree(recursive);
+        recursive = next;
+    }
+    typeDescriptorInit(type);
+}
+
+CompilerStatus typeDescriptorAddLiteralType(TypeDescriptor *type, DataType literalType) {
+    uint32_t literalMask = (uint32_t)literalType;
+    if (type == NULL || literalMask == 0 || (literalMask & ~LITERAL_TYPE_MASK) != 0) {
+        return COMPILER_ARGUMENT_ERROR;
+    }
+    type->datatypeBitflag |= literalType;
     return COMPILER_OK;
 }
 
-const char *typeDescriptorGetName(const TypeDescriptor *type) {
-    return type == NULL ? NULL : type->name;
+bool typeDescriptorContainsLiteralType(const TypeDescriptor *type, DataType literalType) {
+    uint32_t literalMask = (uint32_t)literalType;
+    return type != NULL && literalMask != 0 && (literalMask & ~LITERAL_TYPE_MASK) == 0 &&
+           (((uint32_t)type->datatypeBitflag & literalMask) == literalMask);
 }
 
-CompilerStatus typeDescriptorSetName(TypeDescriptor *type, const char *name) {
-    if (type == NULL || name == NULL) {
-        return COMPILER_INTERNAL_ERROR;
+CompilerStatus typeDescriptorRemoveLiteralType(TypeDescriptor *type, DataType literalType) {
+    uint32_t literalMask = (uint32_t)literalType;
+    if (type == NULL || literalMask == 0 || (literalMask & ~LITERAL_TYPE_MASK) != 0) {
+        return COMPILER_ARGUMENT_ERROR;
     }
-    char *copy = memoryDuplicateString(name);
-    if (copy == NULL) {
-        return COMPILER_INTERNAL_ERROR;
-    }
-    free(type->name);
-    type->name = copy;
+    type->datatypeBitflag = (DataType)((uint32_t)type->datatypeBitflag & ~literalMask);
     return COMPILER_OK;
 }
 
-size_t typeDescriptorGetMemberCount(const TypeDescriptor *type) {
-    size_t count = 0;
-    if (type != NULL) {
-        for (const TypeDescriptor *member = type->members; member != NULL;
-             member = member->nextMember) {
-            count++;
+CompilerStatus typeDescriptorAliasNodeInit(TypeDescriptorAliasNode **outNode, const char *name) {
+    if (outNode == NULL || name == NULL) {
+        return COMPILER_ARGUMENT_ERROR;
+    }
+    *outNode = NULL;
+    TypeDescriptorAliasNode *node = memoryAllocate(sizeof(TypeDescriptorAliasNode));
+    if (node == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    node->name = memoryDuplicateString(name);
+    node->next = NULL;
+    if (node->name == NULL) {
+        free(node);
+        return COMPILER_INTERNAL_ERROR;
+    }
+    *outNode = node;
+    return COMPILER_OK;
+}
+
+CompilerStatus typeDescriptorRecursiveNodeInit(TypeDescriptorRecursiveNode **outNode,
+                                               const TypeDescriptor *elementType) {
+    if (outNode == NULL || elementType == NULL) {
+        return COMPILER_ARGUMENT_ERROR;
+    }
+    *outNode = NULL;
+    TypeDescriptorRecursiveNode *node = memoryAllocate(sizeof(TypeDescriptorRecursiveNode));
+    if (node == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    typeDescriptorInit(&node->elementType);
+    node->next = NULL;
+    CompilerStatus status = typeDescriptorCopyInto(&node->elementType, elementType);
+    if (status != COMPILER_OK) {
+        typeDescriptorRecursiveNodeFree(node);
+        return status;
+    }
+    *outNode = node;
+    return COMPILER_OK;
+}
+
+static bool aliasListContains(const TypeDescriptorAliasNode *list, const char *name) {
+    for (const TypeDescriptorAliasNode *node = list; node != NULL; node = node->next) {
+        if (strcmp(node->name, name) == 0) {
+            return true;
         }
+    }
+    return false;
+}
+
+static size_t aliasListCount(const TypeDescriptorAliasNode *list) {
+    size_t count = 0;
+    for (const TypeDescriptorAliasNode *node = list; node != NULL; node = node->next) {
+        count++;
     }
     return count;
 }
 
-const TypeDescriptor *typeDescriptorGetMember(const TypeDescriptor *type, size_t index) {
-    if (type == NULL) {
-        return NULL;
+static bool recursiveListContains(const TypeDescriptorRecursiveNode *list,
+                                  const TypeDescriptor *elementType) {
+    for (const TypeDescriptorRecursiveNode *node = list; node != NULL; node = node->next) {
+        if (typeDescriptorEquals(&node->elementType, elementType)) {
+            return true;
+        }
     }
-    const TypeDescriptor *member = type->members;
-    while (index > 0 && member != NULL) {
-        member = member->nextMember;
-        index--;
-    }
-    return member;
+    return false;
 }
 
-CompilerStatus typeDescriptorAddMember(TypeDescriptor *type, TypeDescriptor *member) {
-    if (type == NULL || member == NULL || member->nextMember != NULL) {
-        return COMPILER_INTERNAL_ERROR;
+static size_t recursiveListCount(const TypeDescriptorRecursiveNode *list) {
+    size_t count = 0;
+    for (const TypeDescriptorRecursiveNode *node = list; node != NULL; node = node->next) {
+        count++;
     }
-    if (type->members == NULL) {
-        type->members = member;
-    } else {
-        TypeDescriptor *lastMember = type->members;
-        while (lastMember->nextMember != NULL) {
-            lastMember = lastMember->nextMember;
-        }
-        lastMember->nextMember = member;
+    return count;
+}
+
+CompilerStatus typeDescriptorAddAlias(TypeDescriptor *type, TypeDescriptorAliasNode *node) {
+    if (type == NULL || node == NULL || node->name == NULL || node->next != NULL) {
+        return COMPILER_ARGUMENT_ERROR;
     }
-    type->type = (DataType)(type->type | member->type);
+    if (aliasListContains(type->aliases, node->name)) {
+        typeDescriptorAliasNodeFree(node);
+        return COMPILER_OK;
+    }
+    node->next = type->aliases;
+    type->aliases = node;
+    type->datatypeBitflag = (DataType)((uint32_t)type->datatypeBitflag | DATA_TYPE_ALIAS);
     return COMPILER_OK;
 }
 
-TypeDescriptor *typeDescriptorRemoveMember(TypeDescriptor *type, size_t index) {
-    if (type == NULL) {
+TypeDescriptorAliasNode *typeDescriptorPopAlias(TypeDescriptor *type) {
+    if (type == NULL || type->aliases == NULL) {
         return NULL;
     }
-
-    TypeDescriptor **memberLink = &type->members;
-    while (index > 0 && *memberLink != NULL) {
-        memberLink = &(*memberLink)->nextMember;
-        index--;
+    TypeDescriptorAliasNode *node = type->aliases;
+    type->aliases = node->next;
+    node->next = NULL;
+    if (type->aliases == NULL) {
+        type->datatypeBitflag = (DataType)((uint32_t)type->datatypeBitflag & ~DATA_TYPE_ALIAS);
     }
-    if (*memberLink == NULL) {
-        return NULL;
-    }
-    TypeDescriptor *member = *memberLink;
-    *memberLink = member->nextMember;
-    member->nextMember = NULL;
-    type->type = DATA_TYPE_UNKNOWN;
-    for (TypeDescriptor *remaining = type->members; remaining != NULL;
-         remaining = remaining->nextMember) {
-        type->type = (DataType)(type->type | remaining->type);
-    }
-    return member;
+    return node;
 }
 
-const TypeDescriptor *typeDescriptorGetElementType(const TypeDescriptor *type) {
-    return type == NULL ? NULL : type->elementType;
-}
-
-CompilerStatus typeDescriptorSetElementType(TypeDescriptor *type, TypeDescriptor *elementType) {
-    if (type == NULL || elementType == NULL || type->elementType != NULL) {
-        return COMPILER_INTERNAL_ERROR;
+CompilerStatus typeDescriptorAddClass(TypeDescriptor *type, TypeDescriptorAliasNode *node) {
+    if (type == NULL || node == NULL || node->name == NULL || node->next != NULL) {
+        return COMPILER_ARGUMENT_ERROR;
     }
-    type->elementType = elementType;
+    if (aliasListContains(type->classes, node->name)) {
+        typeDescriptorAliasNodeFree(node);
+        return COMPILER_OK;
+    }
+    node->next = type->classes;
+    type->classes = node;
+    type->datatypeBitflag = (DataType)((uint32_t)type->datatypeBitflag | DATA_TYPE_CASE_CLASS);
     return COMPILER_OK;
 }
 
-TypeDescriptor *typeDescriptorClone(const TypeDescriptor *type) {
-    if (type == NULL) {
+TypeDescriptorAliasNode *typeDescriptorPopClass(TypeDescriptor *type) {
+    if (type == NULL || type->classes == NULL) {
         return NULL;
     }
-
-    TypeDescriptor *copy = typeDescriptorCreate(type->type);
-    if (copy == NULL) {
-        return NULL;
+    TypeDescriptorAliasNode *node = type->classes;
+    type->classes = node->next;
+    node->next = NULL;
+    if (type->classes == NULL) {
+        type->datatypeBitflag = (DataType)((uint32_t)type->datatypeBitflag & ~DATA_TYPE_CASE_CLASS);
     }
-    if (type->name != NULL && typeDescriptorSetName(copy, type->name) != COMPILER_OK) {
-        typeDescriptorDestroy(copy);
-        return NULL;
-    }
-    for (const TypeDescriptor *sourceMember = type->members; sourceMember != NULL;
-         sourceMember = sourceMember->nextMember) {
-        TypeDescriptor *member = typeDescriptorClone(sourceMember);
-        if (member == NULL || typeDescriptorAddMember(copy, member) != COMPILER_OK) {
-            typeDescriptorDestroy(member);
-            typeDescriptorDestroy(copy);
-            return NULL;
-        }
-    }
-    if (type->elementType != NULL) {
-        TypeDescriptor *elementType = typeDescriptorClone(type->elementType);
-        if (elementType == NULL || typeDescriptorSetElementType(copy, elementType) != COMPILER_OK) {
-            typeDescriptorDestroy(elementType);
-            typeDescriptorDestroy(copy);
-            return NULL;
-        }
-    }
-    return copy;
+    return node;
 }
 
-bool typeDescriptorEquals(const TypeDescriptor *left, const TypeDescriptor *right) {
-    if (left == right) {
-        return true;
+CompilerStatus typeDescriptorAddRecursiveType(TypeDescriptor *type,
+                                              TypeDescriptorRecursiveNode *node) {
+    if (type == NULL || node == NULL || node->next != NULL) {
+        return COMPILER_ARGUMENT_ERROR;
     }
-    if (left == NULL || right == NULL || left->type != right->type) {
-        return false;
+    if (recursiveListContains(type->recursiveTypes, &node->elementType)) {
+        typeDescriptorRecursiveNodeFree(node);
+        return COMPILER_OK;
     }
-    if ((left->name == NULL) != (right->name == NULL) ||
-        (left->name != NULL && strcmp(left->name, right->name) != 0) ||
-        ((left->elementType == NULL) != (right->elementType == NULL))) {
-        return false;
-    }
-    const TypeDescriptor *leftMember = left->members;
-    const TypeDescriptor *rightMember = right->members;
-    while (leftMember != NULL && rightMember != NULL) {
-        if (!typeDescriptorEquals(leftMember, rightMember)) {
-            return false;
-        }
-        leftMember = leftMember->nextMember;
-        rightMember = rightMember->nextMember;
-    }
-    if (leftMember != NULL || rightMember != NULL) {
-        return false;
-    }
-    return left->elementType == NULL || typeDescriptorEquals(left->elementType, right->elementType);
+    node->next = type->recursiveTypes;
+    type->recursiveTypes = node;
+    type->datatypeBitflag = (DataType)((uint32_t)type->datatypeBitflag | DATA_TYPE_LIST);
+    return COMPILER_OK;
 }
 
-static bool typeDescriptorSubsetOfUnionMembers(const TypeDescriptor *subset,
-                                               const TypeDescriptor *superset) {
-    if (subset->name != NULL || subset->elementType != NULL ||
-        (subset->type & (DATA_TYPE_LIST | DATA_TYPE_ALIAS | DATA_TYPE_CASE_CLASS)) != 0) {
-        for (const TypeDescriptor *member = superset->members; member != NULL;
-             member = member->nextMember) {
-            if (typeDescriptorIsSubset(subset, member)) {
-                return true;
-            }
-        }
+TypeDescriptorRecursiveNode *typeDescriptorPopRecursiveType(TypeDescriptor *type) {
+    if (type == NULL || type->recursiveTypes == NULL) {
+        return NULL;
+    }
+    TypeDescriptorRecursiveNode *node = type->recursiveTypes;
+    type->recursiveTypes = node->next;
+    node->next = NULL;
+    if (type->recursiveTypes == NULL) {
+        type->datatypeBitflag = (DataType)((uint32_t)type->datatypeBitflag & ~DATA_TYPE_LIST);
+    }
+    return node;
+}
+
+static bool aliasListsEqual(const TypeDescriptorAliasNode *left,
+                            const TypeDescriptorAliasNode *right) {
+    if (aliasListCount(left) != aliasListCount(right)) {
         return false;
     }
-
-    static const DataType atomicTypes[] = {DATA_TYPE_INT, DATA_TYPE_DOUBLE, DATA_TYPE_STRING,
-                                           DATA_TYPE_UNIT, DATA_TYPE_BOOLEAN};
-    for (size_t typeIndex = 0; typeIndex < sizeof(atomicTypes) / sizeof(atomicTypes[0]);
-         typeIndex++) {
-        if ((subset->type & atomicTypes[typeIndex]) == 0) {
-            continue;
-        }
-        TypeDescriptor atomicType = {.type = atomicTypes[typeIndex]};
-        bool foundMember = false;
-        for (const TypeDescriptor *member = superset->members; member != NULL;
-             member = member->nextMember) {
-            if (typeDescriptorIsSubset(&atomicType, member)) {
-                foundMember = true;
-                break;
-            }
-        }
-        if (!foundMember) {
+    for (const TypeDescriptorAliasNode *node = left; node != NULL; node = node->next) {
+        if (!aliasListContains(right, node->name)) {
             return false;
         }
     }
-    return subset->type != DATA_TYPE_UNKNOWN;
+    return true;
 }
 
-bool typeDescriptorIsSubset(const TypeDescriptor *subset, const TypeDescriptor *superset) {
-    if (subset == NULL || superset == NULL) {
+static bool recursiveListsEqual(const TypeDescriptorRecursiveNode *left,
+                                const TypeDescriptorRecursiveNode *right) {
+    if (recursiveListCount(left) != recursiveListCount(right)) {
         return false;
     }
-    if (subset == superset || typeDescriptorEquals(subset, superset)) {
-        return true;
-    }
-
-    if (subset->members != NULL) {
-        for (const TypeDescriptor *member = subset->members; member != NULL;
-             member = member->nextMember) {
-            if (!typeDescriptorIsSubset(member, superset)) {
-                return false;
-            }
+    for (const TypeDescriptorRecursiveNode *node = left; node != NULL; node = node->next) {
+        if (!recursiveListContains(right, &node->elementType)) {
+            return false;
         }
-        return true;
     }
-    if (superset->members != NULL) {
-        return typeDescriptorSubsetOfUnionMembers(subset, superset);
+    return true;
+}
+
+static bool typeDescriptorEquals(const TypeDescriptor *left, const TypeDescriptor *right) {
+    return left == right || (left != NULL && right != NULL &&
+                             left->datatypeBitflag == right->datatypeBitflag &&
+                             aliasListsEqual(left->aliases, right->aliases) &&
+                             aliasListsEqual(left->classes, right->classes) &&
+                             recursiveListsEqual(left->recursiveTypes, right->recursiveTypes));
+}
+
+static CompilerStatus typeDescriptorCopyInto(TypeDescriptor *destination,
+                                             const TypeDescriptor *source) {
+    if (destination == NULL || source == NULL) {
+        return COMPILER_ARGUMENT_ERROR;
+    }
+    TypeDescriptor copy;
+    typeDescriptorInit(&copy);
+    copy.datatypeBitflag = source->datatypeBitflag;
+
+    for (const TypeDescriptorAliasNode *alias = source->aliases; alias != NULL;
+         alias = alias->next) {
+        TypeDescriptorAliasNode *node = NULL;
+        CompilerStatus status = typeDescriptorAliasNodeInit(&node, alias->name);
+        if (status != COMPILER_OK) {
+            typeDescriptorFree(&copy);
+            return status;
+        }
+        status = typeDescriptorAddAlias(&copy, node);
+        if (status != COMPILER_OK) {
+            typeDescriptorAliasNodeFree(node);
+            typeDescriptorFree(&copy);
+            return status;
+        }
+    }
+    for (const TypeDescriptorAliasNode *classNode = source->classes; classNode != NULL;
+         classNode = classNode->next) {
+        TypeDescriptorAliasNode *node = NULL;
+        CompilerStatus status = typeDescriptorAliasNodeInit(&node, classNode->name);
+        if (status != COMPILER_OK) {
+            typeDescriptorFree(&copy);
+            return status;
+        }
+        status = typeDescriptorAddClass(&copy, node);
+        if (status != COMPILER_OK) {
+            typeDescriptorAliasNodeFree(node);
+            typeDescriptorFree(&copy);
+            return status;
+        }
+    }
+    for (const TypeDescriptorRecursiveNode *recursive = source->recursiveTypes; recursive != NULL;
+         recursive = recursive->next) {
+        TypeDescriptorRecursiveNode *node = NULL;
+        CompilerStatus status = typeDescriptorRecursiveNodeInit(&node, &recursive->elementType);
+        if (status != COMPILER_OK) {
+            typeDescriptorFree(&copy);
+            return status;
+        }
+        status = typeDescriptorAddRecursiveType(&copy, node);
+        if (status != COMPILER_OK) {
+            typeDescriptorRecursiveNodeFree(node);
+            typeDescriptorFree(&copy);
+            return status;
+        }
     }
 
-    if (subset->name != NULL || superset->name != NULL) {
-        return subset->type == superset->type && subset->name != NULL && superset->name != NULL &&
-               strcmp(subset->name, superset->name) == 0;
-    }
-    if ((subset->type & DATA_TYPE_LIST) != 0 || (superset->type & DATA_TYPE_LIST) != 0 ||
-        subset->elementType != NULL || superset->elementType != NULL) {
-        return subset->type == DATA_TYPE_LIST && superset->type == DATA_TYPE_LIST &&
-               subset->elementType != NULL && superset->elementType != NULL &&
-               typeDescriptorIsSubset(subset->elementType, superset->elementType);
-    }
-    if ((subset->type & (DATA_TYPE_ALIAS | DATA_TYPE_CASE_CLASS)) != 0 ||
-        (superset->type & (DATA_TYPE_ALIAS | DATA_TYPE_CASE_CLASS)) != 0) {
-        return false;
-    }
-    return subset->type != DATA_TYPE_UNKNOWN &&
-           (subset->type & (DataType)~superset->type) == DATA_TYPE_UNKNOWN;
+    typeDescriptorFree(destination);
+    *destination = copy;
+    return COMPILER_OK;
 }

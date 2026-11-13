@@ -647,7 +647,7 @@ static CompilerStatus parseMatchPattern(SyntaxAnalyzer *syntaxAnalyzer,
         if (status != COMPILER_OK) {
             goto cleanup;
         }
-        status = analyzerTypesParseType(syntaxAnalyzer, &identifier->variableType);
+        status = analyzerTypesParseType(syntaxAnalyzer, &identifier->type);
         if (status != COMPILER_OK) {
             goto cleanup;
         }

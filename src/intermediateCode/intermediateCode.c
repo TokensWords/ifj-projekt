@@ -23,6 +23,10 @@ typedef struct {
     DataType returnType;
 } IntermediateGenerator;
 
+static DataType descriptorDataType(const TypeDescriptor *type) {
+    return type == NULL ? DATA_TYPE_UNKNOWN : type->datatypeBitflag;
+}
+
 static void intermediateOperandClear(IntermediateOperand *operand) {
     free(operand->text);
     operand->text = NULL;
@@ -60,7 +64,8 @@ void intermediateProgramDestroy(IntermediateProgram *program) {
     free(program);
 }
 
-CompilerStatus intermediateProgramAppend(IntermediateProgram *program, const IntermediateInstruction *instruction) {
+CompilerStatus intermediateProgramAppend(IntermediateProgram *program,
+                                         const IntermediateInstruction *instruction) {
     if (program == NULL || instruction == NULL || instruction->operandCount > 3) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -97,7 +102,8 @@ CompilerStatus intermediateProgramAppend(IntermediateProgram *program, const Int
     return COMPILER_OK;
 }
 
-static IntermediateInstruction fillInstruction(IntermediateOpcode opcode, size_t operandCount, SourceLocation origin) {
+static IntermediateInstruction fillInstruction(IntermediateOpcode opcode, size_t operandCount,
+                                               SourceLocation origin) {
     IntermediateInstruction instruction = {0};
 
     instruction.opcode = opcode;
@@ -170,7 +176,9 @@ static char *generateStringName(const char *type, size_t number) {
     return name;
 }
 
-static CompilerStatus appendVariableDeclaration(IntermediateGenerator *generator, const IntermediateOperand *operand, SourceLocation origin) {
+static CompilerStatus appendVariableDeclaration(IntermediateGenerator *generator,
+                                                const IntermediateOperand *operand,
+                                                SourceLocation origin) {
     if (generator == NULL || operand == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -189,7 +197,8 @@ static CompilerStatus appendVariableDeclaration(IntermediateGenerator *generator
     return intermediateProgramAppend(generator->functionDeclarations, &instruction);
 }
 
-static CompilerStatus generateTemporary(IntermediateGenerator *generator, IntermediateOperand *operand, SourceLocation origin) {
+static CompilerStatus generateTemporary(IntermediateGenerator *generator,
+                                        IntermediateOperand *operand, SourceLocation origin) {
     if (generator == NULL || operand == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -214,7 +223,8 @@ static CompilerStatus generateTemporary(IntermediateGenerator *generator, Interm
     return COMPILER_OK;
 }
 
-static CompilerStatus generateLabel(IntermediateGenerator *generator, IntermediateOperand *operand) {
+static CompilerStatus generateLabel(IntermediateGenerator *generator,
+                                    IntermediateOperand *operand) {
     if (generator == NULL || operand == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -233,7 +243,8 @@ static CompilerStatus generateLabel(IntermediateGenerator *generator, Intermedia
     return COMPILER_OK;
 }
 
-static CompilerStatus generateVariable(IntermediateOperand *operand, const AbstractSyntaxNode *node) {
+static CompilerStatus generateVariable(IntermediateOperand *operand,
+                                       const AbstractSyntaxNode *node) {
     if (operand == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -258,7 +269,8 @@ static bool isNumericType(DataType dataType) {
     return dataType == DATA_TYPE_INT || dataType == DATA_TYPE_DOUBLE;
 }
 
-static CompilerStatus convertIntToDouble(IntermediateGenerator *generator, IntermediateOperand *operand, SourceLocation origin) {
+static CompilerStatus convertIntToDouble(IntermediateGenerator *generator,
+                                         IntermediateOperand *operand, SourceLocation origin) {
     if (generator == NULL || operand == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -269,7 +281,8 @@ static CompilerStatus convertIntToDouble(IntermediateGenerator *generator, Inter
         return status;
     }
 
-    IntermediateInstruction instruction = fillInstruction(INTERMEDIATE_CONVERT_INT_TO_DOUBLE, 2, origin);
+    IntermediateInstruction instruction =
+        fillInstruction(INTERMEDIATE_CONVERT_INT_TO_DOUBLE, 2, origin);
     instruction.operands[0] = convertedOperand;
     instruction.operands[1] = *operand;
 
@@ -285,7 +298,11 @@ static CompilerStatus convertIntToDouble(IntermediateGenerator *generator, Inter
     return COMPILER_OK;
 }
 
-static CompilerStatus generateIntegerDivision(IntermediateGenerator *generator, const IntermediateOperand *resultOperand, const IntermediateOperand *leftOperand, const IntermediateOperand *rightOperand, SourceLocation origin) {
+static CompilerStatus generateIntegerDivision(IntermediateGenerator *generator,
+                                              const IntermediateOperand *resultOperand,
+                                              const IntermediateOperand *leftOperand,
+                                              const IntermediateOperand *rightOperand,
+                                              SourceLocation origin) {
     if (generator == NULL || resultOperand == NULL || leftOperand == NULL || rightOperand == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -309,7 +326,8 @@ static CompilerStatus generateIntegerDivision(IntermediateGenerator *generator, 
         return status;
     }
 
-    IntermediateInstruction compareInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    IntermediateInstruction compareInstruction =
+        fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
     compareInstruction.operands[0] = negativeOperand;
     compareInstruction.operands[1] = *resultOperand;
     compareInstruction.operands[2] = zeroOperand;
@@ -331,7 +349,8 @@ static CompilerStatus generateIntegerDivision(IntermediateGenerator *generator, 
     falseOperand.kind = INTERMEDIATE_OPERAND_BOOLEAN;
     falseOperand.value.boolValue = false;
 
-    IntermediateInstruction jumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction jumpInstruction =
+        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     jumpInstruction.operands[0] = endLabelOperand;
     jumpInstruction.operands[1] = negativeOperand;
     jumpInstruction.operands[2] = falseOperand;
@@ -407,7 +426,8 @@ static CompilerStatus generateIntegerDivision(IntermediateGenerator *generator, 
         return status;
     }
 
-    IntermediateInstruction exactDivisionJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction exactDivisionJumpInstruction =
+        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     exactDivisionJumpInstruction.operands[0] = endLabelOperand;
     exactDivisionJumpInstruction.operands[1] = divisionCheckOperand;
     exactDivisionJumpInstruction.operands[2] = zeroOperand;
@@ -456,14 +476,16 @@ static void clearOperandArray(IntermediateOperand *operands, size_t count) {
     }
 
     size_t counter = 0;
-    
+
     while (counter < count) {
         intermediateOperandClear(&operands[counter]);
         counter++;
     }
 }
 
-static CompilerStatus appendInstructionArray(IntermediateGenerator *generator, const IntermediateInstruction *instructions, size_t count) {
+static CompilerStatus appendInstructionArray(IntermediateGenerator *generator,
+                                             const IntermediateInstruction *instructions,
+                                             size_t count) {
     if (generator == NULL || generator->program == NULL || (count > 0 && instructions == NULL)) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -471,7 +493,8 @@ static CompilerStatus appendInstructionArray(IntermediateGenerator *generator, c
     size_t counter = 0;
 
     while (counter < count) {
-        CompilerStatus status = intermediateProgramAppend(generator->program, &instructions[counter]);
+        CompilerStatus status =
+            intermediateProgramAppend(generator->program, &instructions[counter]);
         if (status != COMPILER_OK) {
             return status;
         }
@@ -482,8 +505,13 @@ static CompilerStatus appendInstructionArray(IntermediateGenerator *generator, c
     return COMPILER_OK;
 }
 
-static CompilerStatus generateOrdinal(IntermediateGenerator *generator, const IntermediateOperand *resultOperand, const IntermediateOperand *stringOperand, const IntermediateOperand *indexOperand, SourceLocation origin) {
-    if (generator == NULL || resultOperand == NULL || stringOperand == NULL || indexOperand == NULL) {
+static CompilerStatus generateOrdinal(IntermediateGenerator *generator,
+                                      const IntermediateOperand *resultOperand,
+                                      const IntermediateOperand *stringOperand,
+                                      const IntermediateOperand *indexOperand,
+                                      SourceLocation origin) {
+    if (generator == NULL || resultOperand == NULL || stringOperand == NULL ||
+        indexOperand == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
@@ -511,38 +539,46 @@ static CompilerStatus generateOrdinal(IntermediateGenerator *generator, const In
 
     IntermediateOperand negativeOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = -1};
     IntermediateOperand zeroOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
-    IntermediateOperand trueOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
-    IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
+    IntermediateOperand trueOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN,
+                                       .value.boolValue = true};
+    IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN,
+                                        .value.boolValue = false};
 
     IntermediateInstruction resultInstruction = fillInstruction(INTERMEDIATE_MOVE, 2, origin);
     resultInstruction.operands[0] = *resultOperand;
     resultInstruction.operands[1] = negativeOperand;
 
-    IntermediateInstruction lengthInstruction = fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, origin);
+    IntermediateInstruction lengthInstruction =
+        fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, origin);
     lengthInstruction.operands[0] = *lengthOperand;
     lengthInstruction.operands[1] = *stringOperand;
 
-    IntermediateInstruction negativeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    IntermediateInstruction negativeInstruction =
+        fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
     negativeInstruction.operands[0] = *conditionOperand;
     negativeInstruction.operands[1] = *indexOperand;
     negativeInstruction.operands[2] = zeroOperand;
 
-    IntermediateInstruction negativeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction negativeJumpInstruction =
+        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     negativeJumpInstruction.operands[0] = endLabelOperand;
     negativeJumpInstruction.operands[1] = *conditionOperand;
     negativeJumpInstruction.operands[2] = trueOperand;
 
-    IntermediateInstruction rangeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    IntermediateInstruction rangeInstruction =
+        fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
     rangeInstruction.operands[0] = *conditionOperand;
     rangeInstruction.operands[1] = *indexOperand;
     rangeInstruction.operands[2] = *lengthOperand;
 
-    IntermediateInstruction rangeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction rangeJumpInstruction =
+        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     rangeJumpInstruction.operands[0] = endLabelOperand;
     rangeJumpInstruction.operands[1] = *conditionOperand;
     rangeJumpInstruction.operands[2] = falseOperand;
 
-    IntermediateInstruction characterInstruction = fillInstruction(INTERMEDIATE_STRING_CHARACTER_CODE, 3, origin);
+    IntermediateInstruction characterInstruction =
+        fillInstruction(INTERMEDIATE_STRING_CHARACTER_CODE, 3, origin);
     characterInstruction.operands[0] = *resultOperand;
     characterInstruction.operands[1] = *stringOperand;
     characterInstruction.operands[2] = *indexOperand;
@@ -550,16 +586,23 @@ static CompilerStatus generateOrdinal(IntermediateGenerator *generator, const In
     IntermediateInstruction endInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, origin);
     endInstruction.operands[0] = endLabelOperand;
 
-    IntermediateInstruction instructions[] = {resultInstruction, lengthInstruction, negativeInstruction, negativeJumpInstruction, rangeInstruction, rangeJumpInstruction, characterInstruction, endInstruction};
-    status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    IntermediateInstruction instructions[] = {
+        resultInstruction, lengthInstruction,    negativeInstruction,  negativeJumpInstruction,
+        rangeInstruction,  rangeJumpInstruction, characterInstruction, endInstruction};
+    status = appendInstructionArray(generator, instructions,
+                                    sizeof(instructions) / sizeof(instructions[0]));
     intermediateOperandClear(&endLabelOperand);
     clearOperandArray(temporaryOperands, 2);
 
     return status;
 }
 
-static CompilerStatus generateSubstring(IntermediateGenerator *generator, const IntermediateOperand *resultOperand, const IntermediateOperand *stringOperand, const IntermediateOperand *startOperand, const IntermediateOperand *endOperand, SourceLocation origin) {
-    if (generator == NULL || resultOperand == NULL || stringOperand == NULL || startOperand == NULL || endOperand == NULL) {
+static CompilerStatus
+generateSubstring(IntermediateGenerator *generator, const IntermediateOperand *resultOperand,
+                  const IntermediateOperand *stringOperand, const IntermediateOperand *startOperand,
+                  const IntermediateOperand *endOperand, SourceLocation origin) {
+    if (generator == NULL || resultOperand == NULL || stringOperand == NULL ||
+        startOperand == NULL || endOperand == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
@@ -601,61 +644,74 @@ static CompilerStatus generateSubstring(IntermediateGenerator *generator, const 
     IntermediateOperand zeroOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
     IntermediateOperand oneOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 1};
     IntermediateOperand errorOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 40};
-    IntermediateOperand trueOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
-    IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
+    IntermediateOperand trueOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN,
+                                       .value.boolValue = true};
+    IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN,
+                                        .value.boolValue = false};
 
     IntermediateOperand emptyOperand = {.kind = INTERMEDIATE_OPERAND_STRING, .text = ""};
 
-    IntermediateInstruction lengthInstruction = fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, origin);
+    IntermediateInstruction lengthInstruction =
+        fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, origin);
     lengthInstruction.operands[0] = *lengthOperand;
     lengthInstruction.operands[1] = *stringOperand;
 
-    IntermediateInstruction startNegativeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    IntermediateInstruction startNegativeInstruction =
+        fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
     startNegativeInstruction.operands[0] = *conditionOperand;
     startNegativeInstruction.operands[1] = *startOperand;
     startNegativeInstruction.operands[2] = zeroOperand;
 
-    IntermediateInstruction startNegativeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction startNegativeJumpInstruction =
+        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     startNegativeJumpInstruction.operands[0] = *errorLabelOperand;
     startNegativeJumpInstruction.operands[1] = *conditionOperand;
     startNegativeJumpInstruction.operands[2] = trueOperand;
 
-    IntermediateInstruction endNegativeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    IntermediateInstruction endNegativeInstruction =
+        fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
     endNegativeInstruction.operands[0] = *conditionOperand;
     endNegativeInstruction.operands[1] = *endOperand;
     endNegativeInstruction.operands[2] = zeroOperand;
 
-    IntermediateInstruction endNegativeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction endNegativeJumpInstruction =
+        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     endNegativeJumpInstruction.operands[0] = *errorLabelOperand;
     endNegativeJumpInstruction.operands[1] = *conditionOperand;
     endNegativeJumpInstruction.operands[2] = trueOperand;
 
-    IntermediateInstruction orderInstruction = fillInstruction(INTERMEDIATE_COMPARE_GREATER, 3, origin);
+    IntermediateInstruction orderInstruction =
+        fillInstruction(INTERMEDIATE_COMPARE_GREATER, 3, origin);
     orderInstruction.operands[0] = *conditionOperand;
     orderInstruction.operands[1] = *startOperand;
     orderInstruction.operands[2] = *endOperand;
 
-    IntermediateInstruction orderJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction orderJumpInstruction =
+        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     orderJumpInstruction.operands[0] = *errorLabelOperand;
     orderJumpInstruction.operands[1] = *conditionOperand;
     orderJumpInstruction.operands[2] = trueOperand;
 
-    IntermediateInstruction startRangeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    IntermediateInstruction startRangeInstruction =
+        fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
     startRangeInstruction.operands[0] = *conditionOperand;
     startRangeInstruction.operands[1] = *startOperand;
     startRangeInstruction.operands[2] = *lengthOperand;
 
-    IntermediateInstruction startRangeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction startRangeJumpInstruction =
+        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     startRangeJumpInstruction.operands[0] = *errorLabelOperand;
     startRangeJumpInstruction.operands[1] = *conditionOperand;
     startRangeJumpInstruction.operands[2] = falseOperand;
 
-    IntermediateInstruction endRangeInstruction = fillInstruction(INTERMEDIATE_COMPARE_GREATER, 3, origin);
+    IntermediateInstruction endRangeInstruction =
+        fillInstruction(INTERMEDIATE_COMPARE_GREATER, 3, origin);
     endRangeInstruction.operands[0] = *conditionOperand;
     endRangeInstruction.operands[1] = *endOperand;
     endRangeInstruction.operands[2] = *lengthOperand;
 
-    IntermediateInstruction endRangeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction endRangeJumpInstruction =
+        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     endRangeJumpInstruction.operands[0] = *errorLabelOperand;
     endRangeJumpInstruction.operands[1] = *conditionOperand;
     endRangeJumpInstruction.operands[2] = trueOperand;
@@ -671,22 +727,26 @@ static CompilerStatus generateSubstring(IntermediateGenerator *generator, const 
     IntermediateInstruction loopLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, origin);
     loopLabelInstruction.operands[0] = *loopLabelOperand;
 
-    IntermediateInstruction loopConditionInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    IntermediateInstruction loopConditionInstruction =
+        fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
     loopConditionInstruction.operands[0] = *conditionOperand;
     loopConditionInstruction.operands[1] = *indexOperand;
     loopConditionInstruction.operands[2] = *endOperand;
 
-    IntermediateInstruction loopEndJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction loopEndJumpInstruction =
+        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     loopEndJumpInstruction.operands[0] = *endLabelOperand;
     loopEndJumpInstruction.operands[1] = *conditionOperand;
     loopEndJumpInstruction.operands[2] = falseOperand;
 
-    IntermediateInstruction characterInstruction = fillInstruction(INTERMEDIATE_STRING_GET_CHARACTER, 3, origin);
+    IntermediateInstruction characterInstruction =
+        fillInstruction(INTERMEDIATE_STRING_GET_CHARACTER, 3, origin);
     characterInstruction.operands[0] = *characterOperand;
     characterInstruction.operands[1] = *stringOperand;
     characterInstruction.operands[2] = *indexOperand;
 
-    IntermediateInstruction concatenateInstruction = fillInstruction(INTERMEDIATE_CONCATENATE, 3, origin);
+    IntermediateInstruction concatenateInstruction =
+        fillInstruction(INTERMEDIATE_CONCATENATE, 3, origin);
     concatenateInstruction.operands[0] = *resultOperand;
     concatenateInstruction.operands[1] = *resultOperand;
     concatenateInstruction.operands[2] = *characterOperand;
@@ -708,8 +768,17 @@ static CompilerStatus generateSubstring(IntermediateGenerator *generator, const 
     IntermediateInstruction endLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, origin);
     endLabelInstruction.operands[0] = *endLabelOperand;
 
-    IntermediateInstruction instructions[] = {lengthInstruction, startNegativeInstruction, startNegativeJumpInstruction, endNegativeInstruction, endNegativeJumpInstruction, orderInstruction, orderJumpInstruction, startRangeInstruction, startRangeJumpInstruction, endRangeInstruction, endRangeJumpInstruction, resultInstruction, indexInstruction, loopLabelInstruction, loopConditionInstruction, loopEndJumpInstruction, characterInstruction, concatenateInstruction, incrementInstruction, loopJumpInstruction, errorLabelInstruction, exitInstruction, endLabelInstruction};
-    CompilerStatus status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    IntermediateInstruction instructions[] = {
+        lengthInstruction,      startNegativeInstruction,   startNegativeJumpInstruction,
+        endNegativeInstruction, endNegativeJumpInstruction, orderInstruction,
+        orderJumpInstruction,   startRangeInstruction,      startRangeJumpInstruction,
+        endRangeInstruction,    endRangeJumpInstruction,    resultInstruction,
+        indexInstruction,       loopLabelInstruction,       loopConditionInstruction,
+        loopEndJumpInstruction, characterInstruction,       concatenateInstruction,
+        incrementInstruction,   loopJumpInstruction,        errorLabelInstruction,
+        exitInstruction,        endLabelInstruction};
+    CompilerStatus status = appendInstructionArray(generator, instructions,
+                                                   sizeof(instructions) / sizeof(instructions[0]));
     clearOperandArray(labelOperands, 3);
     clearOperandArray(temporaryOperands, 4);
 
@@ -736,7 +805,8 @@ static char *createFunctionLabel(const char *functionName) {
     return labelName;
 }
 
-static const AbstractSyntaxNode *findFunction(const SourceProgram *program, const char *functionName) {
+static const AbstractSyntaxNode *findFunction(const SourceProgram *program,
+                                              const char *functionName) {
     if (program == NULL || program->root == NULL || functionName == NULL) {
         return NULL;
     }
@@ -755,7 +825,8 @@ static const AbstractSyntaxNode *findFunction(const SourceProgram *program, cons
         while (counter < program->root->childCount) {
             const AbstractSyntaxNode *function = program->root->children[counter];
 
-            if (function == NULL || function->kind != ABSTRACT_SYNTAX_FUNCTION || function->text == NULL) {
+            if (function == NULL || function->kind != ABSTRACT_SYNTAX_FUNCTION ||
+                function->text == NULL) {
                 return NULL;
             }
 
@@ -770,7 +841,9 @@ static const AbstractSyntaxNode *findFunction(const SourceProgram *program, cons
     return NULL;
 }
 
-static CompilerStatus generateExpression(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
+static CompilerStatus generateExpression(IntermediateGenerator *generator,
+                                         IntermediateOperand *operand,
+                                         const AbstractSyntaxNode *node) {
     if (generator == NULL || operand == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -827,7 +900,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         } else if (strcmp(node->text, "*") == 0) {
             operationCode = INTERMEDIATE_MULTIPLY;
         } else if (strcmp(node->text, "/") == 0) {
-            if (typeDescriptorGetMask(node->children[0]->inferredType) == DATA_TYPE_INT && typeDescriptorGetMask(node->children[1]->inferredType) == DATA_TYPE_INT) {
+            if (descriptorDataType(&node->children[0]->type) == DATA_TYPE_INT &&
+                descriptorDataType(&node->children[1]->type) == DATA_TYPE_INT) {
                 operationCode = INTERMEDIATE_INTEGER_DIVIDE;
             } else {
                 operationCode = INTERMEDIATE_DIVIDE;
@@ -856,7 +930,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         if (status != COMPILER_OK) {
             return status;
         }
-        DataType leftType = typeDescriptorGetMask(node->children[0]->inferredType);
+        DataType leftType = descriptorDataType(&node->children[0]->type);
 
         IntermediateOperand rightOperand = {0};
         status = generateExpression(generator, &rightOperand, node->children[1]);
@@ -864,12 +938,15 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             intermediateOperandClear(&leftOperand);
             return status;
         }
-        DataType rightType = typeDescriptorGetMask(node->children[1]->inferredType);
+        DataType rightType = descriptorDataType(&node->children[1]->type);
 
-        bool isComparison = operationCode == INTERMEDIATE_COMPARE_EQUAL || operationCode == INTERMEDIATE_COMPARE_LESS || operationCode == INTERMEDIATE_COMPARE_GREATER;
+        bool isComparison = operationCode == INTERMEDIATE_COMPARE_EQUAL ||
+                            operationCode == INTERMEDIATE_COMPARE_LESS ||
+                            operationCode == INTERMEDIATE_COMPARE_GREATER;
 
         if (leftType == DATA_TYPE_UNIT || rightType == DATA_TYPE_UNIT) {
-            if (leftType != DATA_TYPE_UNIT || rightType != DATA_TYPE_UNIT || operationCode != INTERMEDIATE_COMPARE_EQUAL) {
+            if (leftType != DATA_TYPE_UNIT || rightType != DATA_TYPE_UNIT ||
+                operationCode != INTERMEDIATE_COMPARE_EQUAL) {
                 intermediateOperandClear(&leftOperand);
                 intermediateOperandClear(&rightOperand);
                 return COMPILER_INTERNAL_ERROR;
@@ -889,7 +966,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         }
 
         if (leftType != rightType) {
-            IntermediateOperand *integerOperand = leftType == DATA_TYPE_INT ? &leftOperand : &rightOperand;
+            IntermediateOperand *integerOperand =
+                leftType == DATA_TYPE_INT ? &leftOperand : &rightOperand;
             status = convertIntToDouble(generator, integerOperand, node->location);
             if (status != COMPILER_OK) {
                 intermediateOperandClear(&leftOperand);
@@ -910,7 +988,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         }
 
         if (operationCode == INTERMEDIATE_INTEGER_DIVIDE) {
-            status = generateIntegerDivision(generator, &resultOperand, &leftOperand, &rightOperand, node->location);
+            status = generateIntegerDivision(generator, &resultOperand, &leftOperand, &rightOperand,
+                                             node->location);
             if (status != COMPILER_OK) {
                 intermediateOperandClear(&leftOperand);
                 intermediateOperandClear(&rightOperand);
@@ -936,7 +1015,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             }
 
             if (negateResult) {
-                IntermediateInstruction negateInstruction = fillInstruction(INTERMEDIATE_NOT, 2, node->location);
+                IntermediateInstruction negateInstruction =
+                    fillInstruction(INTERMEDIATE_NOT, 2, node->location);
                 negateInstruction.operands[0] = resultOperand;
                 negateInstruction.operands[1] = resultOperand;
 
@@ -960,7 +1040,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                     return status;
                 }
 
-                IntermediateInstruction equalityInstruction = fillInstruction(INTERMEDIATE_COMPARE_EQUAL, 3, node->location);
+                IntermediateInstruction equalityInstruction =
+                    fillInstruction(INTERMEDIATE_COMPARE_EQUAL, 3, node->location);
                 equalityInstruction.operands[0] = equalityOperand;
                 equalityInstruction.operands[1] = leftOperand;
                 equalityInstruction.operands[2] = rightOperand;
@@ -974,7 +1055,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                     return status;
                 }
 
-                IntermediateInstruction orInstruction = fillInstruction(INTERMEDIATE_OR, 3, node->location);
+                IntermediateInstruction orInstruction =
+                    fillInstruction(INTERMEDIATE_OR, 3, node->location);
                 orInstruction.operands[0] = resultOperand;
                 orInstruction.operands[1] = resultOperand;
                 orInstruction.operands[2] = equalityOperand;
@@ -1007,7 +1089,9 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
         break;
     }
     case ABSTRACT_SYNTAX_UNARY_EXPRESSION: {
-        if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL || node->text == NULL || strcmp(node->text, "-") != 0 || !isNumericType(typeDescriptorGetMask(node->children[0]->inferredType))) {
+        if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL ||
+            node->text == NULL || strcmp(node->text, "-") != 0 ||
+            !isNumericType(descriptorDataType(&node->children[0]->type))) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -1019,10 +1103,10 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
 
         IntermediateOperand negativeOperand = {0};
 
-        if (typeDescriptorGetMask(node->children[0]->inferredType) == DATA_TYPE_INT) {
+        if (descriptorDataType(&node->children[0]->type) == DATA_TYPE_INT) {
             negativeOperand.kind = INTERMEDIATE_OPERAND_INT;
             negativeOperand.value.intValue = -1;
-        } else if (typeDescriptorGetMask(node->children[0]->inferredType) == DATA_TYPE_DOUBLE) {
+        } else if (descriptorDataType(&node->children[0]->type) == DATA_TYPE_DOUBLE) {
             negativeOperand.kind = INTERMEDIATE_OPERAND_DOUBLE;
             negativeOperand.value.doubleValue = -1.0;
         } else {
@@ -1037,7 +1121,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             return status;
         }
 
-        IntermediateInstruction instruction = fillInstruction(INTERMEDIATE_MULTIPLY, 3, node->location);
+        IntermediateInstruction instruction =
+            fillInstruction(INTERMEDIATE_MULTIPLY, 3, node->location);
         instruction.operands[0] = resultOperand;
         instruction.operands[1] = valueOperand;
         instruction.operands[2] = negativeOperand;
@@ -1073,7 +1158,10 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             }
 
             const AbstractSyntaxNode *argument = node->children[0];
-            if (typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_INT && typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_DOUBLE && typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_STRING && typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_UNIT) {
+            if (descriptorDataType(&argument->type) != DATA_TYPE_INT &&
+                descriptorDataType(&argument->type) != DATA_TYPE_DOUBLE &&
+                descriptorDataType(&argument->type) != DATA_TYPE_STRING &&
+                descriptorDataType(&argument->type) != DATA_TYPE_UNIT) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1084,10 +1172,11 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 return status;
             }
 
-            IntermediateInstruction printInstruction = fillInstruction(INTERMEDIATE_WRITE, 1, node->location);
+            IntermediateInstruction printInstruction =
+                fillInstruction(INTERMEDIATE_WRITE, 1, node->location);
             printInstruction.operands[0] = argumentOperand;
 
-            if (typeDescriptorGetMask(argument->inferredType) == DATA_TYPE_UNIT) {
+            if (descriptorDataType(&argument->type) == DATA_TYPE_UNIT) {
                 printInstruction.operands[0] = (IntermediateOperand){
                     .kind = INTERMEDIATE_OPERAND_STRING,
                     .text = "()",
@@ -1103,7 +1192,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             intermediateOperandClear(&argumentOperand);
 
             return status;
-        } else if (strcmp(node->text, "readLine") == 0 || strcmp(node->text, "readInt") == 0 || strcmp(node->text, "readDouble") == 0) {
+        } else if (strcmp(node->text, "readLine") == 0 || strcmp(node->text, "readInt") == 0 ||
+                   strcmp(node->text, "readDouble") == 0) {
             if (node->childCount != 0) {
                 return COMPILER_INTERNAL_ERROR;
             }
@@ -1132,7 +1222,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             typeOperand.kind = INTERMEDIATE_OPERAND_TYPE;
             typeOperand.value.dataType = readType;
 
-            IntermediateInstruction readInstruction = fillInstruction(INTERMEDIATE_READ, 2, node->location);
+            IntermediateInstruction readInstruction =
+                fillInstruction(INTERMEDIATE_READ, 2, node->location);
             readInstruction.operands[0] = resultOperand;
             readInstruction.operands[1] = typeOperand;
 
@@ -1151,7 +1242,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             }
 
             const AbstractSyntaxNode *argument = node->children[0];
-            if (typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_DOUBLE && typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_INT) {
+            if (descriptorDataType(&argument->type) != DATA_TYPE_DOUBLE &&
+                descriptorDataType(&argument->type) != DATA_TYPE_INT) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1161,7 +1253,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 return status;
             }
 
-            if (typeDescriptorGetMask(argument->inferredType) == DATA_TYPE_INT) {
+            if (descriptorDataType(&argument->type) == DATA_TYPE_INT) {
                 status = convertIntToDouble(generator, &argumentOperand, node->location);
                 if (status != COMPILER_OK) {
                     intermediateOperandClear(&argumentOperand);
@@ -1176,7 +1268,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 return status;
             }
 
-            IntermediateInstruction conversionInstruction = fillInstruction(INTERMEDIATE_CONVERT_DOUBLE_TO_INT, 2, node->location);
+            IntermediateInstruction conversionInstruction =
+                fillInstruction(INTERMEDIATE_CONVERT_DOUBLE_TO_INT, 2, node->location);
             conversionInstruction.operands[0] = resultOperand;
             conversionInstruction.operands[1] = argumentOperand;
 
@@ -1196,7 +1289,10 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             }
 
             const AbstractSyntaxNode *argument = node->children[0];
-            if (typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_INT && typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_DOUBLE && typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_STRING && typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_UNIT) {
+            if (descriptorDataType(&argument->type) != DATA_TYPE_INT &&
+                descriptorDataType(&argument->type) != DATA_TYPE_DOUBLE &&
+                descriptorDataType(&argument->type) != DATA_TYPE_STRING &&
+                descriptorDataType(&argument->type) != DATA_TYPE_UNIT) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1206,13 +1302,13 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 return status;
             }
 
-            if (typeDescriptorGetMask(argument->inferredType) == DATA_TYPE_STRING) {
+            if (descriptorDataType(&argument->type) == DATA_TYPE_STRING) {
                 *operand = argumentOperand;
 
                 return status;
             }
 
-            if (typeDescriptorGetMask(argument->inferredType) == DATA_TYPE_UNIT) {
+            if (descriptorDataType(&argument->type) == DATA_TYPE_UNIT) {
                 intermediateOperandClear(&argumentOperand);
 
                 char *unitText = malloc(3 * sizeof(char));
@@ -1232,7 +1328,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             }
 
             IntermediateOpcode conversionOpcode = INTERMEDIATE_CONVERT_INT_TO_STRING;
-            if (typeDescriptorGetMask(argument->inferredType) == DATA_TYPE_DOUBLE) {
+            if (descriptorDataType(&argument->type) == DATA_TYPE_DOUBLE) {
                 conversionOpcode = INTERMEDIATE_CONVERT_DOUBLE_TO_STRING;
             }
 
@@ -1243,7 +1339,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 return status;
             }
 
-            IntermediateInstruction conversionInstruction = fillInstruction(conversionOpcode, 2, node->location);
+            IntermediateInstruction conversionInstruction =
+                fillInstruction(conversionOpcode, 2, node->location);
             conversionInstruction.operands[0] = resultOperand;
             conversionInstruction.operands[1] = argumentOperand;
 
@@ -1263,7 +1360,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             }
 
             const AbstractSyntaxNode *argument = node->children[0];
-            if (typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_INT) {
+            if (descriptorDataType(&argument->type) != DATA_TYPE_INT) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1280,7 +1377,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 return status;
             }
 
-            IntermediateInstruction characterInstruction = fillInstruction(INTERMEDIATE_CONVERT_INT_TO_CHARACTER, 2, node->location);
+            IntermediateInstruction characterInstruction =
+                fillInstruction(INTERMEDIATE_CONVERT_INT_TO_CHARACTER, 2, node->location);
             characterInstruction.operands[0] = resultOperand;
             characterInstruction.operands[1] = argumentOperand;
 
@@ -1300,7 +1398,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             }
 
             const AbstractSyntaxNode *argument = node->children[0];
-            if (typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_STRING) {
+            if (descriptorDataType(&argument->type) != DATA_TYPE_STRING) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1317,7 +1415,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 return status;
             }
 
-            IntermediateInstruction lengthInstruction = fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, node->location);
+            IntermediateInstruction lengthInstruction =
+                fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, node->location);
             lengthInstruction.operands[0] = resultOperand;
             lengthInstruction.operands[1] = argumentOperand;
 
@@ -1344,7 +1443,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             while (counter < argumentCount) {
                 const AbstractSyntaxNode *argument = node->children[counter];
                 DataType argumentType = counter == 0 ? DATA_TYPE_STRING : DATA_TYPE_INT;
-                if (argument == NULL || typeDescriptorGetMask(argument->inferredType) != argumentType) {
+                if (argument == NULL || descriptorDataType(&argument->type) != argumentType) {
                     return COMPILER_INTERNAL_ERROR;
                 }
 
@@ -1354,7 +1453,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             IntermediateOperand argumentOperands[3] = {0};
             counter = 0;
             while (counter < argumentCount) {
-                CompilerStatus status = generateExpression(generator, &argumentOperands[counter], node->children[counter]);
+                CompilerStatus status = generateExpression(generator, &argumentOperands[counter],
+                                                           node->children[counter]);
                 if (status != COMPILER_OK) {
                     clearOperandArray(argumentOperands, 3);
                     return status;
@@ -1371,9 +1471,12 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             }
 
             if (isOrdinal) {
-                status = generateOrdinal(generator, &resultOperand, &argumentOperands[0], &argumentOperands[1], node->location);
+                status = generateOrdinal(generator, &resultOperand, &argumentOperands[0],
+                                         &argumentOperands[1], node->location);
             } else {
-                status = generateSubstring(generator, &resultOperand, &argumentOperands[0], &argumentOperands[1], &argumentOperands[2], node->location);
+                status =
+                    generateSubstring(generator, &resultOperand, &argumentOperands[0],
+                                      &argumentOperands[1], &argumentOperands[2], node->location);
             }
             clearOperandArray(argumentOperands, 3);
             if (status != COMPILER_OK) {
@@ -1395,7 +1498,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             return COMPILER_INTERNAL_ERROR;
         }
 
-        if (function->children[function->childCount - 1] == NULL || function->children[function->childCount - 1]->kind != ABSTRACT_SYNTAX_BLOCK) {
+        if (function->children[function->childCount - 1] == NULL ||
+            function->children[function->childCount - 1]->kind != ABSTRACT_SYNTAX_BLOCK) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -1425,12 +1529,16 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 return COMPILER_INTERNAL_ERROR;
             }
 
-            if (typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_INT && typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_DOUBLE && typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_STRING && typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_UNIT) {
+            if (descriptorDataType(&parameter->type) != DATA_TYPE_INT &&
+                descriptorDataType(&parameter->type) != DATA_TYPE_DOUBLE &&
+                descriptorDataType(&parameter->type) != DATA_TYPE_STRING &&
+                descriptorDataType(&parameter->type) != DATA_TYPE_UNIT) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
-            if (typeDescriptorGetMask(argument->inferredType) != typeDescriptorGetMask(parameter->variableType)) {
-                if (typeDescriptorGetMask(argument->inferredType) != DATA_TYPE_INT || typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_DOUBLE) {
+            if (descriptorDataType(&argument->type) != descriptorDataType(&parameter->type)) {
+                if (descriptorDataType(&argument->type) != DATA_TYPE_INT ||
+                    descriptorDataType(&parameter->type) != DATA_TYPE_DOUBLE) {
                     return COMPILER_INTERNAL_ERROR;
                 }
             }
@@ -1450,7 +1558,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 return status;
             }
 
-            if (typeDescriptorGetMask(argument->inferredType) == DATA_TYPE_INT && typeDescriptorGetMask(parameter->variableType) == DATA_TYPE_DOUBLE) {
+            if (descriptorDataType(&argument->type) == DATA_TYPE_INT &&
+                descriptorDataType(&parameter->type) == DATA_TYPE_DOUBLE) {
                 status = convertIntToDouble(generator, &argumentOperand, argument->location);
                 if (status != COMPILER_OK) {
                     intermediateOperandClear(&argumentOperand);
@@ -1458,7 +1567,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
                 }
             }
 
-            IntermediateInstruction argumentInstruction = fillInstruction(INTERMEDIATE_PUSH, 1, argument->location);
+            IntermediateInstruction argumentInstruction =
+                fillInstruction(INTERMEDIATE_PUSH, 1, argument->location);
             argumentInstruction.operands[0] = argumentOperand;
 
             status = intermediateProgramAppend(generator->program, &argumentInstruction);
@@ -1470,8 +1580,10 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             counter++;
         }
 
-        IntermediateInstruction createFrameInstruction = fillInstruction(INTERMEDIATE_CREATE_FRAME, 0, node->location);
-        CompilerStatus status = intermediateProgramAppend(generator->program, &createFrameInstruction);
+        IntermediateInstruction createFrameInstruction =
+            fillInstruction(INTERMEDIATE_CREATE_FRAME, 0, node->location);
+        CompilerStatus status =
+            intermediateProgramAppend(generator->program, &createFrameInstruction);
         if (status != COMPILER_OK) {
             return status;
         }
@@ -1483,7 +1595,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             return COMPILER_INTERNAL_ERROR;
         }
 
-        IntermediateInstruction callInstruction = fillInstruction(INTERMEDIATE_CALL, 1, node->location);
+        IntermediateInstruction callInstruction =
+            fillInstruction(INTERMEDIATE_CALL, 1, node->location);
         callInstruction.operands[0] = functionLabelOperand;
 
         status = intermediateProgramAppend(generator->program, &callInstruction);
@@ -1498,7 +1611,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
             return status;
         }
 
-        IntermediateInstruction resultInstruction = fillInstruction(INTERMEDIATE_POP, 1, node->location);
+        IntermediateInstruction resultInstruction =
+            fillInstruction(INTERMEDIATE_POP, 1, node->location);
         resultInstruction.operands[0] = resultOperand;
         status = intermediateProgramAppend(generator->program, &resultInstruction);
         if (status != COMPILER_OK) {
@@ -1517,7 +1631,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
     return COMPILER_OK;
 }
 
-static CompilerStatus generateExpressionStatement(IntermediateGenerator *generator, const AbstractSyntaxNode *node) {
+static CompilerStatus generateExpressionStatement(IntermediateGenerator *generator,
+                                                  const AbstractSyntaxNode *node) {
     if (generator == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -1540,7 +1655,8 @@ static CompilerStatus generateExpressionStatement(IntermediateGenerator *generat
     return status;
 }
 
-static CompilerStatus generateStatement(IntermediateGenerator *generator, const AbstractSyntaxNode *node) {
+static CompilerStatus generateStatement(IntermediateGenerator *generator,
+                                        const AbstractSyntaxNode *node) {
     if (generator == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -1586,7 +1702,8 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return status;
         }
 
-        if (typeDescriptorGetMask(node->variableType) == DATA_TYPE_DOUBLE && typeDescriptorGetMask(node->children[0]->inferredType) == DATA_TYPE_INT) {
+        if (descriptorDataType(&node->type) == DATA_TYPE_DOUBLE &&
+            descriptorDataType(&node->children[0]->type) == DATA_TYPE_INT) {
             status = convertIntToDouble(generator, &initializerOperand, node->location);
             if (status != COMPILER_OK) {
                 intermediateOperandClear(&initializerOperand);
@@ -1635,7 +1752,8 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return status;
         }
 
-        if (typeDescriptorGetMask(node->variableType) == DATA_TYPE_DOUBLE && typeDescriptorGetMask(node->children[0]->inferredType) == DATA_TYPE_INT) {
+        if (descriptorDataType(&node->type) == DATA_TYPE_DOUBLE &&
+            descriptorDataType(&node->children[0]->type) == DATA_TYPE_INT) {
             status = convertIntToDouble(generator, &valueOperand, node->location);
             if (status != COMPILER_OK) {
                 intermediateOperandClear(&valueOperand);
@@ -1669,7 +1787,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return COMPILER_INTERNAL_ERROR;
         }
 
-        if (typeDescriptorGetMask(node->children[0]->inferredType) != DATA_TYPE_BOOLEAN) {
+        if (descriptorDataType(&node->children[0]->type) != DATA_TYPE_BOOLEAN) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -1698,7 +1816,8 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
         falseOperand.kind = INTERMEDIATE_OPERAND_BOOLEAN;
         falseOperand.value.boolValue = false;
 
-        IntermediateInstruction jumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, node->location);
+        IntermediateInstruction jumpInstruction =
+            fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, node->location);
         jumpInstruction.operands[0] = elseLabelOperand;
         jumpInstruction.operands[1] = conditionOperand;
         jumpInstruction.operands[2] = falseOperand;
@@ -1719,7 +1838,8 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return status;
         }
 
-        IntermediateInstruction endJumpInstruction = fillInstruction(INTERMEDIATE_JUMP, 1, node->location);
+        IntermediateInstruction endJumpInstruction =
+            fillInstruction(INTERMEDIATE_JUMP, 1, node->location);
         endJumpInstruction.operands[0] = endLabelOperand;
 
         status = intermediateProgramAppend(generator->program, &endJumpInstruction);
@@ -1730,7 +1850,8 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return status;
         }
 
-        IntermediateInstruction elseLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+        IntermediateInstruction elseLabelInstruction =
+            fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
         elseLabelInstruction.operands[0] = elseLabelOperand;
 
         status = intermediateProgramAppend(generator->program, &elseLabelInstruction);
@@ -1749,7 +1870,8 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return status;
         }
 
-        IntermediateInstruction endLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+        IntermediateInstruction endLabelInstruction =
+            fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
         endLabelInstruction.operands[0] = endLabelOperand;
         status = intermediateProgramAppend(generator->program, &endLabelInstruction);
 
@@ -1760,11 +1882,12 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
         return status;
     }
     case ABSTRACT_SYNTAX_WHILE: {
-        if (node->childCount != 2 || node->children == NULL || node->children[0] == NULL || node->children[1] == NULL) {
+        if (node->childCount != 2 || node->children == NULL || node->children[0] == NULL ||
+            node->children[1] == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
 
-        if (typeDescriptorGetMask(node->children[0]->inferredType) != DATA_TYPE_BOOLEAN) {
+        if (descriptorDataType(&node->children[0]->type) != DATA_TYPE_BOOLEAN) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -1781,7 +1904,8 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return status;
         }
 
-        IntermediateInstruction startLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+        IntermediateInstruction startLabelInstruction =
+            fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
         startLabelInstruction.operands[0] = startLabelOperand;
 
         status = intermediateProgramAppend(generator->program, &startLabelInstruction);
@@ -1803,7 +1927,8 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
         falseOperand.kind = INTERMEDIATE_OPERAND_BOOLEAN;
         falseOperand.value.boolValue = false;
 
-        IntermediateInstruction jumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, node->location);
+        IntermediateInstruction jumpInstruction =
+            fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, node->location);
         jumpInstruction.operands[0] = endLabelOperand;
         jumpInstruction.operands[1] = conditionOperand;
         jumpInstruction.operands[2] = falseOperand;
@@ -1824,7 +1949,8 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return status;
         }
 
-        IntermediateInstruction startJumpInstruction = fillInstruction(INTERMEDIATE_JUMP, 1, node->location);
+        IntermediateInstruction startJumpInstruction =
+            fillInstruction(INTERMEDIATE_JUMP, 1, node->location);
         startJumpInstruction.operands[0] = startLabelOperand;
 
         status = intermediateProgramAppend(generator->program, &startJumpInstruction);
@@ -1835,7 +1961,8 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return status;
         }
 
-        IntermediateInstruction endLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+        IntermediateInstruction endLabelInstruction =
+            fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
         endLabelInstruction.operands[0] = endLabelOperand;
         status = intermediateProgramAppend(generator->program, &endLabelInstruction);
 
@@ -1856,7 +1983,8 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             }
         }
 
-        if (generator->returnType != DATA_TYPE_INT && generator->returnType != DATA_TYPE_DOUBLE && generator->returnType != DATA_TYPE_STRING && generator->returnType != DATA_TYPE_UNIT) {
+        if (generator->returnType != DATA_TYPE_INT && generator->returnType != DATA_TYPE_DOUBLE &&
+            generator->returnType != DATA_TYPE_STRING && generator->returnType != DATA_TYPE_UNIT) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -1883,7 +2011,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             returnOperand.kind = INTERMEDIATE_OPERAND_UNIT;
             returnOperand.value = (IntermediateOperandValue){0};
         } else {
-            DataType valueType = typeDescriptorGetMask(node->children[0]->inferredType);
+            DataType valueType = descriptorDataType(&node->children[0]->type);
             if (valueType != generator->returnType) {
                 if (valueType == DATA_TYPE_INT && generator->returnType == DATA_TYPE_DOUBLE) {
                     status = convertIntToDouble(generator, &returnOperand, node->location);
@@ -1898,7 +2026,8 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             }
         }
 
-        IntermediateInstruction returnValueInstruction = fillInstruction(INTERMEDIATE_PUSH, 1, node->location);
+        IntermediateInstruction returnValueInstruction =
+            fillInstruction(INTERMEDIATE_PUSH, 1, node->location);
         returnValueInstruction.operands[0] = returnOperand;
 
         status = intermediateProgramAppend(generator->program, &returnValueInstruction);
@@ -1907,14 +2036,16 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
             return status;
         }
 
-        IntermediateInstruction popFrameInstruction = fillInstruction(INTERMEDIATE_POP_FRAME, 0, node->location);
+        IntermediateInstruction popFrameInstruction =
+            fillInstruction(INTERMEDIATE_POP_FRAME, 0, node->location);
 
         status = intermediateProgramAppend(generator->program, &popFrameInstruction);
         if (status != COMPILER_OK) {
             return status;
         }
 
-        IntermediateInstruction returnInstruction = fillInstruction(INTERMEDIATE_RETURN, 0, node->location);
+        IntermediateInstruction returnInstruction =
+            fillInstruction(INTERMEDIATE_RETURN, 0, node->location);
         status = intermediateProgramAppend(generator->program, &returnInstruction);
 
         return status;
@@ -1930,7 +2061,8 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
     }
 }
 
-static CompilerStatus appendProgramInstructions(IntermediateProgram *destination, const IntermediateProgram *source) {
+static CompilerStatus appendProgramInstructions(IntermediateProgram *destination,
+                                                const IntermediateProgram *source) {
     if (destination == NULL || source == NULL || destination == source) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -1956,7 +2088,8 @@ static CompilerStatus appendProgramInstructions(IntermediateProgram *destination
     return COMPILER_OK;
 }
 
-static CompilerStatus generateParameters(IntermediateGenerator *generator, const AbstractSyntaxNode *function) {
+static CompilerStatus generateParameters(IntermediateGenerator *generator,
+                                         const AbstractSyntaxNode *function) {
     if (generator == NULL || function == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -1974,11 +2107,15 @@ static CompilerStatus generateParameters(IntermediateGenerator *generator, const
     while (counter > 0) {
         counter--;
         const AbstractSyntaxNode *parameter = function->children[counter];
-        if (parameter == NULL || parameter->kind != ABSTRACT_SYNTAX_PARAMETER || parameter->variableId == 0) {
+        if (parameter == NULL || parameter->kind != ABSTRACT_SYNTAX_PARAMETER ||
+            parameter->variableId == 0) {
             return COMPILER_INTERNAL_ERROR;
         }
 
-        if (typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_INT && typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_DOUBLE && typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_STRING && typeDescriptorGetMask(parameter->variableType) != DATA_TYPE_UNIT) {
+        if (descriptorDataType(&parameter->type) != DATA_TYPE_INT &&
+            descriptorDataType(&parameter->type) != DATA_TYPE_DOUBLE &&
+            descriptorDataType(&parameter->type) != DATA_TYPE_STRING &&
+            descriptorDataType(&parameter->type) != DATA_TYPE_UNIT) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -1994,7 +2131,8 @@ static CompilerStatus generateParameters(IntermediateGenerator *generator, const
             return status;
         }
 
-        IntermediateInstruction parameterInstruction = fillInstruction(INTERMEDIATE_POP, 1, parameter->location);
+        IntermediateInstruction parameterInstruction =
+            fillInstruction(INTERMEDIATE_POP, 1, parameter->location);
         parameterInstruction.operands[0] = parameterOperand;
 
         status = intermediateProgramAppend(generator->program, &parameterInstruction);
@@ -2007,7 +2145,8 @@ static CompilerStatus generateParameters(IntermediateGenerator *generator, const
     return COMPILER_OK;
 }
 
-static CompilerStatus generateFunctionBody(IntermediateGenerator *generator, const AbstractSyntaxNode *body) {
+static CompilerStatus generateFunctionBody(IntermediateGenerator *generator,
+                                           const AbstractSyntaxNode *body) {
     if (generator == NULL || body == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -2036,7 +2175,8 @@ static CompilerStatus generateFunctionBody(IntermediateGenerator *generator, con
     const AbstractSyntaxNode *expressionNode = NULL;
 
     if (lastStatement->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT) {
-        if (lastStatement->childCount != 1 || lastStatement->children == NULL || lastStatement->children[0] == NULL) {
+        if (lastStatement->childCount != 1 || lastStatement->children == NULL ||
+            lastStatement->children[0] == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -2065,8 +2205,9 @@ static CompilerStatus generateFunctionBody(IntermediateGenerator *generator, con
         return status;
     }
 
-    if (typeDescriptorGetMask(expressionNode->inferredType) != generator->returnType) {
-        if (typeDescriptorGetMask(expressionNode->inferredType) == DATA_TYPE_INT && generator->returnType == DATA_TYPE_DOUBLE) {
+    if (descriptorDataType(&expressionNode->type) != generator->returnType) {
+        if (descriptorDataType(&expressionNode->type) == DATA_TYPE_INT &&
+            generator->returnType == DATA_TYPE_DOUBLE) {
             status = convertIntToDouble(generator, &returnOperand, expressionNode->location);
             if (status != COMPILER_OK) {
                 intermediateOperandClear(&returnOperand);
@@ -2078,7 +2219,8 @@ static CompilerStatus generateFunctionBody(IntermediateGenerator *generator, con
         }
     }
 
-    IntermediateInstruction returnValueInstruction = fillInstruction(INTERMEDIATE_PUSH, 1, expressionNode->location);
+    IntermediateInstruction returnValueInstruction =
+        fillInstruction(INTERMEDIATE_PUSH, 1, expressionNode->location);
     returnValueInstruction.operands[0] = returnOperand;
 
     status = intermediateProgramAppend(generator->program, &returnValueInstruction);
@@ -2087,7 +2229,8 @@ static CompilerStatus generateFunctionBody(IntermediateGenerator *generator, con
     return status;
 }
 
-static CompilerStatus generateFunction(IntermediateGenerator *generator, const AbstractSyntaxNode *node) {
+static CompilerStatus generateFunction(IntermediateGenerator *generator,
+                                       const AbstractSyntaxNode *node) {
     if (generator == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -2119,7 +2262,7 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator, const A
     IntermediateGenerator functionGenerator = *generator;
     functionGenerator.program = functionBody;
     functionGenerator.functionDeclarations = functionDeclarations;
-    functionGenerator.returnType = typeDescriptorGetMask(node->inferredType);
+    functionGenerator.returnType = descriptorDataType(&node->type);
 
     CompilerStatus status = generateParameters(&functionGenerator, node);
     if (status != COMPILER_OK) {
@@ -2148,7 +2291,8 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator, const A
         return COMPILER_INTERNAL_ERROR;
     }
 
-    IntermediateInstruction labelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+    IntermediateInstruction labelInstruction =
+        fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
     labelInstruction.operands[0] = functionLabel;
 
     status = intermediateProgramAppend(generator->program, &labelInstruction);
@@ -2159,7 +2303,8 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator, const A
         return status;
     }
 
-    IntermediateInstruction pushFrameInstruction = fillInstruction(INTERMEDIATE_PUSH_FRAME, 0, node->location);
+    IntermediateInstruction pushFrameInstruction =
+        fillInstruction(INTERMEDIATE_PUSH_FRAME, 0, node->location);
 
     status = intermediateProgramAppend(generator->program, &pushFrameInstruction);
     if (status != COMPILER_OK) {
@@ -2185,7 +2330,8 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator, const A
         IntermediateOperand returnOperand = {0};
         returnOperand.kind = INTERMEDIATE_OPERAND_UNIT;
 
-        IntermediateInstruction returnValueInstruction = fillInstruction(INTERMEDIATE_PUSH, 1, node->location);
+        IntermediateInstruction returnValueInstruction =
+            fillInstruction(INTERMEDIATE_PUSH, 1, node->location);
         returnValueInstruction.operands[0] = returnOperand;
 
         status = intermediateProgramAppend(generator->program, &returnValueInstruction);
@@ -2194,14 +2340,16 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator, const A
         }
     }
 
-    IntermediateInstruction popFrameInstruction = fillInstruction(INTERMEDIATE_POP_FRAME, 0, node->location);
+    IntermediateInstruction popFrameInstruction =
+        fillInstruction(INTERMEDIATE_POP_FRAME, 0, node->location);
 
     status = intermediateProgramAppend(generator->program, &popFrameInstruction);
     if (status != COMPILER_OK) {
         return status;
     }
 
-    IntermediateInstruction returnInstruction = fillInstruction(INTERMEDIATE_RETURN, 0, node->location);
+    IntermediateInstruction returnInstruction =
+        fillInstruction(INTERMEDIATE_RETURN, 0, node->location);
 
     status = intermediateProgramAppend(generator->program, &returnInstruction);
     if (status != COMPILER_OK) {
@@ -2211,7 +2359,8 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator, const A
     return COMPILER_OK;
 }
 
-CompilerStatus intermediateCodeGenerate(const SourceProgram *program, IntermediateProgram *outProgram) {
+CompilerStatus intermediateCodeGenerate(const SourceProgram *program,
+                                        IntermediateProgram *outProgram) {
     if (program == NULL || outProgram == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -2232,8 +2381,7 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program, Intermedia
     while (counter < program->root->childCount) {
         const AbstractSyntaxNode *function = program->root->children[counter];
 
-        if (function == NULL ||
-            function->kind != ABSTRACT_SYNTAX_FUNCTION ||
+        if (function == NULL || function->kind != ABSTRACT_SYNTAX_FUNCTION ||
             function->text == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
@@ -2249,7 +2397,8 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program, Intermedia
         counter++;
     }
 
-    if (entryFunction == NULL || entryFunction->childCount != 1 || typeDescriptorGetMask(entryFunction->inferredType) != DATA_TYPE_UNIT) {
+    if (entryFunction == NULL || entryFunction->childCount != 1 ||
+        descriptorDataType(&entryFunction->type) != DATA_TYPE_UNIT) {
         return COMPILER_INTERNAL_ERROR;
     }
 
@@ -2257,7 +2406,8 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program, Intermedia
     generator.program = outProgram;
     generator.sourceProgram = program;
 
-    IntermediateInstruction createFrameInstruction = fillInstruction(INTERMEDIATE_CREATE_FRAME, 0, entryFunction->location);
+    IntermediateInstruction createFrameInstruction =
+        fillInstruction(INTERMEDIATE_CREATE_FRAME, 0, entryFunction->location);
 
     CompilerStatus status = intermediateProgramAppend(generator.program, &createFrameInstruction);
     if (status != COMPILER_OK) {
@@ -2271,7 +2421,8 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program, Intermedia
         return COMPILER_INTERNAL_ERROR;
     }
 
-    IntermediateInstruction callInstruction = fillInstruction(INTERMEDIATE_CALL, 1, entryFunction->location);
+    IntermediateInstruction callInstruction =
+        fillInstruction(INTERMEDIATE_CALL, 1, entryFunction->location);
     callInstruction.operands[0] = entryLabel;
 
     status = intermediateProgramAppend(generator.program, &callInstruction);
@@ -2280,7 +2431,8 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program, Intermedia
         return status;
     }
 
-    IntermediateInstruction exitInstruction = fillInstruction(INTERMEDIATE_EXIT, 1, entryFunction->location);
+    IntermediateInstruction exitInstruction =
+        fillInstruction(INTERMEDIATE_EXIT, 1, entryFunction->location);
     exitInstruction.operands[0].kind = INTERMEDIATE_OPERAND_INT;
     exitInstruction.operands[0].value.intValue = 0;
 

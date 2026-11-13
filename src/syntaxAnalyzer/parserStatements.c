@@ -56,7 +56,7 @@ static CompilerStatus parseVariableDeclaration(SyntaxAnalyzer *syntaxAnalyzer,
         if (status != COMPILER_OK) {
             goto cleanup;
         }
-        status = analyzerTypesParseType(syntaxAnalyzer, &declaration->variableType);
+        status = analyzerTypesParseType(syntaxAnalyzer, &declaration->type);
         if (status != COMPILER_OK) {
             goto cleanup;
         }

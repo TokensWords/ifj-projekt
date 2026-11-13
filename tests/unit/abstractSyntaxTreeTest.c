@@ -16,8 +16,9 @@ int main(void) {
     assert(root->kind == ABSTRACT_SYNTAX_PROGRAM);
     assert(root->location.line == 3);
     assert(root->location.column == 5);
-    assert(root->inferredType == NULL);
-    assert(root->variableType == NULL);
+    assert(root->type.datatypeBitflag == 0);
+    assert(root->type.aliases == NULL);
+    assert(root->type.recursiveTypes == NULL);
     assert(!root->isMutable);
     assert(!root->isEntryFunction);
     assert(root->text == NULL);

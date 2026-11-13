@@ -9,6 +9,7 @@
 #define COMPILER_TYPES_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 typedef enum {
     COMPILER_OK = 0,

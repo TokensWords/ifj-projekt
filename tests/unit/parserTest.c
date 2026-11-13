@@ -97,7 +97,7 @@ static CompilerStatus parseBlockTokens(const TestToken *tokens, size_t tokenCoun
     {tokenType, tokenText, tokenLine, tokenColumn, 0}
 
 static CompilerStatus parseTypeTokens(const TestToken *tokens, size_t tokenCount,
-                                      TypeDescriptor **outType) {
+                                      TypeDescriptor *outType) {
     struct LexicalAnalyzer lexerState = {
         .tokens = tokens, .tokenCount = tokenCount, .nextToken = 0};
     SyntaxAnalyzer *syntaxAnalyzer = syntaxAnalyzerCreate((LexicalAnalyzer *)&lexerState);
@@ -114,68 +114,63 @@ int main(void) {
         TEST_TOKEN(TOKEN_OPERATOR, "|", 1, 15),    TEST_TOKEN(TOKEN_KEYWORD, "String", 1, 17),
         TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 23), TEST_TOKEN(TOKEN_OPERATOR, "|", 1, 25),
         TEST_TOKEN(TOKEN_KEYWORD, "Int", 1, 27),   TEST_TOKEN(TOKEN_EOF, NULL, 1, 30)};
-    TypeDescriptor *parsedType = NULL;
+    TypeDescriptor parsedType;
+    typeDescriptorInit(&parsedType);
     assert(parseTypeTokens(flattenedUnionTokens,
                            sizeof(flattenedUnionTokens) / sizeof(flattenedUnionTokens[0]),
                            &parsedType) == COMPILER_OK);
-    assert(typeDescriptorGetMask(parsedType) ==
+    assert(parsedType.datatypeBitflag ==
            (DATA_TYPE_INT | DATA_TYPE_DOUBLE | DATA_TYPE_STRING));
-    assert(typeDescriptorGetMemberCount(parsedType) == 3);
-    assert(typeDescriptorGetMask(typeDescriptorGetMember(parsedType, 0)) == DATA_TYPE_INT);
-    assert(typeDescriptorGetMask(typeDescriptorGetMember(parsedType, 1)) == DATA_TYPE_DOUBLE);
-    assert(typeDescriptorGetMask(typeDescriptorGetMember(parsedType, 2)) == DATA_TYPE_STRING);
-    TypeDescriptor *typeCopy = typeDescriptorClone(parsedType);
-    assert(typeCopy != NULL);
-    assert(typeCopy != parsedType);
-    assert(typeDescriptorEquals(typeCopy, parsedType));
-    AbstractSyntaxNode *typedNode =
-        abstractSyntaxNodeCreate(ABSTRACT_SYNTAX_IDENTIFIER, (SourceLocation){0});
-    assert(typedNode != NULL);
-    assert(abstractSyntaxNodeCopyInferredType(typedNode, parsedType) == COMPILER_OK);
-    assert(typedNode->inferredType != parsedType);
-    assert(typeDescriptorEquals(typedNode->inferredType, parsedType));
-    abstractSyntaxNodeDestroy(typedNode);
-    typeDescriptorDestroy(typeCopy);
+    assert(typeDescriptorContainsLiteralType(&parsedType, DATA_TYPE_INT));
+    assert(typeDescriptorRemoveLiteralType(&parsedType, DATA_TYPE_DOUBLE) == COMPILER_OK);
+    assert(!typeDescriptorContainsLiteralType(&parsedType, DATA_TYPE_DOUBLE));
+    assert(typeDescriptorAddLiteralType(&parsedType, DATA_TYPE_DOUBLE) == COMPILER_OK);
+    assert(parsedType.datatypeBitflag ==
+           (DATA_TYPE_INT | DATA_TYPE_DOUBLE | DATA_TYPE_STRING));
 
-    TypeDescriptor *narrowUnion = typeDescriptorCreate(DATA_TYPE_UNKNOWN);
-    assert(narrowUnion != NULL);
-    TypeDescriptor *intType = typeDescriptorCreate(DATA_TYPE_INT);
-    TypeDescriptor *stringType = typeDescriptorCreate(DATA_TYPE_STRING);
-    assert(intType != NULL && stringType != NULL);
-    assert(typeDescriptorAddMember(narrowUnion, intType) == COMPILER_OK);
-    assert(typeDescriptorAddMember(narrowUnion, stringType) == COMPILER_OK);
-    assert(typeDescriptorIsSubset(narrowUnion, parsedType));
-    assert(!typeDescriptorIsSubset(parsedType, narrowUnion));
-    typeDescriptorDestroy(narrowUnion);
-    typeDescriptorDestroy(parsedType);
+    TypeDescriptorAliasNode *aliasNode = NULL;
+    assert(typeDescriptorAliasNodeInit(&aliasNode, "First") == COMPILER_OK);
+    assert(typeDescriptorAddAlias(&parsedType, aliasNode) == COMPILER_OK);
+    assert((parsedType.datatypeBitflag & DATA_TYPE_ALIAS) != 0);
+    assert(typeDescriptorAliasNodeInit(&aliasNode, "First") == COMPILER_OK);
+    assert(typeDescriptorAddAlias(&parsedType, aliasNode) == COMPILER_OK);
+    assert(parsedType.aliases != NULL && parsedType.aliases->next == NULL);
+    aliasNode = typeDescriptorPopAlias(&parsedType);
+    assert(aliasNode != NULL && strcmp(aliasNode->name, "First") == 0);
+    typeDescriptorAliasNodeFree(aliasNode);
+    assert((parsedType.datatypeBitflag & DATA_TYPE_ALIAS) == 0);
 
-    TypeDescriptor *firstAlias = typeDescriptorCreate(DATA_TYPE_ALIAS);
-    TypeDescriptor *sameAlias = typeDescriptorCreate(DATA_TYPE_ALIAS);
-    TypeDescriptor *differentAlias = typeDescriptorCreate(DATA_TYPE_ALIAS);
-    assert(firstAlias != NULL && sameAlias != NULL && differentAlias != NULL);
-    assert(typeDescriptorSetName(firstAlias, "First") == COMPILER_OK);
-    assert(typeDescriptorSetName(sameAlias, "First") == COMPILER_OK);
-    assert(typeDescriptorSetName(differentAlias, "Second") == COMPILER_OK);
-    assert(typeDescriptorIsSubset(firstAlias, sameAlias));
-    assert(!typeDescriptorIsSubset(firstAlias, differentAlias));
-    typeDescriptorDestroy(firstAlias);
-    typeDescriptorDestroy(sameAlias);
-    typeDescriptorDestroy(differentAlias);
+    TypeDescriptorAliasNode *classNode = NULL;
+    assert(typeDescriptorAliasNodeInit(&classNode, "Point") == COMPILER_OK);
+    assert(typeDescriptorAddClass(&parsedType, classNode) == COMPILER_OK);
+    assert((parsedType.datatypeBitflag & DATA_TYPE_CASE_CLASS) != 0);
+    classNode = typeDescriptorPopClass(&parsedType);
+    assert(classNode != NULL && strcmp(classNode->name, "Point") == 0);
+    typeDescriptorAliasNodeFree(classNode);
+    assert((parsedType.datatypeBitflag & DATA_TYPE_CASE_CLASS) == 0);
 
-    TypeDescriptor *intList = typeDescriptorCreate(DATA_TYPE_LIST);
-    TypeDescriptor *unionList = typeDescriptorCreate(DATA_TYPE_LIST);
-    TypeDescriptor *intElement = typeDescriptorCreate(DATA_TYPE_INT);
-    TypeDescriptor *unionElement = typeDescriptorCreate(DATA_TYPE_UNKNOWN);
-    assert(intList != NULL && unionList != NULL && intElement != NULL && unionElement != NULL);
-    assert(typeDescriptorAddMember(unionElement, typeDescriptorCreate(DATA_TYPE_INT)) ==
-           COMPILER_OK);
-    assert(typeDescriptorAddMember(unionElement, typeDescriptorCreate(DATA_TYPE_STRING)) ==
-           COMPILER_OK);
-    assert(typeDescriptorSetElementType(intList, intElement) == COMPILER_OK);
-    assert(typeDescriptorSetElementType(unionList, unionElement) == COMPILER_OK);
-    assert(typeDescriptorIsSubset(intList, unionList));
-    typeDescriptorDestroy(intList);
-    typeDescriptorDestroy(unionList);
+    TypeDescriptor element;
+    TypeDescriptor baseElement;
+    typeDescriptorInit(&element);
+    typeDescriptorInit(&baseElement);
+    assert(typeDescriptorAddLiteralType(&baseElement, DATA_TYPE_INT) == COMPILER_OK);
+    TypeDescriptorRecursiveNode *innerNode = NULL;
+    assert(typeDescriptorRecursiveNodeInit(&innerNode, &baseElement) == COMPILER_OK);
+    assert(typeDescriptorAddRecursiveType(&element, innerNode) == COMPILER_OK);
+    TypeDescriptorRecursiveNode *recursiveNode = NULL;
+    assert(typeDescriptorRecursiveNodeInit(&recursiveNode, &element) == COMPILER_OK);
+    assert(typeDescriptorAddRecursiveType(&parsedType, recursiveNode) == COMPILER_OK);
+    assert((parsedType.datatypeBitflag & DATA_TYPE_LIST) != 0);
+    assert(typeDescriptorRecursiveNodeInit(&recursiveNode, &element) == COMPILER_OK);
+    assert(typeDescriptorAddRecursiveType(&parsedType, recursiveNode) == COMPILER_OK);
+    assert(parsedType.recursiveTypes != NULL && parsedType.recursiveTypes->next == NULL);
+    recursiveNode = typeDescriptorPopRecursiveType(&parsedType);
+    assert(recursiveNode != NULL);
+    typeDescriptorRecursiveNodeFree(recursiveNode);
+    assert((parsedType.datatypeBitflag & DATA_TYPE_LIST) == 0);
+    typeDescriptorFree(&element);
+    typeDescriptorFree(&baseElement);
+    typeDescriptorFree(&parsedType);
 
     static const TestToken listUnionTypeTokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "List", 1, 1),
                                                     TEST_TOKEN(TOKEN_LEFT_SHARP_PAREN, "[", 1, 5),
@@ -184,17 +179,16 @@ int main(void) {
                                                     TEST_TOKEN(TOKEN_IDENTIFIER, "Scalar", 1, 12),
                                                     TEST_TOKEN(TOKEN_RIGHT_SHARP_PAREN, "]", 1, 18),
                                                     TEST_TOKEN(TOKEN_EOF, NULL, 1, 19)};
-    parsedType = NULL;
+    typeDescriptorInit(&parsedType);
     assert(parseTypeTokens(listUnionTypeTokens,
                            sizeof(listUnionTypeTokens) / sizeof(listUnionTypeTokens[0]),
                            &parsedType) == COMPILER_OK);
-    assert(typeDescriptorGetMask(parsedType) == DATA_TYPE_LIST);
-    const TypeDescriptor *elementType = typeDescriptorGetElementType(parsedType);
-    assert(elementType != NULL);
-    assert(typeDescriptorGetMemberCount(elementType) == 2);
-    assert(typeDescriptorGetMask(typeDescriptorGetMember(elementType, 1)) == DATA_TYPE_ALIAS);
-    assert(strcmp(typeDescriptorGetName(typeDescriptorGetMember(elementType, 1)), "Scalar") == 0);
-    typeDescriptorDestroy(parsedType);
+    assert(parsedType.recursiveTypes != NULL);
+    const TypeDescriptorRecursiveNode *listType = parsedType.recursiveTypes;
+    assert(listType->elementType.datatypeBitflag == (DATA_TYPE_INT | DATA_TYPE_ALIAS));
+    assert(listType->elementType.aliases != NULL);
+    assert(strcmp(listType->elementType.aliases->name, "Scalar") == 0);
+    typeDescriptorFree(&parsedType);
 
     static const TestToken typeAliasTokens[] = {
         TEST_TOKEN(TOKEN_KEYWORD, "type", 1, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "Scalar", 1, 6),
@@ -211,8 +205,7 @@ int main(void) {
     assert(analyzerTypesParseAlias(aliasSyntaxAnalyzer, &typeAlias) == COMPILER_OK);
     assert(typeAlias->kind == ABSTRACT_SYNTAX_TYPE_ALIAS);
     assert(strcmp(typeAlias->text, "Scalar") == 0);
-    assert(typeDescriptorGetMemberCount(typeAlias->variableType) == 2);
-    assert(typeDescriptorGetMask(typeAlias->variableType) == (DATA_TYPE_INT | DATA_TYPE_STRING));
+    assert(typeAlias->type.datatypeBitflag == (DATA_TYPE_INT | DATA_TYPE_STRING));
     abstractSyntaxNodeDestroy(typeAlias);
     syntaxAnalyzerDestroy(aliasSyntaxAnalyzer);
 
@@ -1001,7 +994,7 @@ int main(void) {
     AbstractSyntaxNode *declaration = body->children[0];
     assert(declaration->kind == ABSTRACT_SYNTAX_VARIABLE_DECLARATION);
     assert(declaration->isMutable);
-    assert(typeDescriptorGetMask(declaration->variableType) == DATA_TYPE_INT);
+    assert(declaration->type.datatypeBitflag == DATA_TYPE_INT);
     assert(declaration->childCount == 1);
 
     AbstractSyntaxNode *addition = declaration->children[0];
@@ -1223,7 +1216,7 @@ int main(void) {
     assert(pointClass->childCount == 2);
     assert(pointClass->children[0]->kind == ABSTRACT_SYNTAX_CASE_CLASS_FIELD);
     assert(strcmp(pointClass->children[0]->text, "x") == 0);
-    assert(typeDescriptorGetMask(pointClass->children[0]->variableType) == DATA_TYPE_INT);
+    assert(pointClass->children[0]->type.datatypeBitflag == DATA_TYPE_INT);
     assert(strcmp(pointClass->children[1]->text, "y") == 0);
     AbstractSyntaxNode *emptyClass = program->root->children[1];
     assert(emptyClass->kind == ABSTRACT_SYNTAX_CASE_CLASS);
@@ -1232,8 +1225,8 @@ int main(void) {
     AbstractSyntaxNode *caseBody = caseMain->children[0];
     AbstractSyntaxNode *pointValue = caseBody->children[0];
     assert(pointValue->kind == ABSTRACT_SYNTAX_VARIABLE_DECLARATION);
-    assert(typeDescriptorGetMask(pointValue->variableType) == DATA_TYPE_ALIAS);
-    assert(strcmp(typeDescriptorGetName(pointValue->variableType), "Point") == 0);
+    assert(pointValue->type.aliases != NULL);
+    assert(strcmp(pointValue->type.aliases->name, "Point") == 0);
     assert(pointValue->children[0]->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
     assert(pointValue->children[0]->childCount == 3);
     AbstractSyntaxNode *printCall = caseBody->children[1];
@@ -1313,7 +1306,7 @@ int main(void) {
     assert(guardedCase->childCount == 3);
     assert(guardedCase->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
     assert(strcmp(guardedCase->children[0]->text, "n") == 0);
-    assert(typeDescriptorGetMask(guardedCase->children[0]->variableType) == DATA_TYPE_INT);
+    assert(guardedCase->children[0]->type.datatypeBitflag == DATA_TYPE_INT);
     assert(guardedCase->children[1]->kind == ABSTRACT_SYNTAX_MATCH_GUARD);
     assert(guardedCase->children[1]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
     AbstractSyntaxNode *constructorCase = matchExpression->children[3];

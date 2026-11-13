@@ -10,8 +10,8 @@
 
 #include "syntaxAnalyzerUtils.h"
 
-/** @brief Parses a type expression and stores its owned descriptor in outType. */
-CompilerStatus analyzerTypesParseType(SyntaxAnalyzer *syntaxAnalyzer, TypeDescriptor **outType);
+/** @brief Parses a type expression into the initialized descriptor value at outType. */
+CompilerStatus analyzerTypesParseType(SyntaxAnalyzer *syntaxAnalyzer, TypeDescriptor *outType);
 
 /** @brief Parses a top-level type alias declaration. */
 CompilerStatus analyzerTypesParseAlias(SyntaxAnalyzer *syntaxAnalyzer,
