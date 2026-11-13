@@ -5,12 +5,13 @@
  */
 
 #include "token.h"
+#include "lexicalAnalyzer.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
-int main(void)
-{
+int main(void) {
     Token *token = tokenCreate();
     assert(token != NULL);
     assert(token->type == TOKEN_INVALID);
@@ -39,5 +40,26 @@ int main(void)
 
     tokenDestroy(token);
     tokenDestroy(NULL);
+
+    FILE *input = tmpfile();
+    assert(input != NULL);
+    assert(fputs("true false\n", input) >= 0);
+    rewind(input);
+
+    LexicalAnalyzer *lexer = lexicalAnalyzerCreate(input);
+    assert(lexer != NULL);
+    Token *literal = NULL;
+    assert(lexicalAnalyzerNextToken(lexer, &literal) == COMPILER_OK);
+    assert(literal->type == TOKEN_BOOL_LITERAL);
+    assert(literal->value.boolValue);
+    tokenDestroy(literal);
+
+    assert(lexicalAnalyzerNextToken(lexer, &literal) == COMPILER_OK);
+    assert(literal->type == TOKEN_BOOL_LITERAL);
+    assert(!literal->value.boolValue);
+    tokenDestroy(literal);
+
+    lexicalAnalyzerDestroy(lexer);
+    fclose(input);
     return 0;
 }

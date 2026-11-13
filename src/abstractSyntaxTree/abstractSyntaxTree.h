@@ -2,15 +2,14 @@
  * PROJECT: IFJ26 compiler
  * AUTHORS: Matúš Čík
  * BRIEF: Abstract syntax tree representation and ownership helpers
- * 
- * IDEA: Remove struct ASTNODE field isMutable and isEntryFunction by adding more ASTNODE types, example: ABSTRACT_SYNTAX_FUNCTION_ENTRY, ABSTRACT_SYNTAX_VARIABLE_DECLARATION_MUTABLE, ABSTRACT_SYNTAX_VARIABLE_DECLARATION_IMMUTABLE.
- * IDEA: Make ASTNODE easier to work with by introducing funtions of getters/setter for node types.
+ *
  */
 
 #ifndef ABSTRACT_SYNTAX_TREE_H
 #define ABSTRACT_SYNTAX_TREE_H
 
 #include "compilerTypes.h"
+#include "typeDescriptor.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -21,22 +20,41 @@ typedef enum {
 
     /**
      * Represents the root of the abstract syntax tree
-     * @children - top-level functions in the program
+     * @children - top-level functions, type aliases, and case classes
      */
     ABSTRACT_SYNTAX_PROGRAM,
-    
+
     /**
      * Represents a function declaration
      * @text - name of the function
-     * @children - parameters and body of the function. Parameters are folowed by body. example: [param1, param2, body]. It must have a body
-     * @isEntryFunction - true if this function is the entry point of the program (taggeg by `@main`), else false
+     * @children - parameters and body of the function. Parameters are folowed by body. example:
+     * [param1, param2, body]. It must have a body
+     * @isEntryFunction - true if this function is the entry point of the program (taggeg by
+     * `@main`), else false
      */
     ABSTRACT_SYNTAX_FUNCTION,
+
+    /** A top-level type alias; @text is its name and @type is its definition. */
+    ABSTRACT_SYNTAX_TYPE_ALIAS,
+
+    /**
+     * A top-level case class declaration.
+     * @text - class name
+     * @children - its public immutable fields, in declaration order
+     */
+    ABSTRACT_SYNTAX_CASE_CLASS,
+
+    /**
+     * A public immutable case-class field.
+     * @text - field name
+     * @type - declared field type
+     */
+    ABSTRACT_SYNTAX_CASE_CLASS_FIELD,
 
     /**
      * Represents a function parameter
      * @text - name of the parameter
-     * @variableType - type of the parameter
+     * @type - type of the parameter
      */
     ABSTRACT_SYNTAX_PARAMETER,
 
@@ -48,15 +66,57 @@ typedef enum {
 
     /**
      * Represents an if statement
-     * @children - condition, then block, else block (optional). example: [condition, thenBlock, elseBlock]
+     * @children - condition, then block, else block (optional). example: [condition, thenBlock,
+     * elseBlock]
      */
     ABSTRACT_SYNTAX_IF,
+
+    /**
+     * Represents an if expression in assigment statement
+     * @children - condition, then expression, else expression. example: [condition, thenExpression,
+     * elseExpression]
+     */
+    ABSTRACT_SYNTAX_IF_EXPRESSION,
 
     /**
      * Represents a while loop
      * @children - condition then block of the loop. example: [condition, block]
      */
     ABSTRACT_SYNTAX_WHILE,
+
+    /**
+     * Represents a for loop
+     * @children - clauses and body, in that order
+     */
+    ABSTRACT_SYNTAX_FOR,
+
+    /**
+     * Ordered generator and guard clauses of a for loop
+     */
+    ABSTRACT_SYNTAX_FOR_CLAUSES,
+
+    /**
+     * Represents a generator binding
+     * @text - binding name
+     * @children - its source expression (a range or collection expression)
+     */
+    ABSTRACT_SYNTAX_FOR_GENERATOR,
+
+    /**
+     * Represents a generator guard
+     * @children - guard condition
+     */
+    ABSTRACT_SYNTAX_FOR_GUARD,
+
+    /**
+     * Represents a range expression.
+     * @text - "to" (inclusive) or "until" (exclusive)
+     * @children - start, end, and optional step
+     */
+    ABSTRACT_SYNTAX_RANGE_EXPRESSION,
+
+    /* TODO: compability alias, remove */
+    ABSTRACT_SYNTAX_FOR_RANGE = ABSTRACT_SYNTAX_RANGE_EXPRESSION,
 
     /**
      * Represents a return statement
@@ -67,16 +127,40 @@ typedef enum {
     // --- expressions ---
 
     /**
-     * Represents a function call
-     * @text - name of the function
-     * @children - arguments to the function (optional)
+     * A match expression.
+     * @children - scrutinee followed by ordered case branches
      */
-    ABSTRACT_SYNTAX_FUNCTION_CALL,
+    ABSTRACT_SYNTAX_MATCH_EXPRESSION,
+
+    /**
+     * One match branch.
+     * @children - pattern, optional ABSTRACT_SYNTAX_MATCH_GUARD, result expression
+     */
+    ABSTRACT_SYNTAX_MATCH_CASE,
+
+    /** A guard expression attached to a match case; @children contains its expression. */
+    ABSTRACT_SYNTAX_MATCH_GUARD,
+
+    /**
+     * Represents calling any expression.
+     * @children - callee expression followed by argument expressions
+     */
+    ABSTRACT_SYNTAX_CALL_EXPRESSION,
+
+    /* TODO: compability alias, remove */
+    ABSTRACT_SYNTAX_FUNCTION_CALL = ABSTRACT_SYNTAX_CALL_EXPRESSION,
+
+    /**
+     * Represents member selection on an expression.
+     * @text - selected member name
+     * @children - receiver expression
+     */
+    ABSTRACT_SYNTAX_MEMBER_ACCESS,
 
     /**
      * Represents a variable declaration
      * @text - name of the variable
-     * @variableType - type of the variable
+     * @type - declared or inferred type of the variable
      */
     ABSTRACT_SYNTAX_VARIABLE_DECLARATION,
 
@@ -151,13 +235,9 @@ typedef union {
 } AbstractSyntaxValue;
 
 typedef struct AbstractSyntaxNode {
-    union {
-        AbstractSyntaxNodeType type;
-        AbstractSyntaxNodeType kind;
-    };
+    AbstractSyntaxNodeType kind;
     SourceLocation location;
-    DataType inferredType;
-    DataType variableType;
+    TypeDescriptor type;
     char *text;
     AbstractSyntaxValue value;
     struct AbstractSyntaxNode **children;
@@ -174,9 +254,12 @@ typedef struct {
 
 SourceProgram *sourceProgramCreate(void);
 void sourceProgramDestroy(SourceProgram *program);
-AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType  type, SourceLocation location);
+AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType type, SourceLocation location);
 void abstractSyntaxNodeDestroy(AbstractSyntaxNode *node);
 CompilerStatus abstractSyntaxNodeSetText(AbstractSyntaxNode *node, const char *text);
 CompilerStatus abstractSyntaxNodeAddChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *child);
-
+CompilerStatus abstractSyntaxNodeSetInferredType(AbstractSyntaxNode *node, DataType type);
+CompilerStatus abstractSyntaxNodeCopyInferredType(AbstractSyntaxNode *node,
+                                                  const TypeDescriptor *type);
+CompilerStatus abstractSyntaxNodeSetVariableType(AbstractSyntaxNode *node, DataType type);
 #endif

@@ -16,15 +16,16 @@ CompilerStatus parseIf(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outN
 /** @brief Parses a while statement and stores its AST node in outNode. */
 CompilerStatus parseWhile(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
 
+/** @brief Parses a for loop with ordered generators and guards. */
+CompilerStatus parseFor(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
+
 /** @brief Parses one statement and stores its AST node in outNode. */
 CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
 
 /** @brief Parses an assignment. */
-CompilerStatus parseAssignment(SyntaxAnalyzer *syntaxAnalyzer,
-                               AbstractSyntaxNode **outNode);
+CompilerStatus parseAssignment(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
 
 /** @brief Parses block of statements. */
-CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer,
-                          AbstractSyntaxNode **outNode);
+CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode);
 
 #endif

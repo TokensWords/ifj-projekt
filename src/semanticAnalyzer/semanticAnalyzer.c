@@ -17,8 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct SemAnalData
-{
+struct SemAnalData {
     size_t variableIdCounter;
     SymbolTable *functionSymbols;
     SymbolTable *algebdtSymbols;
@@ -315,8 +314,7 @@ CompilerStatus semAnalDataInit(SemAnalData *data)
     return COMPILER_OK;
 }
 
-CompilerStatus semAnalListsBigger(SemAnalData *data)
-{
+CompilerStatus semAnalListsBigger(SemAnalData *data) {
     if (data == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -334,7 +332,8 @@ CompilerStatus semAnalListsBigger(SemAnalData *data)
     data->symbolTables = newTables;
     data->symbolTables[data->numberOfTables] = newTable;
 
-    const char **newRecList = memoryResizeArray(data->recursionList, data->numberOfTables + 1, sizeof(const char *));
+    const char **newRecList =
+        memoryResizeArray(data->recursionList, data->numberOfTables + 1, sizeof(const char *));
     if (newRecList == NULL) {
         symbolTableDestroy(newTable);
         data->symbolTables[data->numberOfTables] = NULL;
@@ -347,8 +346,7 @@ CompilerStatus semAnalListsBigger(SemAnalData *data)
     return COMPILER_OK;
 }
 
-CompilerStatus semAnalListsSmaller(SemAnalData *data)
-{
+CompilerStatus semAnalListsSmaller(SemAnalData *data) {
     if (data == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -362,15 +360,15 @@ CompilerStatus semAnalListsSmaller(SemAnalData *data)
     data->recursionList[lastTableI] = NULL;
     --data->numberOfTables;
 
-    SymbolTable **smallerTables = memoryResizeArray(
-        data->symbolTables, data->numberOfTables, sizeof(SymbolTable *));
+    SymbolTable **smallerTables =
+        memoryResizeArray(data->symbolTables, data->numberOfTables, sizeof(SymbolTable *));
     if (smallerTables == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
     data->symbolTables = smallerTables;
 
-    const char **smallerRecList = memoryResizeArray(
-        data->recursionList, data->numberOfTables, sizeof(const char *));
+    const char **smallerRecList =
+        memoryResizeArray(data->recursionList, data->numberOfTables, sizeof(const char *));
     if (smallerRecList == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -379,8 +377,7 @@ CompilerStatus semAnalListsSmaller(SemAnalData *data)
     return COMPILER_OK;
 }
 
-void semAnalDataDestroy(SemAnalData *data)
-{
+void semAnalDataDestroy(SemAnalData *data) {
     if (data == NULL) {
         return;
     }
@@ -597,9 +594,7 @@ CompilerStatus semAnalCheckMain(AbstractSyntaxNode *functionNode)
     return COMPILER_OK;
 }
 
-
-Symbol *semAnalCreateSymbolDefault()
-{
+Symbol *semAnalCreateSymbolDefault() {
     Symbol *symbol = memoryAllocate(sizeof(Symbol));
     if (symbol == NULL) {
         return NULL;
@@ -843,8 +838,8 @@ bool semAnalNodeEndsWithReturn(AbstractSyntaxNode *node) {
     return false;
 }
 
-
-CompilerStatus semAnalResolveFunctionReturnType(AbstractSyntaxNode *functionNode, Symbol *functionSymbol) {
+CompilerStatus semAnalResolveFunctionReturnType(AbstractSyntaxNode *functionNode,
+                                                Symbol *functionSymbol) {
     AbstractSyntaxNode *lastNode = functionNode->children[functionNode->childCount - 1];
 
     // get the last type in the body
@@ -891,7 +886,6 @@ CompilerStatus semAnalResolveFunctionReturnType(AbstractSyntaxNode *functionNode
     return COMPILER_OK;
 }
 
-
 CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalData *data) {
     if (functionNode == NULL || data == NULL || data->functionSymbols == NULL || functionNode->kind != ABSTRACT_SYNTAX_FUNCTION) {
         return COMPILER_INTERNAL_ERROR;
@@ -934,7 +928,6 @@ CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalDa
 
     return semAnalResolveFunctionReturnType(functionNode, functionSymbol);
 }
-
 
 CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SemAnalData *data) {
     if (parameterNode == NULL || data == NULL || data->symbolTables[data->numberOfTables - 1] == NULL || parameterNode->kind != ABSTRACT_SYNTAX_PARAMETER) {
@@ -1371,9 +1364,14 @@ CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SemAnalData 
     if (returnNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
+    CompilerStatus status = COMPILER_OK;
 
     if (returnNode->childCount > 0 && returnNode->children[0] != NULL) {
-        CompilerStatus status = semAnalResolveNode(returnNode->children[0], data);
+        status = semAnalResolveNode(returnNode->children[0], data);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        status = abstractSyntaxNodeCopyInferredType(returnNode, &returnNode->children[0]->type);
         if (status != COMPILER_OK) {
             return status;
         }
@@ -1383,7 +1381,8 @@ CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SemAnalData 
     }
 
     // resolve if function has declared data type
-    Symbol *functionSymbol = symbolTableFindCurrentScope(data->functionSymbols,data->recursionList[data->numberOfTables - 1]);
+    Symbol *functionSymbol = symbolTableFindCurrentScope(
+        data->functionSymbols, data->recursionList[data->numberOfTables - 1]);
     if (functionSymbol == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -1715,10 +1714,10 @@ int semAnalInRecursion(const char* funName, SemAnalData *data)
     }
 }
 
-CompilerStatus semAnalCheckRecursion(size_t recursionI, SemAnalData *data)
-{
+CompilerStatus semAnalCheckRecursion(size_t recursionI, SemAnalData *data) {
     while (recursionI < data->numberOfTables) {
-        Symbol *funSymbolTmp = symbolTableFindCurrentScope(data->functionSymbols, data->recursionList[recursionI]);
+        Symbol *funSymbolTmp =
+            symbolTableFindCurrentScope(data->functionSymbols, data->recursionList[recursionI]);
         if (funSymbolTmp == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
@@ -2085,7 +2084,8 @@ CompilerStatus semAnalResolveMemberAccess(AbstractSyntaxNode *accessNode, SemAna
     return COMPILER_TYPE_ERROR;
 }
 
-CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDeclarationNode, SemAnalData *data) {
+CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDeclarationNode,
+                                                 SemAnalData *data) {
     if (variableDeclarationNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -2208,7 +2208,8 @@ CompilerStatus semAnalResolveAssignment(AbstractSyntaxNode *assignmentNode, SemA
     return COMPILER_OK;
 }
 
-CompilerStatus semAnalResolveExpressionStatement(AbstractSyntaxNode *expressionStatementNode, SemAnalData *data) {
+CompilerStatus semAnalResolveExpressionStatement(AbstractSyntaxNode *expressionStatementNode,
+                                                 SemAnalData *data) {
     if (expressionStatementNode == NULL || data == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -2223,7 +2224,8 @@ CompilerStatus semAnalResolveExpressionStatement(AbstractSyntaxNode *expressionS
     return COMPILER_OK;
 }
 
-CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBinaryNode, SemAnalData *data) {
+CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBinaryNode,
+                                              SemAnalData *data) {
     if (expressionBinaryNode == NULL || data == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -2338,10 +2340,11 @@ CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBina
         }
     }
 
-    return COMPILER_OK;
+    return abstractSyntaxNodeSetInferredType(expressionBinaryNode, resultType);
 }
 
-CompilerStatus semAnalResolveUnaryExpression(AbstractSyntaxNode *unaryExpressionNode, SemAnalData *data) {
+CompilerStatus semAnalResolveUnaryExpression(AbstractSyntaxNode *unaryExpressionNode,
+                                             SemAnalData *data) {
     if (unaryExpressionNode == NULL || data == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -2439,7 +2442,8 @@ CompilerStatus semAnalDefineBuiltinFunctions(SymbolTable *symbols)
     BUILTIN_FUN_MACRO("toStr", 1, DATA_TYPE_STRING, DATA_TYPE_UNKNOWN, 0, 0);
     BUILTIN_FUN_MACRO("toInt", 1, DATA_TYPE_INT, DATA_TYPE_DOUBLE, 0, 0);
     BUILTIN_FUN_MACRO("strLength", 1, DATA_TYPE_INT, DATA_TYPE_STRING, 0, 0);
-    BUILTIN_FUN_MACRO("subStr", 3, DATA_TYPE_STRING, DATA_TYPE_STRING, DATA_TYPE_INT, DATA_TYPE_INT);
+    BUILTIN_FUN_MACRO("subStr", 3, DATA_TYPE_STRING, DATA_TYPE_STRING, DATA_TYPE_INT,
+                      DATA_TYPE_INT);
     BUILTIN_FUN_MACRO("ord", 2, DATA_TYPE_INT, DATA_TYPE_STRING, DATA_TYPE_INT, 0);
     BUILTIN_FUN_MACRO("chr", 1, DATA_TYPE_STRING, DATA_TYPE_INT, 0, 0);
 

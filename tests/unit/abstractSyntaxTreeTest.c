@@ -9,16 +9,18 @@
 #include <assert.h>
 #include <string.h>
 
-int main(void)
-{
+int main(void) {
     SourceLocation rootLocation = {.line = 3, .column = 5};
-    AbstractSyntaxNode *root =
-        abstractSyntaxNodeCreate(ABSTRACT_SYNTAX_PROGRAM, rootLocation);
+    AbstractSyntaxNode *root = abstractSyntaxNodeCreate(ABSTRACT_SYNTAX_PROGRAM, rootLocation);
     assert(root != NULL);
     assert(root->kind == ABSTRACT_SYNTAX_PROGRAM);
     assert(root->location.line == 3);
     assert(root->location.column == 5);
-    assert(root->inferredType == DATA_TYPE_UNKNOWN);
+    assert(root->type.datatypeBitflag == 0);
+    assert(root->type.aliases == NULL);
+    assert(root->type.recursiveTypes == NULL);
+    assert(!root->isMutable);
+    assert(!root->isEntryFunction);
     assert(root->text == NULL);
     assert(root->children == NULL);
     assert(root->childCount == 0);

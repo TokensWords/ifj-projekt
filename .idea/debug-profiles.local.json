@@ -1,0 +1,10 @@
+{
+  "debug-profiles": [
+    {
+      "id": "9656889d-0f75-4e21-b69e-61f756a9440a",
+      "type": "gdb",
+      "name": "/usr/bin/gdb",
+      "executable": "/usr/bin/gdb"
+    }
+  ]
+}
