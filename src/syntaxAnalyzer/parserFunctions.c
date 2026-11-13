@@ -8,8 +8,8 @@
 #include "parserFunctions.h"
 
 #include "parserExpressions.h"
-#include "parserLiterals.h"
 #include "parserStatements.h"
+#include "parserTypes.h"
 #include "syntax.h"
 #include "syntaxAnalyzerUtils.h"
 
@@ -42,7 +42,7 @@ static CompilerStatus parseParameter(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyn
     if (status != COMPILER_OK) {
         goto cleanup;
     }
-    status = analyzerTypesParseDataType(syntaxAnalyzer, &parameter->variableType);
+    status = analyzerTypesParseType(syntaxAnalyzer, &parameter->type);
     if (status != COMPILER_OK) {
         goto cleanup;
     }
@@ -131,7 +131,7 @@ static CompilerStatus parseFunctionReturnType(SyntaxAnalyzer *syntaxAnalyzer,
     if (status != COMPILER_OK) {
         return status;
     }
-    return analyzerTypesParseDataType(syntaxAnalyzer, &function->variableType);
+    return analyzerTypesParseType(syntaxAnalyzer, &function->type);
 }
 
 static CompilerStatus parseFunctionBody(SyntaxAnalyzer *syntaxAnalyzer,

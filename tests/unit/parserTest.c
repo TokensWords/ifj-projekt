@@ -1,5 +1,6 @@
 #include "parserExpressions.h"
 #include "parserStatements.h"
+#include "parserTypes.h"
 #include "syntaxAnalyzer.h"
 #include "syntaxOperators.h"
 
@@ -95,7 +96,159 @@ static CompilerStatus parseBlockTokens(const TestToken *tokens, size_t tokenCoun
 #define TEST_TOKEN(tokenType, tokenText, tokenLine, tokenColumn)                                   \
     {tokenType, tokenText, tokenLine, tokenColumn, 0}
 
+static CompilerStatus parseTypeTokens(const TestToken *tokens, size_t tokenCount,
+                                      TypeDescriptor *outType) {
+    struct LexicalAnalyzer lexerState = {
+        .tokens = tokens, .tokenCount = tokenCount, .nextToken = 0};
+    SyntaxAnalyzer *syntaxAnalyzer = syntaxAnalyzerCreate((LexicalAnalyzer *)&lexerState);
+    assert(syntaxAnalyzer != NULL);
+    CompilerStatus status = analyzerTypesParseType(syntaxAnalyzer, outType);
+    syntaxAnalyzerDestroy(syntaxAnalyzer);
+    return status;
+}
+
 int main(void) {
+    static const TestToken flattenedUnionTokens[] = {
+        TEST_TOKEN(TOKEN_KEYWORD, "Int", 1, 1),    TEST_TOKEN(TOKEN_OPERATOR, "|", 1, 5),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 7),   TEST_TOKEN(TOKEN_KEYWORD, "Double", 1, 8),
+        TEST_TOKEN(TOKEN_OPERATOR, "|", 1, 15),    TEST_TOKEN(TOKEN_KEYWORD, "String", 1, 17),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 23), TEST_TOKEN(TOKEN_OPERATOR, "|", 1, 25),
+        TEST_TOKEN(TOKEN_KEYWORD, "Int", 1, 27),   TEST_TOKEN(TOKEN_EOF, NULL, 1, 30)};
+    TypeDescriptor parsedType;
+    typeDescriptorInit(&parsedType);
+    assert(parseTypeTokens(flattenedUnionTokens,
+                           sizeof(flattenedUnionTokens) / sizeof(flattenedUnionTokens[0]),
+                           &parsedType) == COMPILER_OK);
+    assert(parsedType.datatypeBitflag ==
+           (DATA_TYPE_INT | DATA_TYPE_DOUBLE | DATA_TYPE_STRING));
+    assert(typeDescriptorContainsLiteralType(&parsedType, DATA_TYPE_INT));
+    assert(typeDescriptorRemoveLiteralType(&parsedType, DATA_TYPE_DOUBLE) == COMPILER_OK);
+    assert(!typeDescriptorContainsLiteralType(&parsedType, DATA_TYPE_DOUBLE));
+    assert(typeDescriptorAddLiteralType(&parsedType, DATA_TYPE_DOUBLE) == COMPILER_OK);
+    assert(parsedType.datatypeBitflag ==
+           (DATA_TYPE_INT | DATA_TYPE_DOUBLE | DATA_TYPE_STRING));
+
+    TypeDescriptorAliasNode *aliasNode = NULL;
+    assert(typeDescriptorAliasNodeInit(&aliasNode, "First") == COMPILER_OK);
+    assert(typeDescriptorAddAlias(&parsedType, aliasNode) == COMPILER_OK);
+    assert((parsedType.datatypeBitflag & DATA_TYPE_ALIAS) != 0);
+    assert(typeDescriptorAliasNodeInit(&aliasNode, "First") == COMPILER_OK);
+    assert(typeDescriptorAddAlias(&parsedType, aliasNode) == COMPILER_OK);
+    assert(parsedType.aliases != NULL && parsedType.aliases->next == NULL);
+    aliasNode = typeDescriptorPopAlias(&parsedType);
+    assert(aliasNode != NULL && strcmp(aliasNode->name, "First") == 0);
+    typeDescriptorAliasNodeFree(aliasNode);
+    assert((parsedType.datatypeBitflag & DATA_TYPE_ALIAS) == 0);
+
+    TypeDescriptorAliasNode *classNode = NULL;
+    assert(typeDescriptorAliasNodeInit(&classNode, "Point") == COMPILER_OK);
+    assert(typeDescriptorAddClass(&parsedType, classNode) == COMPILER_OK);
+    assert((parsedType.datatypeBitflag & DATA_TYPE_CASE_CLASS) != 0);
+    classNode = typeDescriptorPopClass(&parsedType);
+    assert(classNode != NULL && strcmp(classNode->name, "Point") == 0);
+    typeDescriptorAliasNodeFree(classNode);
+    assert((parsedType.datatypeBitflag & DATA_TYPE_CASE_CLASS) == 0);
+
+    TypeDescriptor element;
+    TypeDescriptor baseElement;
+    typeDescriptorInit(&element);
+    typeDescriptorInit(&baseElement);
+    assert(typeDescriptorAddLiteralType(&baseElement, DATA_TYPE_INT) == COMPILER_OK);
+    TypeDescriptorRecursiveNode *innerNode = NULL;
+    assert(typeDescriptorRecursiveNodeInit(&innerNode, &baseElement) == COMPILER_OK);
+    assert(typeDescriptorAddRecursiveType(&element, innerNode) == COMPILER_OK);
+    TypeDescriptorRecursiveNode *recursiveNode = NULL;
+    assert(typeDescriptorRecursiveNodeInit(&recursiveNode, &element) == COMPILER_OK);
+    assert(typeDescriptorAddRecursiveType(&parsedType, recursiveNode) == COMPILER_OK);
+    assert((parsedType.datatypeBitflag & DATA_TYPE_LIST) != 0);
+    assert(typeDescriptorRecursiveNodeInit(&recursiveNode, &element) == COMPILER_OK);
+    assert(typeDescriptorAddRecursiveType(&parsedType, recursiveNode) == COMPILER_OK);
+    assert(parsedType.recursiveTypes != NULL && parsedType.recursiveTypes->next == NULL);
+    recursiveNode = typeDescriptorPopRecursiveType(&parsedType);
+    assert(recursiveNode != NULL);
+    typeDescriptorRecursiveNodeFree(recursiveNode);
+    assert((parsedType.datatypeBitflag & DATA_TYPE_LIST) == 0);
+    typeDescriptorFree(&element);
+    typeDescriptorFree(&baseElement);
+    typeDescriptorFree(&parsedType);
+
+    static const TestToken listUnionTypeTokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "List", 1, 1),
+                                                    TEST_TOKEN(TOKEN_LEFT_SHARP_PAREN, "[", 1, 5),
+                                                    TEST_TOKEN(TOKEN_KEYWORD, "Int", 1, 6),
+                                                    TEST_TOKEN(TOKEN_OPERATOR, "|", 1, 10),
+                                                    TEST_TOKEN(TOKEN_IDENTIFIER, "Scalar", 1, 12),
+                                                    TEST_TOKEN(TOKEN_RIGHT_SHARP_PAREN, "]", 1, 18),
+                                                    TEST_TOKEN(TOKEN_EOF, NULL, 1, 19)};
+    typeDescriptorInit(&parsedType);
+    assert(parseTypeTokens(listUnionTypeTokens,
+                           sizeof(listUnionTypeTokens) / sizeof(listUnionTypeTokens[0]),
+                           &parsedType) == COMPILER_OK);
+    assert(parsedType.recursiveTypes != NULL);
+    const TypeDescriptorRecursiveNode *listType = parsedType.recursiveTypes;
+    assert(listType->elementType.datatypeBitflag == (DATA_TYPE_INT | DATA_TYPE_ALIAS));
+    assert(listType->elementType.aliases != NULL);
+    assert(strcmp(listType->elementType.aliases->name, "Scalar") == 0);
+    typeDescriptorFree(&parsedType);
+
+    static const TestToken typeAliasTokens[] = {
+        TEST_TOKEN(TOKEN_KEYWORD, "type", 1, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "Scalar", 1, 6),
+        TEST_TOKEN(TOKEN_OPERATOR, "=", 1, 13),  TEST_TOKEN(TOKEN_KEYWORD, "Int", 1, 15),
+        TEST_TOKEN(TOKEN_OPERATOR, "|", 1, 19),  TEST_TOKEN(TOKEN_KEYWORD, "String", 1, 21),
+        TEST_TOKEN(TOKEN_EOF, NULL, 1, 27)};
+    struct LexicalAnalyzer aliasLexerState = {.tokens = typeAliasTokens,
+                                              .tokenCount = sizeof(typeAliasTokens) /
+                                                            sizeof(typeAliasTokens[0]),
+                                              .nextToken = 0};
+    SyntaxAnalyzer *aliasSyntaxAnalyzer = syntaxAnalyzerCreate((LexicalAnalyzer *)&aliasLexerState);
+    assert(aliasSyntaxAnalyzer != NULL);
+    AbstractSyntaxNode *typeAlias = NULL;
+    assert(analyzerTypesParseAlias(aliasSyntaxAnalyzer, &typeAlias) == COMPILER_OK);
+    assert(typeAlias->kind == ABSTRACT_SYNTAX_TYPE_ALIAS);
+    assert(strcmp(typeAlias->text, "Scalar") == 0);
+    assert(typeAlias->type.datatypeBitflag == (DATA_TYPE_INT | DATA_TYPE_STRING));
+    abstractSyntaxNodeDestroy(typeAlias);
+    syntaxAnalyzerDestroy(aliasSyntaxAnalyzer);
+
+    static const TestToken programWithAliasTokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "import", 1, 1),
+                                                       TEST_TOKEN(TOKEN_IDENTIFIER, "ifj26", 1, 8),
+                                                       TEST_TOKEN(TOKEN_DOT, ".", 1, 13),
+                                                       TEST_TOKEN(TOKEN_OPERATOR, "*", 1, 14),
+                                                       TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 15),
+                                                       TEST_TOKEN(TOKEN_KEYWORD, "type", 2, 1),
+                                                       TEST_TOKEN(TOKEN_IDENTIFIER, "Scalar", 2, 6),
+                                                       TEST_TOKEN(TOKEN_OPERATOR, "=", 2, 13),
+                                                       TEST_TOKEN(TOKEN_KEYWORD, "Int", 2, 15),
+                                                       TEST_TOKEN(TOKEN_OPERATOR, "|", 2, 19),
+                                                       TEST_TOKEN(TOKEN_KEYWORD, "String", 2, 21),
+                                                       TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 27),
+                                                       TEST_TOKEN(TOKEN_AT, "@", 3, 1),
+                                                       TEST_TOKEN(TOKEN_KEYWORD, "main", 3, 2),
+                                                       TEST_TOKEN(TOKEN_KEYWORD, "def", 3, 7),
+                                                       TEST_TOKEN(TOKEN_IDENTIFIER, "main", 3, 11),
+                                                       TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 3, 15),
+                                                       TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 3, 16),
+                                                       TEST_TOKEN(TOKEN_COLON, ":", 3, 17),
+                                                       TEST_TOKEN(TOKEN_KEYWORD, "Unit", 3, 19),
+                                                       TEST_TOKEN(TOKEN_OPERATOR, "=", 3, 24),
+                                                       TEST_TOKEN(TOKEN_IDENTIFIER, "print", 3, 26),
+                                                       TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 3, 31),
+                                                       TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 3, 32),
+                                                       TEST_TOKEN(TOKEN_EOF, NULL, 3, 33)};
+    struct LexicalAnalyzer programLexerState = {.tokens = programWithAliasTokens,
+                                                .tokenCount = sizeof(programWithAliasTokens) /
+                                                              sizeof(programWithAliasTokens[0]),
+                                                .nextToken = 0};
+    SyntaxAnalyzer *programSyntaxAnalyzer =
+        syntaxAnalyzerCreate((LexicalAnalyzer *)&programLexerState);
+    assert(programSyntaxAnalyzer != NULL);
+    SourceProgram *programWithAlias = NULL;
+    assert(syntaxAnalyzerParseProgram(programSyntaxAnalyzer, &programWithAlias) == COMPILER_OK);
+    assert(programWithAlias->root->childCount == 2);
+    assert(programWithAlias->root->children[0]->kind == ABSTRACT_SYNTAX_TYPE_ALIAS);
+    assert(programWithAlias->root->children[1]->kind == ABSTRACT_SYNTAX_FUNCTION);
+    sourceProgramDestroy(programWithAlias);
+    syntaxAnalyzerDestroy(programSyntaxAnalyzer);
+
     static const TestToken tokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "import", 1, 1),
                                        TEST_TOKEN(TOKEN_IDENTIFIER, "ifj26", 1, 8),
                                        TEST_TOKEN(TOKEN_DOT, ".", 1, 13),
@@ -841,7 +994,7 @@ int main(void) {
     AbstractSyntaxNode *declaration = body->children[0];
     assert(declaration->kind == ABSTRACT_SYNTAX_VARIABLE_DECLARATION);
     assert(declaration->isMutable);
-    assert(declaration->variableType == DATA_TYPE_INT);
+    assert(declaration->type.datatypeBitflag == DATA_TYPE_INT);
     assert(declaration->childCount == 1);
 
     AbstractSyntaxNode *addition = declaration->children[0];
@@ -991,6 +1144,219 @@ int main(void) {
     assert(unaryMinusNode->children[0]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
     sourceProgramDestroy(program);
     syntaxAnalyzerDestroy(syntaxAnalyzer);
+
+    static const TestToken caseClassTokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "import", 1, 1),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "ifj26", 1, 8),
+                                                TEST_TOKEN(TOKEN_DOT, ".", 1, 13),
+                                                TEST_TOKEN(TOKEN_OPERATOR, "*", 1, 14),
+                                                TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 15),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "case", 2, 1),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "class", 2, 6),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "Point", 2, 12),
+                                                TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 2, 17),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "x", 2, 18),
+                                                TEST_TOKEN(TOKEN_COLON, ":", 2, 19),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "Int", 2, 21),
+                                                TEST_TOKEN(TOKEN_COMMA, ",", 2, 24),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "y", 2, 26),
+                                                TEST_TOKEN(TOKEN_COLON, ":", 2, 27),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "Int", 2, 29),
+                                                TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 2, 32),
+                                                TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 33),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "case", 3, 1),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "class", 3, 6),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "Empty", 3, 12),
+                                                TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 3, 17),
+                                                TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 3, 18),
+                                                TEST_TOKEN(TOKEN_NEWLINE, NULL, 3, 19),
+                                                TEST_TOKEN(TOKEN_AT, "@", 4, 1),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "main", 4, 2),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "def", 4, 7),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "main", 4, 11),
+                                                TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 4, 15),
+                                                TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 4, 16),
+                                                TEST_TOKEN(TOKEN_COLON, ":", 4, 17),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "Unit", 4, 19),
+                                                TEST_TOKEN(TOKEN_OPERATOR, "=", 4, 24),
+                                                TEST_TOKEN(TOKEN_NEWLINE, NULL, 4, 25),
+                                                TEST_TOKEN(TOKEN_INDENT, NULL, 5, 1),
+                                                TEST_TOKEN(TOKEN_KEYWORD, "val", 5, 3),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "i", 5, 7),
+                                                TEST_TOKEN(TOKEN_COLON, ":", 5, 9),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "Point", 5, 11),
+                                                TEST_TOKEN(TOKEN_OPERATOR, "=", 5, 17),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "Point", 5, 19),
+                                                TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 5, 24),
+                                                {TOKEN_INT_LITERAL, "10", 5, 25, 10},
+                                                TEST_TOKEN(TOKEN_COMMA, ",", 5, 27),
+                                                {TOKEN_INT_LITERAL, "20", 5, 29, 20},
+                                                TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 5, 31),
+                                                TEST_TOKEN(TOKEN_NEWLINE, NULL, 5, 32),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "print", 6, 3),
+                                                TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 6, 8),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "i", 6, 9),
+                                                TEST_TOKEN(TOKEN_DOT, ".", 6, 10),
+                                                TEST_TOKEN(TOKEN_IDENTIFIER, "x", 6, 11),
+                                                TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 6, 12),
+                                                TEST_TOKEN(TOKEN_NEWLINE, NULL, 6, 13),
+                                                TEST_TOKEN(TOKEN_DEDENT, NULL, 7, 1),
+                                                TEST_TOKEN(TOKEN_EOF, NULL, 7, 1)};
+    struct LexicalAnalyzer caseClassLexerState = {.tokens = caseClassTokens,
+                                                  .tokenCount = sizeof(caseClassTokens) /
+                                                                sizeof(caseClassTokens[0]),
+                                                  .nextToken = 0};
+    syntaxAnalyzer = syntaxAnalyzerCreate((LexicalAnalyzer *)&caseClassLexerState);
+    assert(syntaxAnalyzer != NULL);
+    program = NULL;
+    assert(syntaxAnalyzerParseProgram(syntaxAnalyzer, &program) == COMPILER_OK);
+    assert(program->root->childCount == 3);
+    AbstractSyntaxNode *pointClass = program->root->children[0];
+    assert(pointClass->kind == ABSTRACT_SYNTAX_CASE_CLASS);
+    assert(strcmp(pointClass->text, "Point") == 0);
+    assert(pointClass->childCount == 2);
+    assert(pointClass->children[0]->kind == ABSTRACT_SYNTAX_CASE_CLASS_FIELD);
+    assert(strcmp(pointClass->children[0]->text, "x") == 0);
+    assert(pointClass->children[0]->type.datatypeBitflag == DATA_TYPE_INT);
+    assert(strcmp(pointClass->children[1]->text, "y") == 0);
+    AbstractSyntaxNode *emptyClass = program->root->children[1];
+    assert(emptyClass->kind == ABSTRACT_SYNTAX_CASE_CLASS);
+    assert(strcmp(emptyClass->text, "Empty") == 0 && emptyClass->childCount == 0);
+    AbstractSyntaxNode *caseMain = program->root->children[2];
+    AbstractSyntaxNode *caseBody = caseMain->children[0];
+    AbstractSyntaxNode *pointValue = caseBody->children[0];
+    assert(pointValue->kind == ABSTRACT_SYNTAX_VARIABLE_DECLARATION);
+    assert(pointValue->type.aliases != NULL);
+    assert(strcmp(pointValue->type.aliases->name, "Point") == 0);
+    assert(pointValue->children[0]->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
+    assert(pointValue->children[0]->childCount == 3);
+    AbstractSyntaxNode *printCall = caseBody->children[1];
+    assert(printCall->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
+    assert(printCall->children[1]->kind == ABSTRACT_SYNTAX_MEMBER_ACCESS);
+    assert(strcmp(printCall->children[1]->text, "x") == 0);
+    sourceProgramDestroy(program);
+    syntaxAnalyzerDestroy(syntaxAnalyzer);
+
+    static const TestToken matchExpressionTokens[] = {
+        TEST_TOKEN(TOKEN_IDENTIFIER, "value", 1, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "match", 1, 7),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 12),
+        TEST_TOKEN(TOKEN_INDENT, NULL, 2, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "case", 2, 3),
+        {TOKEN_INT_LITERAL, "0", 2, 8, 0},
+        TEST_TOKEN(TOKEN_OPERATOR, "=>", 2, 10),
+        TEST_TOKEN(TOKEN_STRING_LITERAL, "zero", 2, 13),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 19),
+        TEST_TOKEN(TOKEN_KEYWORD, "case", 3, 3),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "n", 3, 8),
+        TEST_TOKEN(TOKEN_COLON, ":", 3, 9),
+        TEST_TOKEN(TOKEN_KEYWORD, "Int", 3, 11),
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 3, 15),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "n", 3, 18),
+        TEST_TOKEN(TOKEN_OPERATOR, ">", 3, 20),
+        {TOKEN_INT_LITERAL, "0", 3, 22, 0},
+        TEST_TOKEN(TOKEN_OPERATOR, "=>", 3, 24),
+        TEST_TOKEN(TOKEN_STRING_LITERAL, "positive", 3, 27),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 3, 37),
+        TEST_TOKEN(TOKEN_KEYWORD, "case", 4, 3),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "Point", 4, 8),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 4, 13),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "a", 4, 14),
+        TEST_TOKEN(TOKEN_COMMA, ",", 4, 15),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "Inner", 4, 17),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 4, 22),
+        TEST_TOKEN(TOKEN_INT_LITERAL, "1", 4, 23),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 4, 24),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 4, 25),
+        TEST_TOKEN(TOKEN_OPERATOR, "=>", 4, 27),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "a", 4, 30),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 4, 31),
+        TEST_TOKEN(TOKEN_KEYWORD, "case", 5, 3),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "text", 5, 8),
+        TEST_TOKEN(TOKEN_COLON, ":", 5, 12),
+        TEST_TOKEN(TOKEN_KEYWORD, "String", 5, 14),
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 5, 21),
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 5, 24),
+        TEST_TOKEN(TOKEN_BOOL_LITERAL, "true", 5, 27),
+        TEST_TOKEN(TOKEN_KEYWORD, "then", 5, 32),
+        TEST_TOKEN(TOKEN_BOOL_LITERAL, "true", 5, 37),
+        TEST_TOKEN(TOKEN_KEYWORD, "else", 5, 42),
+        TEST_TOKEN(TOKEN_BOOL_LITERAL, "false", 5, 47),
+        TEST_TOKEN(TOKEN_OPERATOR, "=>", 5, 53),
+        TEST_TOKEN(TOKEN_STRING_LITERAL, "guarded", 5, 56),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 5, 65),
+        TEST_TOKEN(TOKEN_KEYWORD, "case", 6, 3),
+        TEST_TOKEN(TOKEN_UNDERSCORE, "_", 6, 8),
+        TEST_TOKEN(TOKEN_OPERATOR, "=>", 6, 10),
+        TEST_TOKEN(TOKEN_STRING_LITERAL, "other", 6, 13),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 6, 20),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 7, 1),
+        TEST_TOKEN(TOKEN_EOF, NULL, 7, 1)};
+    AbstractSyntaxNode *matchExpression = NULL;
+    assert(parseExpressionTokens(matchExpressionTokens,
+                                 sizeof(matchExpressionTokens) / sizeof(matchExpressionTokens[0]),
+                                 &matchExpression) == COMPILER_OK);
+    assert(matchExpression->kind == ABSTRACT_SYNTAX_MATCH_EXPRESSION);
+    assert(matchExpression->childCount == 6);
+    assert(matchExpression->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    AbstractSyntaxNode *literalCase = matchExpression->children[1];
+    assert(literalCase->kind == ABSTRACT_SYNTAX_MATCH_CASE && literalCase->childCount == 2);
+    assert(literalCase->children[0]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    assert(literalCase->children[1]->kind == ABSTRACT_SYNTAX_STRING_LITERAL);
+    AbstractSyntaxNode *guardedCase = matchExpression->children[2];
+    assert(guardedCase->childCount == 3);
+    assert(guardedCase->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    assert(strcmp(guardedCase->children[0]->text, "n") == 0);
+    assert(guardedCase->children[0]->type.datatypeBitflag == DATA_TYPE_INT);
+    assert(guardedCase->children[1]->kind == ABSTRACT_SYNTAX_MATCH_GUARD);
+    assert(guardedCase->children[1]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    AbstractSyntaxNode *constructorCase = matchExpression->children[3];
+    assert(constructorCase->children[0]->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
+    assert(constructorCase->children[0]->childCount == 3);
+    assert(constructorCase->children[0]->children[1]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    assert(constructorCase->children[0]->children[2]->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
+    AbstractSyntaxNode *ifGuardedCase = matchExpression->children[4];
+    assert(ifGuardedCase->children[1]->kind == ABSTRACT_SYNTAX_MATCH_GUARD);
+    assert(ifGuardedCase->children[1]->children[0]->kind == ABSTRACT_SYNTAX_IF_EXPRESSION);
+    assert(matchExpression->children[5]->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    assert(strcmp(matchExpression->children[5]->children[0]->text, "_") == 0);
+    abstractSyntaxNodeDestroy(matchExpression);
+
+    static const TestToken matchWithoutDefaultTokens[] = {
+        TEST_TOKEN(TOKEN_IDENTIFIER, "value", 1, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "match", 1, 7),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 12),
+        TEST_TOKEN(TOKEN_INDENT, NULL, 2, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "case", 2, 3),
+        TEST_TOKEN(TOKEN_BOOL_LITERAL, "true", 2, 8),
+        TEST_TOKEN(TOKEN_OPERATOR, "=>", 2, 13),
+        TEST_TOKEN(TOKEN_BOOL_LITERAL, "false", 2, 16),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 21),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 3, 1),
+        TEST_TOKEN(TOKEN_EOF, NULL, 3, 1)};
+    assert(parseExpressionTokens(matchWithoutDefaultTokens,
+                                 sizeof(matchWithoutDefaultTokens) /
+                                     sizeof(matchWithoutDefaultTokens[0]),
+                                 &matchExpression) == COMPILER_SYNTAX_ERROR);
+    assert(matchExpression == NULL);
+
+    static const TestToken guardedWildcardTokens[] = {
+        TEST_TOKEN(TOKEN_IDENTIFIER, "value", 1, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "match", 1, 7),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 12),
+        TEST_TOKEN(TOKEN_INDENT, NULL, 2, 1),
+        TEST_TOKEN(TOKEN_KEYWORD, "case", 2, 3),
+        TEST_TOKEN(TOKEN_UNDERSCORE, "_", 2, 8),
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 2, 10),
+        TEST_TOKEN(TOKEN_BOOL_LITERAL, "true", 2, 13),
+        TEST_TOKEN(TOKEN_OPERATOR, "=>", 2, 18),
+        TEST_TOKEN(TOKEN_BOOL_LITERAL, "false", 2, 21),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 26),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 3, 1),
+        TEST_TOKEN(TOKEN_EOF, NULL, 3, 1)};
+    assert(parseExpressionTokens(guardedWildcardTokens,
+                                 sizeof(guardedWildcardTokens) / sizeof(guardedWildcardTokens[0]),
+                                 &matchExpression) == COMPILER_SYNTAX_ERROR);
+    assert(matchExpression == NULL);
     return 0;
 }
 

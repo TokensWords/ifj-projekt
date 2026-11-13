@@ -9,6 +9,7 @@
 
 #include "syntaxAnalyzer.h"
 #include "parserFunctions.h"
+#include "parserTypes.h"
 #include "syntax.h"
 #include "syntaxAnalyzerUtils.h"
 
@@ -122,13 +123,19 @@ CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer,
         }
 
         AbstractSyntaxNode *functionNode = NULL;
-        status = parseFunction(syntaxAnalyzer, &functionNode);
+        if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_TYPE)) {
+            status = analyzerTypesParseAlias(syntaxAnalyzer, &functionNode);
+        } else if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_CASE)) {
+            status = analyzerTypesParseCaseClass(syntaxAnalyzer, &functionNode);
+        } else {
+            status = parseFunction(syntaxAnalyzer, &functionNode);
+        }
         if (status != COMPILER_OK) {
             abstractSyntaxNodeDestroy(functionNode);
             break;
         }
 
-        if (functionNode->isEntryFunction) {
+        if (functionNode->kind == ABSTRACT_SYNTAX_FUNCTION && functionNode->isEntryFunction) {
             if (hasEntryFunction) {
                 abstractSyntaxNodeDestroy(functionNode);
                 status = COMPILER_REDEFINITION_ERROR;

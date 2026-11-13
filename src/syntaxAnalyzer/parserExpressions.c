@@ -6,6 +6,7 @@
  */
 
 #include "parserExpressions.h"
+#include "parserTypes.h"
 
 #include "syntaxAnalyzerUtils.h"
 
@@ -16,6 +17,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 static CompilerStatus parseIfExpressionBranch(SyntaxAnalyzer *syntaxAnalyzer,
                                               AbstractSyntaxNode **outNode, bool *outIsMultiline,
@@ -235,7 +237,11 @@ CompilerStatus parseTerm(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **ou
         if (unit == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
-        unit->inferredType = DATA_TYPE_UNIT;
+        status = abstractSyntaxNodeSetInferredType(unit, DATA_TYPE_UNIT);
+        if (status != COMPILER_OK) {
+            abstractSyntaxNodeDestroy(unit);
+            return status;
+        }
 
         status = advanceToken(syntaxAnalyzer);
         if (status == COMPILER_OK) {
@@ -280,7 +286,11 @@ CompilerStatus parseTerm(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **ou
     if (node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    node->inferredType = inferredType;
+    status = abstractSyntaxNodeSetInferredType(node, inferredType);
+    if (status != COMPILER_OK) {
+        abstractSyntaxNodeDestroy(node);
+        return status;
+    }
 
     if (nodeType == ABSTRACT_SYNTAX_INT_LITERAL) {
         node->value.intValue = token->value.intValue;
@@ -458,7 +468,11 @@ static CompilerStatus parseExpressionOperand(SyntaxAnalyzer *syntaxAnalyzer,
                 status = COMPILER_INTERNAL_ERROR;
                 goto cleanup;
             }
-            unit->inferredType = DATA_TYPE_UNIT;
+            status = abstractSyntaxNodeSetInferredType(unit, DATA_TYPE_UNIT);
+            if (status != COMPILER_OK) {
+                abstractSyntaxNodeDestroy(unit);
+                goto cleanup;
+            }
             *outNode = unit;
             status = advanceToken(syntaxAnalyzer);
             if (status == COMPILER_OK) {
@@ -555,6 +569,324 @@ CompilerStatus analyzerExpressionsParseValueOrCall(SyntaxAnalyzer *syntaxAnalyze
         return status;
     }
     return analyzerExpressionsParse(syntaxAnalyzer, outNode);
+}
+
+static CompilerStatus parseMatchPattern(SyntaxAnalyzer *syntaxAnalyzer,
+                                        AbstractSyntaxNode **outPattern, bool allowUntypedBinding) {
+    CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    *outPattern = NULL;
+
+    Token *token = syntaxAnalyzer->currentToken;
+    if (token->type == TOKEN_UNDERSCORE) {
+        AbstractSyntaxNode *pattern = createNode(ABSTRACT_SYNTAX_IDENTIFIER, token->location);
+        if (pattern == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+        status = setNodeText(pattern, token->lexeme);
+        if (status == COMPILER_OK) {
+            status = advanceToken(syntaxAnalyzer);
+        }
+        if (status != COMPILER_OK) {
+            abstractSyntaxNodeDestroy(pattern);
+            return status;
+        }
+        *outPattern = pattern;
+        return COMPILER_OK;
+    }
+
+    bool isLiteral = token->type == TOKEN_INT_LITERAL || token->type == TOKEN_DOUBLE_LITERAL ||
+                     token->type == TOKEN_STRING_LITERAL || token->type == TOKEN_BOOL_LITERAL ||
+                     token->type == TOKEN_UNIT_LITERAL || token->type == TOKEN_LEFT_PAREN;
+    bool isSignedLiteral = token->type == TOKEN_OPERATOR && (tokenHasText(token, SYNTAX_OP_PLUS) ||
+                                                             tokenHasText(token, SYNTAX_OP_MINUS));
+    if (isLiteral || isSignedLiteral) {
+        AbstractSyntaxNode *literal = NULL;
+        if (isSignedLiteral) {
+            status = analyzerExpressionsParse(syntaxAnalyzer, &literal);
+            if (status == COMPILER_OK &&
+                (literal->kind != ABSTRACT_SYNTAX_UNARY_EXPRESSION || literal->childCount != 1 ||
+                 (literal->children[0]->kind != ABSTRACT_SYNTAX_INT_LITERAL &&
+                  literal->children[0]->kind != ABSTRACT_SYNTAX_DOUBLE_LITERAL))) {
+                status = COMPILER_SYNTAX_ERROR;
+            }
+        } else {
+            status = parseTerm(syntaxAnalyzer, &literal);
+        }
+        if (status != COMPILER_OK) {
+            abstractSyntaxNodeDestroy(literal);
+            return status;
+        }
+        *outPattern = literal;
+        return COMPILER_OK;
+    }
+
+    if (!isIdentifierToken(token)) {
+        return COMPILER_SYNTAX_ERROR;
+    }
+
+    SourceLocation location = token->location;
+    AbstractSyntaxNode *identifier = createNode(ABSTRACT_SYNTAX_IDENTIFIER, location);
+    AbstractSyntaxNode *constructor = NULL;
+    if (identifier == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    status = setNodeText(identifier, token->lexeme);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = advanceToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    if (currentIsType(syntaxAnalyzer, TOKEN_COLON)) {
+        status = advanceToken(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        status = analyzerTypesParseType(syntaxAnalyzer, &identifier->type);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+    } else if (currentIsType(syntaxAnalyzer, TOKEN_LEFT_PAREN)) {
+        constructor = createNode(ABSTRACT_SYNTAX_CALL_EXPRESSION, location);
+        if (constructor == NULL) {
+            status = COMPILER_INTERNAL_ERROR;
+            goto cleanup;
+        }
+        status = appendOwnedChild(constructor, identifier);
+        identifier = NULL;
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        status = advanceToken(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        while (!currentIsType(syntaxAnalyzer, TOKEN_RIGHT_PAREN)) {
+            AbstractSyntaxNode *childPattern = NULL;
+            status = parseMatchPattern(syntaxAnalyzer, &childPattern, true);
+            if (status != COMPILER_OK) {
+                abstractSyntaxNodeDestroy(childPattern);
+                goto cleanup;
+            }
+            status = appendOwnedChild(constructor, childPattern);
+            if (status != COMPILER_OK) {
+                goto cleanup;
+            }
+            if (currentIsType(syntaxAnalyzer, TOKEN_RIGHT_PAREN)) {
+                break;
+            }
+            status = expectType(syntaxAnalyzer, TOKEN_COMMA);
+            if (status != COMPILER_OK) {
+                goto cleanup;
+            }
+            if (currentIsType(syntaxAnalyzer, TOKEN_RIGHT_PAREN)) {
+                break;
+            }
+        }
+        status = expectType(syntaxAnalyzer, TOKEN_RIGHT_PAREN);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+    } else if (!allowUntypedBinding) {
+        status = COMPILER_SYNTAX_ERROR;
+        goto cleanup;
+    }
+
+    *outPattern = constructor != NULL ? constructor : identifier;
+    constructor = NULL;
+    identifier = NULL;
+    return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(identifier);
+    abstractSyntaxNodeDestroy(constructor);
+    return status;
+}
+
+static bool isWildcardPattern(const AbstractSyntaxNode *pattern) {
+    return pattern != NULL && pattern->kind == ABSTRACT_SYNTAX_IDENTIFIER &&
+           pattern->text != NULL && strcmp(pattern->text, SYNTAX_PATTERN_WILDCARD) == 0;
+}
+
+static CompilerStatus parseMatchCase(SyntaxAnalyzer *syntaxAnalyzer,
+                                     AbstractSyntaxNode **outMatchCase) {
+    *outMatchCase = NULL;
+    CompilerStatus status = expectWord(syntaxAnalyzer, SYNTAX_KW_CASE);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    AbstractSyntaxNode *matchCase =
+        createNode(ABSTRACT_SYNTAX_MATCH_CASE, syntaxAnalyzer->currentToken->location);
+    AbstractSyntaxNode *pattern = NULL;
+    AbstractSyntaxNode *guard = NULL;
+    AbstractSyntaxNode *result = NULL;
+    if (matchCase == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    status = parseMatchPattern(syntaxAnalyzer, &pattern, false);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    bool isWildcard = isWildcardPattern(pattern);
+    status = appendOwnedChild(matchCase, pattern);
+    pattern = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_IF)) {
+        if (isWildcard) {
+            status = COMPILER_SYNTAX_ERROR;
+            goto cleanup;
+        }
+        SourceLocation guardLocation = syntaxAnalyzer->currentToken->location;
+        guard = createNode(ABSTRACT_SYNTAX_MATCH_GUARD, guardLocation);
+        if (guard == NULL) {
+            status = COMPILER_INTERNAL_ERROR;
+            goto cleanup;
+        }
+        status = advanceToken(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        AbstractSyntaxNode *guardExpression = NULL;
+        status = analyzerExpressionsParse(syntaxAnalyzer, &guardExpression);
+        if (status != COMPILER_OK) {
+            abstractSyntaxNodeDestroy(guardExpression);
+            goto cleanup;
+        }
+        syntaxAnalyzer->newlineConsumed = false;
+        status = appendOwnedChild(guard, guardExpression);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        status = appendOwnedChild(matchCase, guard);
+        guard = NULL;
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+    }
+
+    status = expectWord(syntaxAnalyzer, SYNTAX_OP_MATCH_ARROW);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = analyzerExpressionsParse(syntaxAnalyzer, &result);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = appendOwnedChild(matchCase, result);
+    result = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    *outMatchCase = matchCase;
+    return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(pattern);
+    abstractSyntaxNodeDestroy(guard);
+    abstractSyntaxNodeDestroy(result);
+    abstractSyntaxNodeDestroy(matchCase);
+    return status;
+}
+
+static CompilerStatus parseMatchExpression(SyntaxAnalyzer *syntaxAnalyzer,
+                                           AbstractSyntaxNode *scrutinee,
+                                           AbstractSyntaxNode **outNode) {
+    CompilerStatus status = COMPILER_OK;
+    AbstractSyntaxNode *matchExpression =
+        createNode(ABSTRACT_SYNTAX_MATCH_EXPRESSION, scrutinee->location);
+    AbstractSyntaxNode *matchCase = NULL;
+    bool hasDefaultCase = false;
+    bool previousConsumedNewline = syntaxAnalyzer->newlineConsumed;
+    syntaxAnalyzer->newlineConsumed = false;
+    if (matchExpression == NULL) {
+        abstractSyntaxNodeDestroy(scrutinee);
+        syntaxAnalyzer->newlineConsumed = previousConsumedNewline;
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    status = appendOwnedChild(matchExpression, scrutinee);
+    scrutinee = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = expectWord(syntaxAnalyzer, SYNTAX_KW_MATCH);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = expectType(syntaxAnalyzer, TOKEN_NEWLINE);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = skipNewlines(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = expectType(syntaxAnalyzer, TOKEN_INDENT);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    while (!currentIsType(syntaxAnalyzer, TOKEN_DEDENT) &&
+           !currentIsType(syntaxAnalyzer, TOKEN_EOF)) {
+        status = parseMatchCase(syntaxAnalyzer, &matchCase);
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+        bool resultConsumedNewline = syntaxAnalyzer->newlineConsumed;
+        syntaxAnalyzer->newlineConsumed = false;
+        hasDefaultCase = isWildcardPattern(matchCase->children[0]);
+        status = appendOwnedChild(matchExpression, matchCase);
+        matchCase = NULL;
+        if (status != COMPILER_OK) {
+            goto cleanup;
+        }
+
+        if (currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
+            status = skipNewlines(syntaxAnalyzer);
+            if (status != COMPILER_OK) {
+                goto cleanup;
+            }
+        } else if (!currentIsType(syntaxAnalyzer, TOKEN_DEDENT) && !resultConsumedNewline) {
+            status = COMPILER_SYNTAX_ERROR;
+            goto cleanup;
+        }
+
+        if (hasDefaultCase && !currentIsType(syntaxAnalyzer, TOKEN_DEDENT)) {
+            status = COMPILER_SYNTAX_ERROR;
+            goto cleanup;
+        }
+    }
+
+    if (!hasDefaultCase) {
+        status = COMPILER_SYNTAX_ERROR;
+        goto cleanup;
+    }
+    status = expectType(syntaxAnalyzer, TOKEN_DEDENT);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+
+    syntaxAnalyzer->newlineConsumed = previousConsumedNewline;
+    *outNode = matchExpression;
+    return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(scrutinee);
+    abstractSyntaxNodeDestroy(matchCase);
+    abstractSyntaxNodeDestroy(matchExpression);
+    syntaxAnalyzer->newlineConsumed = previousConsumedNewline;
+    return status;
 }
 
 typedef enum {
@@ -937,6 +1269,13 @@ CompilerStatus analyzerExpressionsParse(SyntaxAnalyzer *syntaxAnalyzer,
 
         if (incoming == EXPR_TERMINAL_END && stackCount == 2 &&
             stack[1].kind == EXPRESSION_STACK_NONTERMINAL) {
+            if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_MATCH)) {
+                AbstractSyntaxNode *scrutinee = stack[1].node;
+                stack[1].node = NULL;
+                status = parseMatchExpression(syntaxAnalyzer, scrutinee, outNode);
+                destroyExpressionStack(stack, stackCount);
+                return status;
+            }
             *outNode = stack[1].node;
             stack[1].node = NULL;
             if (token != NULL && (token->type == TOKEN_COMMA || token->type == TOKEN_RIGHT_PAREN)) {

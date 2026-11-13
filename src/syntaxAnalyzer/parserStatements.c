@@ -9,7 +9,7 @@
 
 #include "parserStatements.h"
 #include "parserExpressions.h"
-#include "parserLiterals.h"
+#include "parserTypes.h"
 #include "syntax.h"
 #include "syntaxAnalyzerUtils.h"
 
@@ -56,7 +56,7 @@ static CompilerStatus parseVariableDeclaration(SyntaxAnalyzer *syntaxAnalyzer,
         if (status != COMPILER_OK) {
             goto cleanup;
         }
-        status = analyzerTypesParseDataType(syntaxAnalyzer, &declaration->variableType);
+        status = analyzerTypesParseType(syntaxAnalyzer, &declaration->type);
         if (status != COMPILER_OK) {
             goto cleanup;
         }
@@ -644,7 +644,7 @@ CompilerStatus parseStatement(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode
     if (*outNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    if ((*outNode)->type == ABSTRACT_SYNTAX_FUNCTION_CALL) {
+    if ((*outNode)->kind == ABSTRACT_SYNTAX_FUNCTION_CALL) {
         return COMPILER_OK;
     }
 
