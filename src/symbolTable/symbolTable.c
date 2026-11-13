@@ -9,6 +9,7 @@
 #include "symbolTablePrivate.h"
 #include "avlTree.h"
 #include "memory.h"
+#include "typeDescriptor.h"
 
 #include <string.h>
 #include <stdbool.h>
@@ -176,8 +177,34 @@ Symbol *symbolTableFindCurrentScope(const SymbolTable *table, const char *name)
 
 void symbolTableOnRemoveAction(void *data, void *key)
 {
-    if (((Symbol *)data)->kind == SYMBOL_FUNCTION) {
-        free(((Symbol *)data)->function.parameterTypes);
+    Symbol *symbol = (Symbol *)data;
+
+    if (symbol != NULL) {
+        // free the base data type
+        if (symbol->dataType != NULL) {
+            typeDescriptorFree(symbol->dataType);
+            free(symbol->dataType);
+        }
+
+        // free function parameters and return type
+        if (symbol->kind == SYMBOL_FUNCTION || symbol->kind == SYMBOL_TYPE) {
+            if (symbol->function.parameterTypes != NULL) {
+                for (size_t i = 0; i < symbol->function.parameterCount; i++) {
+                    if (symbol->function.parameterTypes[i] != NULL) {
+                        typeDescriptorFree(symbol->function.parameterTypes[i]);
+                        free(symbol->function.parameterTypes[i]);
+                    }
+                }
+                free(symbol->function.parameterTypes);
+            }
+
+            if (symbol->function.returnType != NULL) {
+                typeDescriptorFree(symbol->function.returnType);
+                free(symbol->function.returnType);
+            }
+
+            free(symbol->function.parameterNames);
+        }
     }
 
     free(data);

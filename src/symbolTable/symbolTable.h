@@ -9,6 +9,7 @@
 #define SYMBOL_TABLE_H
 
 #include "compilerTypes.h"
+#include "typeDescriptor.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -20,15 +21,17 @@ typedef enum {
 } SymbolKind;
 
 typedef struct {
-    DataType *parameterTypes;
+    TypeDescriptor **parameterTypes;
+    char **parameterNames;
     size_t parameterCount;
-    DataType returnType;
+    TypeDescriptor *returnType;
 } FunctionSignature;
 
 typedef struct {
     const char *name;
     SymbolKind kind;
-    DataType dataType;
+    TypeDescriptor *dataType;
+    DataType variableCurrentType;
     bool mutable;
     bool defined;
     FunctionSignature function;
