@@ -1317,7 +1317,8 @@ TypeDescriptor *semAnalEvaluatesToType(AbstractSyntaxNode *node)
     if (node->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT || node->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION
         || node->kind == ABSTRACT_SYNTAX_RETURN || node->kind == ABSTRACT_SYNTAX_IF || node->kind == ABSTRACT_SYNTAX_IF_EXPRESSION
         || node->kind == ABSTRACT_SYNTAX_MATCH_EXPRESSION || node->kind == ABSTRACT_SYNTAX_MEMBER_ACCESS
-        || (node->type.datatypeBitflag & DATA_TYPE_LIST)) {
+        || ((node->type.datatypeBitflag & DATA_TYPE_LIST) && node->kind != ABSTRACT_SYNTAX_VARIABLE_DECLARATION
+            && node->kind != ABSTRACT_SYNTAX_ASSIGNMENT)) {
         return semAnalCopyTypeDescriptor(&node->type);
     }
 
@@ -1897,7 +1898,7 @@ int semAnalInRecursion(const char* funName, SemAnalData *data)
 CompilerStatus semAnalCheckRecursion(size_t recursionI, SemAnalData *data) {
     while (recursionI < data->numberOfTables) {
         Symbol *funSymbolTmp =
-            symbolTableFindCurrentScope(data->functionSymbols, data->recursionList[recursionI]);
+            symbolTableFind(data->functionSymbols, data->recursionList[recursionI]);
         if (funSymbolTmp == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }

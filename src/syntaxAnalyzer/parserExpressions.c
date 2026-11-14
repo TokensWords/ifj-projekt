@@ -6,6 +6,7 @@
  */
 
 #include "parserExpressions.h"
+#include "parserStatements.h"
 #include "parserTypes.h"
 
 #include "syntaxAnalyzerUtils.h"
@@ -773,7 +774,17 @@ static CompilerStatus parseMatchCase(SyntaxAnalyzer *syntaxAnalyzer,
     if (status != COMPILER_OK) {
         goto cleanup;
     }
-    status = analyzerExpressionsParse(syntaxAnalyzer, &result);
+    if (currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
+        status = skipNewlines(syntaxAnalyzer);
+        if (status == COMPILER_OK) {
+            status = parseBlock(syntaxAnalyzer, &result);
+        }
+        if (status == COMPILER_OK) {
+            syntaxAnalyzer->newlineConsumed = true;
+        }
+    } else {
+        status = analyzerExpressionsParse(syntaxAnalyzer, &result);
+    }
     if (status != COMPILER_OK) {
         goto cleanup;
     }
