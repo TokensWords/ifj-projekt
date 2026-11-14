@@ -885,6 +885,106 @@ bool semAnalNodeEndsWithReturn(AbstractSyntaxNode *node) {
     return false;
 }
 
+static CompilerStatus setListType(AbstractSyntaxNode *node, const TypeDescriptor *elementType) {
+    TypeDescriptorRecursiveNode *element = NULL;
+    CompilerStatus status = typeDescriptorRecursiveNodeInit(&element, elementType);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    typeDescriptorFree(&node->type);
+    status = typeDescriptorAddRecursiveType(&node->type, element);
+    if (status != COMPILER_OK) {
+        typeDescriptorRecursiveNodeFree(element);
+    }
+    return status;
+}
+
+static bool isUntypedList(const TypeDescriptor *type) {
+    return type->datatypeBitflag == DATA_TYPE_LIST && type->recursiveTypes == NULL;
+}
+
+static CompilerStatus applyListContext(AbstractSyntaxNode *node, const TypeDescriptor *expected) {
+    if (!isUntypedList(&node->type)) {
+        return COMPILER_OK;
+    }
+    if (expected == NULL || expected->recursiveTypes == NULL || expected->recursiveTypes->next != NULL) {
+        return COMPILER_TYPE_ERROR;
+    }
+    return setListType(node, &expected->recursiveTypes->elementType);
+}
+
+static CompilerStatus resolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *data, TypeDescriptor *expected);
+
+static bool isListConstructor(const AbstractSyntaxNode *node) {
+    if (node->kind != ABSTRACT_SYNTAX_CALL_EXPRESSION || node->childCount == 0) {
+        return false;
+    }
+    const AbstractSyntaxNode *callee = node->children[0];
+    return callee != NULL && callee->kind == ABSTRACT_SYNTAX_IDENTIFIER && callee->text != NULL &&
+           strcmp(callee->text, "List") == 0;
+}
+
+static bool isListConcatenation(const AbstractSyntaxNode *node) {
+    return node->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY && node->text != NULL && strcmp(node->text, "++") == 0;
+}
+
+static CompilerStatus resolveWithListContext(AbstractSyntaxNode *node, TypeDescriptor *expected, SemAnalData *data) {
+    bool hasExpectedElement = expected != NULL && expected->recursiveTypes != NULL && expected->recursiveTypes->next == NULL;
+    if (hasExpectedElement && node->kind == ABSTRACT_SYNTAX_IF_EXPRESSION && node->childCount == 3) {
+        CompilerStatus status = semAnalResolveNode(node->children[0], data);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        if (node->children[0]->type.datatypeBitflag != DATA_TYPE_BOOLEAN) {
+            return COMPILER_TYPE_ERROR;
+        }
+        for (size_t counter = 1; counter < node->childCount; counter++) {
+            AbstractSyntaxNode *branch = node->children[counter];
+            status = resolveWithListContext(branch, expected, data);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+            if (!semAnalIsSubtype(expected, &branch->type)) {
+                return COMPILER_TYPE_ERROR;
+            }
+        }
+        return abstractSyntaxNodeCopyInferredType(node, expected);
+    }
+    if (hasExpectedElement && expected->datatypeBitflag == DATA_TYPE_LIST && isListConcatenation(node)) {
+        for (size_t counter = 0; counter < node->childCount; counter++) {
+            AbstractSyntaxNode *part = node->children[counter];
+            CompilerStatus status = resolveWithListContext(part, expected, data);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+            if (!semAnalIsSubtype(expected, &part->type)) {
+                return COMPILER_TYPE_ERROR;
+            }
+        }
+        return abstractSyntaxNodeCopyInferredType(node, expected);
+    }
+    if (!hasExpectedElement || !isListConstructor(node)) {
+        CompilerStatus status = semAnalResolveNode(node, data);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        return applyListContext(node, expected);
+    }
+
+    TypeDescriptor *element = &expected->recursiveTypes->elementType;
+    for (size_t counter = 1; counter < node->childCount; counter++) {
+        AbstractSyntaxNode *argument = node->children[counter];
+        CompilerStatus status = resolveWithListContext(argument, element, data);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        if (!semAnalIsSubtype(element, &argument->type)) {
+            return COMPILER_TYPE_ERROR;
+        }
+    }
+    return setListType(node, element);
+}
+
 CompilerStatus semAnalResolveFunctionReturnType(AbstractSyntaxNode *functionNode,
                                                 Symbol *functionSymbol) {
     AbstractSyntaxNode *lastNode = functionNode->children[functionNode->childCount - 1];
@@ -897,6 +997,21 @@ CompilerStatus semAnalResolveFunctionReturnType(AbstractSyntaxNode *functionNode
 
     if (lastNode->kind == ABSTRACT_SYNTAX_BLOCK && lastNode->childCount != 0) {
         lastNode = lastNode->children[lastNode->childCount - 1];
+    }
+
+    AbstractSyntaxNode *value = lastNode;
+    if (lastNode->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT && lastNode->childCount == 1) {
+        value = lastNode->children[0];
+    }
+    if (isUntypedList(&value->type)) {
+        CompilerStatus status = applyListContext(value, functionSymbol->function.returnType);
+        if (status == COMPILER_OK && value != lastNode) {
+            status = abstractSyntaxNodeCopyInferredType(lastNode, &value->type);
+        }
+        if (status != COMPILER_OK) {
+            semAnalDestroyTypeDescriptor(lastType);
+            return status;
+        }
     }
 
     // if statement last logic
@@ -972,7 +1087,7 @@ CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalDa
     AbstractSyntaxNode *lastNode = functionNode->children[functionNode->childCount - 1];
 
     // resolving the body
-    status = semAnalResolveNode(lastNode, data);
+    status = resolveBlock(lastNode, data, functionSymbol->function.returnType);
     if (status != COMPILER_OK) {
         return status;
     }
@@ -1020,6 +1135,20 @@ CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SemAna
     parameterNode->variableId = parameterSymbol->variableId;
 
     return status;
+}
+
+static CompilerStatus resolveRange(AbstractSyntaxNode *node, SemAnalData *data) {
+    for (size_t counter = 0; counter < node->childCount; counter++) {
+        AbstractSyntaxNode *part = node->children[counter];
+        CompilerStatus status = semAnalResolveNode(part, data);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        if (part->type.datatypeBitflag != DATA_TYPE_INT) {
+            return COMPILER_TYPE_ERROR;
+        }
+    }
+    return COMPILER_OK;
 }
 
 CompilerStatus semAnalResolveNode(AbstractSyntaxNode *node, SemAnalData *data) {
@@ -1106,7 +1235,7 @@ CompilerStatus semAnalResolvecCaseClass(AbstractSyntaxNode *classNode, SemAnalDa
     return COMPILER_OK;
 }
 
-CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *data) {
+static CompilerStatus resolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *data, TypeDescriptor *expected) {
     if (blockNode == NULL || data == NULL || data->functionSymbols == NULL || blockNode->kind != ABSTRACT_SYNTAX_BLOCK) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -1133,7 +1262,21 @@ CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *d
     }
 
     for (size_t blockChildI = 0; blockChildI < blockNode->childCount; ++blockChildI) {
-        status = semAnalResolveNode(blockNode->children[blockChildI], data);
+        AbstractSyntaxNode *child = blockNode->children[blockChildI];
+        AbstractSyntaxNode *value = child;
+        bool isListResult = expected != NULL && expected->recursiveTypes != NULL &&
+                            blockChildI + 1 == blockNode->childCount;
+        if (isListResult && child->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT && child->childCount == 1) {
+            value = child->children[0];
+        }
+        if (isListResult && (isListConstructor(value) || isListConcatenation(value) || value->kind == ABSTRACT_SYNTAX_IF_EXPRESSION)) {
+            status = resolveWithListContext(value, expected, data);
+            if (status == COMPILER_OK && child != value) {
+                status = abstractSyntaxNodeCopyInferredType(child, &value->type);
+            }
+        } else {
+            status = semAnalResolveNode(child, data);
+        }
         if (status != COMPILER_OK) {
             symbolTableLeaveScope(data->functionSymbols);
             symbolTableLeaveScope(data->algebdtSymbols);
@@ -1157,6 +1300,10 @@ CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *d
     return COMPILER_OK;
 }
 
+CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *data) {
+    return resolveBlock(blockNode, data, NULL);
+}
+
 TypeDescriptor *semAnalEvaluatesToType(AbstractSyntaxNode *node)
 {
     if (node->kind == ABSTRACT_SYNTAX_BLOCK) {
@@ -1169,7 +1316,8 @@ TypeDescriptor *semAnalEvaluatesToType(AbstractSyntaxNode *node)
 
     if (node->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT || node->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION
         || node->kind == ABSTRACT_SYNTAX_RETURN || node->kind == ABSTRACT_SYNTAX_IF || node->kind == ABSTRACT_SYNTAX_IF_EXPRESSION
-        || node->kind == ABSTRACT_SYNTAX_MATCH_EXPRESSION || node->kind == ABSTRACT_SYNTAX_MEMBER_ACCESS) {
+        || node->kind == ABSTRACT_SYNTAX_MATCH_EXPRESSION || node->kind == ABSTRACT_SYNTAX_MEMBER_ACCESS
+        || (node->type.datatypeBitflag & DATA_TYPE_LIST)) {
         return semAnalCopyTypeDescriptor(&node->type);
     }
 
@@ -1212,7 +1360,9 @@ CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
 
     TypeDescriptor *allBranchesType = NULL;
     for (size_t branchI = 1; branchI < ifNode->childCount; ++branchI) {
-        TypeDescriptor *branchType = semAnalEvaluatesToType(ifNode->children[branchI]);
+        AbstractSyntaxNode *branch = ifNode->children[branchI];
+        TypeDescriptor *branchType = ifNode->kind == ABSTRACT_SYNTAX_IF_EXPRESSION ?
+                                     semAnalCopyTypeDescriptor(&branch->type) : semAnalEvaluatesToType(branch);
         if (branchType == NULL || branchType->datatypeBitflag == DATA_TYPE_UNKNOWN) {
             semAnalDestroyTypeDescriptor(allBranchesType);
             semAnalDestroyTypeDescriptor(branchType);
@@ -1227,7 +1377,8 @@ CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
     }
 
     // not a expression evaluating as non Unit type
-    if (allBranchesType != NULL && allBranchesType->datatypeBitflag != DATA_TYPE_UNIT && !semAnalIsIfExpression(ifNode)) {
+    if (ifNode->kind == ABSTRACT_SYNTAX_IF && allBranchesType != NULL &&
+        allBranchesType->datatypeBitflag != DATA_TYPE_UNIT && !semAnalIsIfExpression(ifNode)) {
         semAnalDestroyTypeDescriptor(allBranchesType);
         allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_UNKNOWN);
     }
@@ -1247,27 +1398,25 @@ CompilerStatus semAnalResolveForGenerator(AbstractSyntaxNode *clause, SemAnalDat
 {
     SymbolTable *currentTable = data->symbolTables[data->numberOfTables - 1];
     AbstractSyntaxNode *source = clause->children[0];
-    CompilerStatus status = semAnalResolveNode(source, data);
+    bool isRange = source->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION;
+    CompilerStatus status = isRange ? resolveRange(source, data) : semAnalResolveNode(source, data);
     if (status != COMPILER_OK) {
         return status;
     }
 
-    TypeDescriptor *generatorType = NULL;
-    TypeDescriptor *sourceType = &source->type;
-
-    // get the correct type for the iterator
-    if (source->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION) {
+    TypeDescriptor *generatorType;
+    if (isRange) {
         generatorType = semAnalInitTypeDescriptor(DATA_TYPE_INT);
-    } else if (sourceType != NULL && (sourceType->datatypeBitflag & DATA_TYPE_LIST)) {
-        TypeDescriptor *unifiedGeneratorType = NULL;
-        for (TypeDescriptorRecursiveNode *recursiveNode = sourceType->recursiveTypes; recursiveNode != NULL; recursiveNode = recursiveNode->next) {
-            TypeDescriptor *merged = semAnalUnifyTypes(unifiedGeneratorType, &recursiveNode->elementType);
-            semAnalDestroyTypeDescriptor(unifiedGeneratorType);
-            unifiedGeneratorType = merged;
-        }
-        generatorType = unifiedGeneratorType;
     } else {
-        return COMPILER_TYPE_ERROR;
+        TypeDescriptor *sourceType = &source->type;
+        if (sourceType->datatypeBitflag != DATA_TYPE_LIST || sourceType->recursiveTypes == NULL ||
+            sourceType->recursiveTypes->next != NULL) {
+            return COMPILER_TYPE_ERROR;
+        }
+        generatorType = semAnalCopyTypeDescriptor(&sourceType->recursiveTypes->elementType);
+    }
+    if (generatorType == NULL) {
+        return COMPILER_INTERNAL_ERROR;
     }
 
     // declare the generator variable
@@ -1289,9 +1438,12 @@ CompilerStatus semAnalResolveForGenerator(AbstractSyntaxNode *clause, SemAnalDat
     generatorSymbol->dataType = generatorType;
     generatorSymbol->variableId = ++data->variableIdCounter;
 
-    // assign correct type for the generator
     clause->variableId = generatorSymbol->variableId;
-    abstractSyntaxNodeCopyInferredType(clause, generatorType);
+    status = abstractSyntaxNodeCopyInferredType(clause, generatorType);
+    if (status != COMPILER_OK) {
+        semAnalFreeSymbol(generatorSymbol);
+        return status;
+    }
 
     status = symbolTableInsert(currentTable, generatorSymbol);
     if (status != COMPILER_OK) {
@@ -1425,23 +1577,6 @@ CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SemAnalData 
     if (returnNode == NULL || data == NULL || data->functionSymbols == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
-    CompilerStatus status = COMPILER_OK;
-
-    if (returnNode->childCount > 0 && returnNode->children[0] != NULL) {
-        status = semAnalResolveNode(returnNode->children[0], data);
-        if (status != COMPILER_OK) {
-            return status;
-        }
-        status = abstractSyntaxNodeCopyInferredType(returnNode, &returnNode->children[0]->type);
-        if (status != COMPILER_OK) {
-            return status;
-        }
-        abstractSyntaxNodeCopyInferredType(returnNode, &returnNode->children[0]->type);
-    } else {
-        abstractSyntaxNodeSetInferredType(returnNode, DATA_TYPE_UNIT);
-    }
-
-    // resolve if function has declared data type
     Symbol *functionSymbol = symbolTableFind(
         data->functionSymbols, data->recursionList[data->numberOfTables - 1]);
     if (functionSymbol == NULL) {
@@ -1449,6 +1584,19 @@ CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SemAnalData 
     }
 
     TypeDescriptor *funcRetType = functionSymbol->function.returnType;
+    CompilerStatus status;
+    if (returnNode->childCount > 0 && returnNode->children[0] != NULL) {
+        AbstractSyntaxNode *value = returnNode->children[0];
+        status = resolveWithListContext(value, funcRetType, data);
+        if (status == COMPILER_OK) {
+            status = abstractSyntaxNodeCopyInferredType(returnNode, &value->type);
+        }
+    } else {
+        status = abstractSyntaxNodeSetInferredType(returnNode, DATA_TYPE_UNIT);
+    }
+    if (status != COMPILER_OK) {
+        return status;
+    }
     if (funcRetType == NULL || funcRetType->datatypeBitflag == DATA_TYPE_UNKNOWN || (funcRetType->datatypeBitflag != DATA_TYPE_UNIT && !semAnalIsSubtype(funcRetType, &returnNode->type))) {
         return COMPILER_TYPE_ERROR;
     }
@@ -1557,6 +1705,14 @@ CompilerStatus semAnalResolveMatchPattern(AbstractSyntaxNode *patternNode, Abstr
 
             TypeDescriptor *scrutineeType = &scrutinee->type;
             TypeDescriptor *patternType = &patternNode->type;
+
+            // One runtime tag represents all lists. A list pattern must cover every possible list element type.
+            if ((scrutineeType->datatypeBitflag & DATA_TYPE_LIST) && (patternType->datatypeBitflag & DATA_TYPE_LIST)) {
+                TypeDescriptor lists = {.datatypeBitflag = DATA_TYPE_LIST, .recursiveTypes = scrutineeType->recursiveTypes};
+                if (!semAnalIsSubtype(patternType, &lists)) {
+                    return COMPILER_TYPE_ERROR;
+                }
+            }
 
             // check overlap with the scrutinee
             if ((scrutineeType->datatypeBitflag & patternType->datatypeBitflag) == 0) {
@@ -1759,68 +1915,53 @@ CompilerStatus semAnalCheckRecursion(size_t recursionI, SemAnalData *data) {
 }
 
 
-CompilerStatus semAnalResolveListAccess(AbstractSyntaxNode *functionCallNode, SemAnalData *data, Symbol *varSymbol) {
-    // list access: val x = myList(0)
-    if (functionCallNode->childCount != 2) {
+static CompilerStatus resolveListAccess(AbstractSyntaxNode *call, SemAnalData *data) {
+    if (call->childCount != 2) {
         return COMPILER_ARGUMENT_ERROR;
     }
-
-    AbstractSyntaxNode *argNode = functionCallNode->children[1];
-    CompilerStatus status = semAnalResolveNode(argNode, data);
+    AbstractSyntaxNode *index = call->children[1];
+    CompilerStatus status = semAnalResolveNode(index, data);
     if (status != COMPILER_OK) {
         return status;
     }
-
-    TypeDescriptor *argType = &argNode->type;
-    if (argType->datatypeBitflag != DATA_TYPE_INT) {
+    TypeDescriptor *receiver = &call->children[0]->type;
+    if (index->type.datatypeBitflag != DATA_TYPE_INT || receiver->recursiveTypes == NULL ||
+        receiver->recursiveTypes->next != NULL) {
         return COMPILER_TYPE_ERROR;
     }
-
-    TypeDescriptor *unifiedReturnType = NULL;
-    for (TypeDescriptorRecursiveNode *recursiveNode = varSymbol->dataType->recursiveTypes; recursiveNode != NULL; recursiveNode = recursiveNode->next) {
-        TypeDescriptor *merged = semAnalUnifyTypes(unifiedReturnType, &recursiveNode->elementType);
-        semAnalDestroyTypeDescriptor(unifiedReturnType);
-        unifiedReturnType = merged;
-    }
-
-    if (unifiedReturnType != NULL) {
-        abstractSyntaxNodeCopyInferredType(functionCallNode, unifiedReturnType);
-        semAnalDestroyTypeDescriptor(unifiedReturnType);
-    }
-
-    return COMPILER_OK;
+    return abstractSyntaxNodeCopyInferredType(call, &receiver->recursiveTypes->elementType);
 }
 
-CompilerStatus semAnalResolveListConstructor(AbstractSyntaxNode *functionCallNode, SemAnalData *data) {
-    // list constructor: val x = List(1, 2, 3)
-    TypeDescriptor *unifiedInnerType = NULL;
-    for (size_t paramI = 1; paramI < functionCallNode->childCount; ++paramI) {
-        AbstractSyntaxNode *argNode = functionCallNode->children[paramI];
-        CompilerStatus status = semAnalResolveNode(argNode, data);
+CompilerStatus semAnalResolveListConstructor(AbstractSyntaxNode *call, SemAnalData *data) {
+    TypeDescriptor *element = NULL;
+    for (size_t counter = 1; counter < call->childCount; counter++) {
+        AbstractSyntaxNode *argument = call->children[counter];
+        CompilerStatus status = semAnalResolveNode(argument, data);
         if (status != COMPILER_OK) {
-            semAnalDestroyTypeDescriptor(unifiedInnerType);
             return status;
         }
-        TypeDescriptor *merged = semAnalUnifyTypes(unifiedInnerType, &argNode->type);
-        semAnalDestroyTypeDescriptor(unifiedInnerType);
-        unifiedInnerType = merged;
-    }
-
-    TypeDescriptor *listDesc = semAnalInitTypeDescriptor(DATA_TYPE_LIST);
-    if (listDesc != NULL) {
-        if (unifiedInnerType != NULL) {
-            TypeDescriptorRecursiveNode *newNode = NULL;
-            if (typeDescriptorRecursiveNodeInit(&newNode, unifiedInnerType) == COMPILER_OK) {
-                typeDescriptorAddRecursiveType(listDesc, newNode);
-            }
-            semAnalDestroyTypeDescriptor(unifiedInnerType);
+        if (!isUntypedList(&argument->type) &&
+            (element == NULL || semAnalIsSubtype(&argument->type, element))) {
+            element = &argument->type;
         }
-
-        abstractSyntaxNodeCopyInferredType(functionCallNode, listDesc);
-        semAnalDestroyTypeDescriptor(listDesc);
     }
-
-    return COMPILER_OK;
+    if (call->childCount == 1) {
+        return abstractSyntaxNodeSetInferredType(call, DATA_TYPE_LIST);
+    }
+    if (element == NULL) {
+        return COMPILER_TYPE_ERROR;
+    }
+    for (size_t counter = 1; counter < call->childCount; counter++) {
+        AbstractSyntaxNode *argument = call->children[counter];
+        CompilerStatus status = applyListContext(argument, element);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        if (!semAnalIsSubtype(element, &argument->type)) {
+            return COMPILER_TYPE_ERROR;
+        }
+    }
+    return setListType(call, element);
 }
 
 CompilerStatus semAnalResolveStandardCall(AbstractSyntaxNode *functionCallNode, SemAnalData *data, AbstractSyntaxNode *callee) {
@@ -1843,18 +1984,16 @@ CompilerStatus semAnalResolveStandardCall(AbstractSyntaxNode *functionCallNode, 
     for (size_t paramI = 1; paramI < functionCallNode->childCount; ++paramI) {
         AbstractSyntaxNode *argNode = functionCallNode->children[paramI];
 
-        CompilerStatus status = semAnalResolveNode(argNode, data);
-        if (status != COMPILER_OK) {
-            return status;
-        }
-
-        TypeDescriptor *argType = &argNode->type;
         TypeDescriptor *expectedType = paramTypes[paramI - 1];
-        status = semAnalNormalizeTypeDescriptor(expectedType, data);
+        CompilerStatus status = semAnalNormalizeTypeDescriptor(expectedType, data);
         if (status != COMPILER_OK) {
             return status;
         }
-
+        status = resolveWithListContext(argNode, expectedType, data);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        TypeDescriptor *argType = &argNode->type;
         if (expectedType != NULL && expectedType->datatypeBitflag != DATA_TYPE_UNKNOWN && !semAnalIsSubtype(expectedType, argType)) {
             if ((expectedType->datatypeBitflag & DATA_TYPE_DOUBLE) && argType->datatypeBitflag == DATA_TYPE_INT) {
                 // implicit conversion later
@@ -1896,54 +2035,26 @@ CompilerStatus semAnalResolveListMethodCall(AbstractSyntaxNode *callNode, SemAna
         return status;
     }
 
-    TypeDescriptor *receiverType = &receiver->type;
-    if (receiverType == NULL || !(receiverType->datatypeBitflag & DATA_TYPE_LIST)) {
+    const TypeDescriptor *type = &receiver->type;
+    if (type->datatypeBitflag != DATA_TYPE_LIST || type->recursiveTypes == NULL) {
         return COMPILER_TYPE_ERROR;
     }
 
-    // list.drop(n) or list.take(n)
-    if (strcmp(methodName, "drop") == 0 || strcmp(methodName, "take") == 0) {
-        if (callNode->childCount != 2) {
-            return COMPILER_ARGUMENT_ERROR;
-        }
-        status = semAnalResolveNode(callNode->children[1], data);
-        if (status != COMPILER_OK) {
-            return status;
-        }
-
-        TypeDescriptor *argType = &callNode->children[1]->type;
-        if (argType == NULL || argType->datatypeBitflag != DATA_TYPE_INT) {
-            return COMPILER_TYPE_ERROR;
-        }
-
-        abstractSyntaxNodeCopyInferredType(callNode, receiverType);
-        return COMPILER_OK;
-
-    // list.slice(from, until)
-    } else if (strcmp(methodName, "slice") == 0) {
-        if (callNode->childCount != 3) {
-            return COMPILER_ARGUMENT_ERROR;
-        }
-        status = semAnalResolveNode(callNode->children[1], data);
-        if (status != COMPILER_OK) {
-            return status;
-        }
-        status = semAnalResolveNode(callNode->children[2], data);
-        if (status != COMPILER_OK) {
-            return status;
-        }
-
-        TypeDescriptor *arg1Type = &callNode->children[1]->type;
-        TypeDescriptor *arg2Type = &callNode->children[2]->type;
-        if (arg1Type == NULL || arg1Type->datatypeBitflag != DATA_TYPE_INT || arg2Type == NULL || arg2Type->datatypeBitflag != DATA_TYPE_INT) {
-            return COMPILER_TYPE_ERROR;
-        }
-
-        abstractSyntaxNodeCopyInferredType(callNode, receiverType);
-        return COMPILER_OK;
+    size_t argumentCount = strcmp(methodName, "slice") == 0 ? 2 : 1;
+    if (callNode->childCount != argumentCount + 1) {
+        return COMPILER_ARGUMENT_ERROR;
     }
-
-    return COMPILER_TYPE_ERROR;
+    for (size_t counter = 1; counter <= argumentCount; counter++) {
+        AbstractSyntaxNode *argument = callNode->children[counter];
+        status = semAnalResolveNode(argument, data);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        if (argument->type.datatypeBitflag != DATA_TYPE_INT) {
+            return COMPILER_TYPE_ERROR;
+        }
+    }
+    return abstractSyntaxNodeCopyInferredType(callNode, type);
 }
 
 CompilerStatus semAnalResolveFunctionCall(AbstractSyntaxNode *functionCallNode, SemAnalData *data) {
@@ -1974,44 +2085,36 @@ CompilerStatus semAnalResolveFunctionCall(AbstractSyntaxNode *functionCallNode, 
                         return COMPILER_TYPE_ERROR;
                     }
                 }
-                TypeDescriptor *listDesc = semAnalInitTypeDescriptor(DATA_TYPE_LIST);
-                TypeDescriptor *intDesc = semAnalInitTypeDescriptor(DATA_TYPE_INT);
-                if (listDesc != NULL && intDesc != NULL) {
-                    TypeDescriptorRecursiveNode *newNode = NULL;
-                    if (typeDescriptorRecursiveNodeInit(&newNode, intDesc) == COMPILER_OK) {
-                        typeDescriptorAddRecursiveType(listDesc, newNode);
-                    }
-                    abstractSyntaxNodeCopyInferredType(functionCallNode, listDesc);
-                }
-                semAnalDestroyTypeDescriptor(intDesc);
-                semAnalDestroyTypeDescriptor(listDesc);
-
-                return COMPILER_OK;
+                TypeDescriptor element = {.datatypeBitflag = DATA_TYPE_INT};
+                return setListType(functionCallNode, &element);
             }
             return COMPILER_UNDEFINED_SYMBOL_ERROR;
         }
 
         // instance methods: myList.drop(5)
-        return semAnalResolveListMethodCall(functionCallNode, data, receiver, methodName);
+        if (strcmp(methodName, "drop") == 0 || strcmp(methodName, "take") == 0 || strcmp(methodName, "slice") == 0) {
+            return semAnalResolveListMethodCall(functionCallNode, data, receiver, methodName);
+        }
     }
 
-    // function call without callee member access
-    if (callee->kind != ABSTRACT_SYNTAX_IDENTIFIER) {
-        return COMPILER_TYPE_ERROR;
+    if (callee->kind == ABSTRACT_SYNTAX_IDENTIFIER) {
+        if (strcmp(callee->text, "List") == 0) {
+            return semAnalResolveListConstructor(functionCallNode, data);
+        }
+        SymbolTable *currentTable = data->symbolTables[data->numberOfTables - 1];
+        if (symbolTableFind(currentTable, callee->text) == NULL) {
+            return semAnalResolveStandardCall(functionCallNode, data, callee);
+        }
     }
-
-    SymbolTable *currentTable = data->symbolTables[data->numberOfTables - 1];
-    Symbol *varSymbol = symbolTableFind(currentTable, callee->text);
-
-    if (varSymbol != NULL && varSymbol->dataType != NULL && (varSymbol->dataType->datatypeBitflag & DATA_TYPE_LIST)) {
-        return semAnalResolveListAccess(functionCallNode, data, varSymbol);
+    CompilerStatus status = semAnalResolveNode(callee, data);
+    if (status != COMPILER_OK) {
+        return status;
     }
-
-    if (strcmp(callee->text, "List") == 0) {
-        return semAnalResolveListConstructor(functionCallNode, data);
+    if (callee->type.datatypeBitflag == DATA_TYPE_LIST) {
+        return resolveListAccess(functionCallNode, data);
     }
+    return COMPILER_TYPE_ERROR;
 
-    return semAnalResolveStandardCall(functionCallNode, data, callee);
 }
 
 CompilerStatus semAnalResolveMemberAccess(AbstractSyntaxNode *accessNode, SemAnalData *data) {
@@ -2019,55 +2122,38 @@ CompilerStatus semAnalResolveMemberAccess(AbstractSyntaxNode *accessNode, SemAna
         return COMPILER_INTERNAL_ERROR;
     }
 
-    // resolve the object
     AbstractSyntaxNode *objectNode = accessNode->children[0];
+    const char *memberName = accessNode->text;
+    if (objectNode->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION && strcmp(memberName, "toList") == 0) {
+        CompilerStatus status = resolveRange(objectNode, data);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        TypeDescriptor element = {.datatypeBitflag = DATA_TYPE_INT};
+        return setListType(accessNode, &element);
+    }
+
     CompilerStatus status = semAnalResolveNode(objectNode, data);
     if (status != COMPILER_OK) {
         return status;
     }
 
     TypeDescriptor *objType = &objectNode->type;
-    const char *memberName = accessNode->text;
 
-    // lists member properties
-    if (objType != NULL && (objType->datatypeBitflag & DATA_TYPE_LIST)) {
+    if (objType->datatypeBitflag == DATA_TYPE_LIST) {
+        if (objType->recursiveTypes == NULL || objType->recursiveTypes->next != NULL) {
+            return COMPILER_TYPE_ERROR;
+        }
         if (strcmp(memberName, "head") == 0) {
-            TypeDescriptor *unifiedInner = NULL;
-            for (TypeDescriptorRecursiveNode *recursiveNode = objType->recursiveTypes; recursiveNode != NULL; recursiveNode = recursiveNode->next) {
-                if (recursiveNode->elementType.datatypeBitflag != DATA_TYPE_UNKNOWN) {
-                    TypeDescriptor *merged = semAnalUnifyTypes(unifiedInner, &recursiveNode->elementType);
-                    semAnalDestroyTypeDescriptor(unifiedInner);
-                    unifiedInner = merged;
-                }
-            }
-            if (unifiedInner != NULL) {
-                abstractSyntaxNodeCopyInferredType(accessNode, unifiedInner);
-                semAnalDestroyTypeDescriptor(unifiedInner);
-            }
-            return COMPILER_OK;
-        } else if (strcmp(memberName, "tail") == 0) {
-            abstractSyntaxNodeCopyInferredType(accessNode, objType);
-            return COMPILER_OK;
-        } else if (strcmp(memberName, "toString") == 0) {
-            abstractSyntaxNodeSetInferredType(accessNode, DATA_TYPE_STRING);
-            return COMPILER_OK;
+            return abstractSyntaxNodeCopyInferredType(accessNode, &objType->recursiveTypes->elementType);
         }
-    }
-
-    // range toList property
-    if (objectNode->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION && strcmp(memberName, "toList") == 0) {
-        TypeDescriptor *listDesc = semAnalInitTypeDescriptor(DATA_TYPE_LIST);
-        TypeDescriptor *intDesc = semAnalInitTypeDescriptor(DATA_TYPE_INT);
-        if (listDesc != NULL && intDesc != NULL) {
-            TypeDescriptorRecursiveNode *newNode = NULL;
-            if (typeDescriptorRecursiveNodeInit(&newNode, intDesc) == COMPILER_OK) {
-                typeDescriptorAddRecursiveType(listDesc, newNode);
-            }
-            abstractSyntaxNodeCopyInferredType(accessNode, listDesc);
+        if (strcmp(memberName, "tail") == 0) {
+            return abstractSyntaxNodeCopyInferredType(accessNode, objType);
         }
-        semAnalDestroyTypeDescriptor(intDesc);
-        semAnalDestroyTypeDescriptor(listDesc);
-        return COMPILER_OK;
+        if (strcmp(memberName, "toString") == 0) {
+            return abstractSyntaxNodeSetInferredType(accessNode, DATA_TYPE_STRING);
+        }
+        return COMPILER_TYPE_ERROR;
     }
 
     // dynamic class lookup
@@ -2130,37 +2216,15 @@ CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDec
         return COMPILER_REDEFINITION_ERROR;
     }
 
-    CompilerStatus status = semAnalResolveNode(initExpr, data);
-    if (status != COMPILER_OK) {
-        return status;
-    }
-
     TypeDescriptor *initType = &initExpr->type;
     TypeDescriptor *declType = &variableDeclarationNode->type;
-
-    status = semAnalNormalizeTypeDescriptor(declType, data);
+    CompilerStatus status = semAnalNormalizeTypeDescriptor(declType, data);
     if (status != COMPILER_OK) {
         return status;
     }
-
-    // handle inference of empty lists from left-hand side declared type
-    bool initHasList = false;
-    if (initType != NULL) {
-        for (TypeDescriptorRecursiveNode *recursiveNode = initType->recursiveTypes; recursiveNode != NULL; recursiveNode = recursiveNode->next) {
-            initHasList = true;
-            break;
-        }
-    }
-
-    if (initType != NULL && (initType->datatypeBitflag & DATA_TYPE_LIST) && !initHasList) {
-        if (declType != NULL && (declType->datatypeBitflag & DATA_TYPE_LIST)) {
-            for (TypeDescriptorRecursiveNode *declRecursiveNode = declType->recursiveTypes; declRecursiveNode != NULL; declRecursiveNode = declRecursiveNode->next) {
-                TypeDescriptorRecursiveNode *newNode = NULL;
-                if (typeDescriptorRecursiveNodeInit(&newNode, &declRecursiveNode->elementType) == COMPILER_OK) {
-                    typeDescriptorAddRecursiveType(initType, newNode);
-                }
-            }
-        }
+    status = resolveWithListContext(initExpr, declType, data);
+    if (status != COMPILER_OK) {
+        return status;
     }
 
     // check for wrong types
@@ -2216,7 +2280,7 @@ CompilerStatus semAnalResolveAssignment(AbstractSyntaxNode *assignmentNode, SemA
     }
 
     AbstractSyntaxNode *assignExpr = assignmentNode->children[0];
-    CompilerStatus status = semAnalResolveNode(assignExpr, data);
+    CompilerStatus status = resolveWithListContext(assignExpr, varSymbol->dataType, data);
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2289,42 +2353,25 @@ CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBina
        return COMPILER_TYPE_ERROR;
     }
 
-    // list concatenation
     else if (strcmp(expressionBinaryNode->text, "++") == 0) {
-        if ((leftType->datatypeBitflag & DATA_TYPE_LIST) && (rightType->datatypeBitflag & DATA_TYPE_LIST)) {
-            TypeDescriptor *leftInner = NULL;
-            for (TypeDescriptorRecursiveNode *recursiveNode = leftType->recursiveTypes; recursiveNode != NULL; recursiveNode = recursiveNode->next) {
-                TypeDescriptor *merged = semAnalUnifyTypes(leftInner, &recursiveNode->elementType);
-                semAnalDestroyTypeDescriptor(leftInner);
-                leftInner = merged;
-            }
-
-            TypeDescriptor *rightInner = NULL;
-            for (TypeDescriptorRecursiveNode *recursiveNode = rightType->recursiveTypes; recursiveNode != NULL; recursiveNode = recursiveNode->next) {
-                TypeDescriptor *merged = semAnalUnifyTypes(rightInner, &recursiveNode->elementType);
-                semAnalDestroyTypeDescriptor(rightInner);
-                rightInner = merged;
-            }
-
-            TypeDescriptor *listDesc = semAnalInitTypeDescriptor(DATA_TYPE_LIST);
-            TypeDescriptor *mergedInner = semAnalUnifyTypes(leftInner, rightInner);
-            if (listDesc != NULL && mergedInner != NULL) {
-                TypeDescriptorRecursiveNode *newNode = NULL;
-                if (typeDescriptorRecursiveNodeInit(&newNode, mergedInner) == COMPILER_OK) {
-                    typeDescriptorAddRecursiveType(listDesc, newNode);
-                }
-                abstractSyntaxNodeCopyInferredType(expressionBinaryNode, listDesc);
-            }
-
-            semAnalDestroyTypeDescriptor(mergedInner);
-            semAnalDestroyTypeDescriptor(leftInner);
-            semAnalDestroyTypeDescriptor(rightInner);
-            semAnalDestroyTypeDescriptor(listDesc);
-
-            return COMPILER_OK;
-        } else {
+        if (leftType->datatypeBitflag != DATA_TYPE_LIST || rightType->datatypeBitflag != DATA_TYPE_LIST) {
             return COMPILER_TYPE_ERROR;
         }
+        status = applyListContext(left, rightType);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        status = applyListContext(right, leftType);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        if (semAnalIsSubtype(leftType, rightType)) {
+            return abstractSyntaxNodeCopyInferredType(expressionBinaryNode, leftType);
+        }
+        if (semAnalIsSubtype(rightType, leftType)) {
+            return abstractSyntaxNodeCopyInferredType(expressionBinaryNode, rightType);
+        }
+        return COMPILER_TYPE_ERROR;
     }
 
     // only numbers expression
