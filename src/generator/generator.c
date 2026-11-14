@@ -452,6 +452,29 @@ static CompilerStatus writeInstruction(const IntermediateInstruction *instructio
 
         return writeInstructionLine("GETCHAR", instruction, output);
     }
+    case INTERMEDIATE_ARRAY_CREATE:
+    case INTERMEDIATE_GET_TYPE: {
+        if (instruction->operandCount != 2 || instruction->operands[0].kind != INTERMEDIATE_OPERAND_VARIABLE || !isValueOperand(instruction->operands[1].kind)) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        const char *name = instruction->opcode == INTERMEDIATE_ARRAY_CREATE ? "NEWARRAY" : "TYPE";
+        return writeInstructionLine(name, instruction, output);
+    }
+    case INTERMEDIATE_ARRAY_GET: {
+        if (instruction->operandCount != 3 || instruction->operands[0].kind != INTERMEDIATE_OPERAND_VARIABLE || instruction->operands[1].kind != INTERMEDIATE_OPERAND_VARIABLE || !isValueOperand(instruction->operands[2].kind)) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        return writeInstructionLine("ARRAYGET", instruction, output);
+    }
+    case INTERMEDIATE_ARRAY_SET: {
+        if (instruction->operandCount != 3 || instruction->operands[0].kind != INTERMEDIATE_OPERAND_VARIABLE || !isValueOperand(instruction->operands[1].kind) || !isValueOperand(instruction->operands[2].kind)) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        return writeInstructionLine("ARRAYSET", instruction, output);
+    }
     case INTERMEDIATE_JUMP_IF_EQUAL: {
         if (instruction->operandCount != 3 || instruction->operands[0].kind != INTERMEDIATE_OPERAND_LABEL || !isValueOperand(instruction->operands[1].kind) || !isValueOperand(instruction->operands[2].kind)) {
             return COMPILER_INTERNAL_ERROR;
