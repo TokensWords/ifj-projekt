@@ -841,6 +841,40 @@ static const AbstractSyntaxNode *findFunction(const SourceProgram *program,
     return NULL;
 }
 
+static CompilerStatus generateBooleanString(IntermediateGenerator *generator, const IntermediateOperand *resultOperand, const IntermediateOperand *valueOperand, SourceLocation origin) {
+    IntermediateOperand endLabel = {0};
+    CompilerStatus status = generateLabel(generator, &endLabel);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    IntermediateOperand trueOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
+    IntermediateOperand trueText = {.kind = INTERMEDIATE_OPERAND_STRING, .text = "true"};
+    IntermediateOperand falseText = {.kind = INTERMEDIATE_OPERAND_STRING, .text = "false"};
+
+    IntermediateInstruction trueInstruction = fillInstruction(INTERMEDIATE_MOVE, 2, origin);
+    trueInstruction.operands[0] = *resultOperand;
+    trueInstruction.operands[1] = trueText;
+
+    IntermediateInstruction jumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    jumpInstruction.operands[0] = endLabel;
+    jumpInstruction.operands[1] = *valueOperand;
+    jumpInstruction.operands[2] = trueOperand;
+
+    IntermediateInstruction falseInstruction = fillInstruction(INTERMEDIATE_MOVE, 2, origin);
+    falseInstruction.operands[0] = *resultOperand;
+    falseInstruction.operands[1] = falseText;
+
+    IntermediateInstruction endInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, origin);
+    endInstruction.operands[0] = endLabel;
+
+    IntermediateInstruction instructions[] = {trueInstruction, jumpInstruction, falseInstruction, endInstruction};
+    status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    intermediateOperandClear(&endLabel);
+
+    return status;
+}
+
 static CompilerStatus generateExpression(IntermediateGenerator *generator,
                                          IntermediateOperand *operand,
                                          const AbstractSyntaxNode *node) {
@@ -876,6 +910,12 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         operand->value.dataType = 0;
 
         break;
+    case ABSTRACT_SYNTAX_BOOLEAN_LITERAL:
+        operand->kind = INTERMEDIATE_OPERAND_BOOLEAN;
+        operand->text = NULL;
+        operand->value.boolValue = node->value.boolValue;
+
+        break;
     case ABSTRACT_SYNTAX_BINARY_EXPRESSION: {
         if (node->childCount != 2) {
             return COMPILER_INTERNAL_ERROR;
@@ -887,6 +927,86 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
 
         if (node->text == NULL) {
             return COMPILER_INTERNAL_ERROR;
+        }
+
+        bool isAnd = strcmp(node->text, "&&") == 0;
+        bool isOr = strcmp(node->text, "||") == 0;
+        if (isAnd || isOr) {
+            const AbstractSyntaxNode *left = node->children[0];
+            const AbstractSyntaxNode *right = node->children[1];
+            if (descriptorDataType(&left->type) != DATA_TYPE_BOOLEAN ||
+                descriptorDataType(&right->type) != DATA_TYPE_BOOLEAN) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            IntermediateOperand leftOperand = {0};
+            CompilerStatus status = generateExpression(generator, &leftOperand, left);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+
+            IntermediateOperand resultOperand = {0};
+            status = generateTemporary(generator, &resultOperand, node->location);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&leftOperand);
+                return status;
+            }
+
+            IntermediateOperand endLabel = {0};
+            status = generateLabel(generator, &endLabel);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&leftOperand);
+                intermediateOperandClear(&resultOperand);
+                return status;
+            }
+
+            IntermediateOperand shortCircuitOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = isOr};
+
+            IntermediateInstruction leftInstruction = fillInstruction(INTERMEDIATE_MOVE, 2, node->location);
+            leftInstruction.operands[0] = resultOperand;
+            leftInstruction.operands[1] = leftOperand;
+
+            IntermediateInstruction jumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, node->location);
+            jumpInstruction.operands[0] = endLabel;
+            jumpInstruction.operands[1] = resultOperand;
+            jumpInstruction.operands[2] = shortCircuitOperand;
+
+            IntermediateInstruction leftInstructions[] = {leftInstruction, jumpInstruction};
+            status = appendInstructionArray(generator, leftInstructions, sizeof(leftInstructions) / sizeof(leftInstructions[0]));
+            intermediateOperandClear(&leftOperand);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&endLabel);
+                intermediateOperandClear(&resultOperand);
+                return status;
+            }
+
+            IntermediateOperand rightOperand = {0};
+            status = generateExpression(generator, &rightOperand, right);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&endLabel);
+                intermediateOperandClear(&resultOperand);
+                return status;
+            }
+
+            IntermediateInstruction rightInstruction = fillInstruction(INTERMEDIATE_MOVE, 2, node->location);
+            rightInstruction.operands[0] = resultOperand;
+            rightInstruction.operands[1] = rightOperand;
+
+            IntermediateInstruction endInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+            endInstruction.operands[0] = endLabel;
+
+            IntermediateInstruction rightInstructions[] = {rightInstruction, endInstruction};
+            status = appendInstructionArray(generator, rightInstructions, sizeof(rightInstructions) / sizeof(rightInstructions[0]));
+            intermediateOperandClear(&rightOperand);
+            intermediateOperandClear(&endLabel);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&resultOperand);
+                return status;
+            }
+
+            *operand = resultOperand;
+
+            return status;
         }
 
         IntermediateOpcode operationCode = 0;
@@ -944,9 +1064,9 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                             operationCode == INTERMEDIATE_COMPARE_LESS ||
                             operationCode == INTERMEDIATE_COMPARE_GREATER;
 
-        if (leftType == DATA_TYPE_UNIT || rightType == DATA_TYPE_UNIT) {
-            if (leftType != DATA_TYPE_UNIT || rightType != DATA_TYPE_UNIT ||
-                operationCode != INTERMEDIATE_COMPARE_EQUAL) {
+        if (leftType == DATA_TYPE_UNIT || rightType == DATA_TYPE_UNIT ||
+            leftType == DATA_TYPE_BOOLEAN || rightType == DATA_TYPE_BOOLEAN) {
+            if (leftType != rightType || operationCode != INTERMEDIATE_COMPARE_EQUAL) {
                 intermediateOperandClear(&leftOperand);
                 intermediateOperandClear(&rightOperand);
                 return COMPILER_INTERNAL_ERROR;
@@ -1090,8 +1210,14 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
     }
     case ABSTRACT_SYNTAX_UNARY_EXPRESSION: {
         if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL ||
-            node->text == NULL || strcmp(node->text, "-") != 0 ||
-            !isNumericType(descriptorDataType(&node->children[0]->type))) {
+            node->text == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        DataType valueType = descriptorDataType(&node->children[0]->type);
+        bool isNot = strcmp(node->text, "!") == 0;
+        bool isNegation = strcmp(node->text, "-") == 0;
+        if (!(isNot && valueType == DATA_TYPE_BOOLEAN) && !(isNegation && isNumericType(valueType))) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -1101,19 +1227,6 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             return status;
         }
 
-        IntermediateOperand negativeOperand = {0};
-
-        if (descriptorDataType(&node->children[0]->type) == DATA_TYPE_INT) {
-            negativeOperand.kind = INTERMEDIATE_OPERAND_INT;
-            negativeOperand.value.intValue = -1;
-        } else if (descriptorDataType(&node->children[0]->type) == DATA_TYPE_DOUBLE) {
-            negativeOperand.kind = INTERMEDIATE_OPERAND_DOUBLE;
-            negativeOperand.value.doubleValue = -1.0;
-        } else {
-            intermediateOperandClear(&valueOperand);
-            return COMPILER_INTERNAL_ERROR;
-        }
-
         IntermediateOperand resultOperand = {0};
         status = generateTemporary(generator, &resultOperand, node->location);
         if (status != COMPILER_OK) {
@@ -1121,11 +1234,20 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             return status;
         }
 
-        IntermediateInstruction instruction =
-            fillInstruction(INTERMEDIATE_MULTIPLY, 3, node->location);
+        IntermediateOpcode operationCode = isNot ? INTERMEDIATE_NOT : INTERMEDIATE_MULTIPLY;
+        size_t operandCount = isNot ? 2 : 3;
+        IntermediateInstruction instruction = fillInstruction(operationCode, operandCount, node->location);
         instruction.operands[0] = resultOperand;
         instruction.operands[1] = valueOperand;
-        instruction.operands[2] = negativeOperand;
+        if (!isNot) {
+            if (valueType == DATA_TYPE_INT) {
+                instruction.operands[2].kind = INTERMEDIATE_OPERAND_INT;
+                instruction.operands[2].value.intValue = -1;
+            } else {
+                instruction.operands[2].kind = INTERMEDIATE_OPERAND_DOUBLE;
+                instruction.operands[2].value.doubleValue = -1.0;
+            }
+        }
 
         status = intermediateProgramAppend(generator->program, &instruction);
         if (status != COMPILER_OK) {
@@ -1170,7 +1292,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             if (descriptorDataType(&argument->type) != DATA_TYPE_INT &&
                 descriptorDataType(&argument->type) != DATA_TYPE_DOUBLE &&
                 descriptorDataType(&argument->type) != DATA_TYPE_STRING &&
-                descriptorDataType(&argument->type) != DATA_TYPE_UNIT) {
+                descriptorDataType(&argument->type) != DATA_TYPE_UNIT &&
+                descriptorDataType(&argument->type) != DATA_TYPE_BOOLEAN) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1202,7 +1325,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
 
             return status;
         } else if (strcmp(functionName, "readLine") == 0 || strcmp(functionName, "readInt") == 0 ||
-                   strcmp(functionName, "readDouble") == 0) {
+                   strcmp(functionName, "readDouble") == 0 || strcmp(functionName, "readBoolean") == 0) {
             if (argumentCount != 0) {
                 return COMPILER_INTERNAL_ERROR;
             }
@@ -1219,6 +1342,10 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
 
             if (strcmp(functionName, "readDouble") == 0) {
                 readType = DATA_TYPE_DOUBLE;
+            }
+
+            if (strcmp(functionName, "readBoolean") == 0) {
+                readType = DATA_TYPE_BOOLEAN;
             }
 
             IntermediateOperand resultOperand = {0};
@@ -1301,7 +1428,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             if (descriptorDataType(&argument->type) != DATA_TYPE_INT &&
                 descriptorDataType(&argument->type) != DATA_TYPE_DOUBLE &&
                 descriptorDataType(&argument->type) != DATA_TYPE_STRING &&
-                descriptorDataType(&argument->type) != DATA_TYPE_UNIT) {
+                descriptorDataType(&argument->type) != DATA_TYPE_UNIT &&
+                descriptorDataType(&argument->type) != DATA_TYPE_BOOLEAN) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1336,11 +1464,6 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 return status;
             }
 
-            IntermediateOpcode conversionOpcode = INTERMEDIATE_CONVERT_INT_TO_STRING;
-            if (descriptorDataType(&argument->type) == DATA_TYPE_DOUBLE) {
-                conversionOpcode = INTERMEDIATE_CONVERT_DOUBLE_TO_STRING;
-            }
-
             IntermediateOperand resultOperand = {0};
             status = generateTemporary(generator, &resultOperand, node->location);
             if (status != COMPILER_OK) {
@@ -1348,12 +1471,20 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 return status;
             }
 
-            IntermediateInstruction conversionInstruction =
-                fillInstruction(conversionOpcode, 2, node->location);
-            conversionInstruction.operands[0] = resultOperand;
-            conversionInstruction.operands[1] = argumentOperand;
+            if (descriptorDataType(&argument->type) == DATA_TYPE_BOOLEAN) {
+                status = generateBooleanString(generator, &resultOperand, &argumentOperand, node->location);
+            } else {
+                IntermediateOpcode conversionOpcode = INTERMEDIATE_CONVERT_INT_TO_STRING;
+                if (descriptorDataType(&argument->type) == DATA_TYPE_DOUBLE) {
+                    conversionOpcode = INTERMEDIATE_CONVERT_DOUBLE_TO_STRING;
+                }
 
-            status = intermediateProgramAppend(generator->program, &conversionInstruction);
+                IntermediateInstruction conversionInstruction = fillInstruction(conversionOpcode, 2, node->location);
+                conversionInstruction.operands[0] = resultOperand;
+                conversionInstruction.operands[1] = argumentOperand;
+
+                status = intermediateProgramAppend(generator->program, &conversionInstruction);
+            }
             intermediateOperandClear(&argumentOperand);
             if (status != COMPILER_OK) {
                 intermediateOperandClear(&resultOperand);
@@ -1534,7 +1665,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             if (descriptorDataType(&parameter->type) != DATA_TYPE_INT &&
                 descriptorDataType(&parameter->type) != DATA_TYPE_DOUBLE &&
                 descriptorDataType(&parameter->type) != DATA_TYPE_STRING &&
-                descriptorDataType(&parameter->type) != DATA_TYPE_UNIT) {
+                descriptorDataType(&parameter->type) != DATA_TYPE_UNIT &&
+                descriptorDataType(&parameter->type) != DATA_TYPE_BOOLEAN) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1986,7 +2118,8 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
         }
 
         if (generator->returnType != DATA_TYPE_INT && generator->returnType != DATA_TYPE_DOUBLE &&
-            generator->returnType != DATA_TYPE_STRING && generator->returnType != DATA_TYPE_UNIT) {
+            generator->returnType != DATA_TYPE_STRING && generator->returnType != DATA_TYPE_UNIT &&
+            generator->returnType != DATA_TYPE_BOOLEAN) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -2117,7 +2250,8 @@ static CompilerStatus generateParameters(IntermediateGenerator *generator,
         if (descriptorDataType(&parameter->type) != DATA_TYPE_INT &&
             descriptorDataType(&parameter->type) != DATA_TYPE_DOUBLE &&
             descriptorDataType(&parameter->type) != DATA_TYPE_STRING &&
-            descriptorDataType(&parameter->type) != DATA_TYPE_UNIT) {
+            descriptorDataType(&parameter->type) != DATA_TYPE_UNIT &&
+            descriptorDataType(&parameter->type) != DATA_TYPE_BOOLEAN) {
             return COMPILER_INTERNAL_ERROR;
         }
 
