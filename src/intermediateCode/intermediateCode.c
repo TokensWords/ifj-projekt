@@ -875,6 +875,24 @@ static CompilerStatus generateBooleanString(IntermediateGenerator *generator, co
     return status;
 }
 
+static IntermediateInstruction controlInstruction(IntermediateOpcode opcode, SourceLocation origin, size_t operandCount, const IntermediateOperand *operands) {
+    IntermediateInstruction instruction = fillInstruction(opcode, operandCount, origin);
+
+    size_t counter = 0;
+    while (counter < operandCount) {
+        instruction.operands[counter] = operands[counter];
+        counter++;
+    }
+
+    return instruction;
+}
+
+static CompilerStatus appendControlInstruction(IntermediateGenerator *generator, IntermediateOpcode opcode, SourceLocation origin, size_t operandCount, const IntermediateOperand *operands) {
+    IntermediateInstruction instruction = controlInstruction(opcode, origin, operandCount, operands);
+
+    return intermediateProgramAppend(generator->program, &instruction);
+}
+
 static CompilerStatus generateExpression(IntermediateGenerator *generator,
                                          IntermediateOperand *operand,
                                          const AbstractSyntaxNode *node) {
@@ -916,6 +934,115 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         operand->value.boolValue = node->value.boolValue;
 
         break;
+    case ABSTRACT_SYNTAX_IF_EXPRESSION: {
+        if (node->childCount != 3 || node->children == NULL || node->children[0] == NULL ||
+            node->children[1] == NULL || node->children[2] == NULL ||
+            descriptorDataType(&node->children[0]->type) != DATA_TYPE_BOOLEAN) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        DataType thenType = descriptorDataType(&node->children[1]->type);
+        DataType elseType = descriptorDataType(&node->children[2]->type);
+        DataType resultType = descriptorDataType(&node->type);
+        
+        if ((thenType != resultType && !(thenType == DATA_TYPE_INT && resultType == DATA_TYPE_DOUBLE)) ||
+            (elseType != resultType && !(elseType == DATA_TYPE_INT && resultType == DATA_TYPE_DOUBLE))) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        IntermediateOperand operands[4] = {0};
+        IntermediateOperand *resultOperand = &operands[0];
+        IntermediateOperand *elseLabel = &operands[1];
+        IntermediateOperand *endLabel = &operands[2];
+        IntermediateOperand *conditionOperand = &operands[3];
+
+        CompilerStatus status = generateTemporary(generator, resultOperand, node->location);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 4);
+            return status;
+        }
+
+        status = generateLabel(generator, elseLabel);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 4);
+            return status;
+        }
+
+        status = generateLabel(generator, endLabel);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 4);
+            return status;
+        }
+
+        status = generateExpression(generator, conditionOperand, node->children[0]);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 4);
+            return status;
+        }
+
+        IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
+        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, node->location, 3, (IntermediateOperand[]){*elseLabel, *conditionOperand, falseOperand});
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 4);
+            return status;
+        }
+
+        size_t counter = 1;
+        while (counter < 3) {
+            const AbstractSyntaxNode *branch = node->children[counter];
+            IntermediateOperand branchOperand = {0};
+            status = generateExpression(generator, &branchOperand, branch);
+            if (status != COMPILER_OK) {
+                clearOperandArray(operands, 4);
+                return status;
+            }
+
+            if (descriptorDataType(&branch->type) != resultType) {
+                status = convertIntToDouble(generator, &branchOperand, branch->location);
+                if (status != COMPILER_OK) {
+                    intermediateOperandClear(&branchOperand);
+                    clearOperandArray(operands, 4);
+                    return status;
+                }
+            }
+
+            status = appendControlInstruction(generator, INTERMEDIATE_MOVE, branch->location, 2, (IntermediateOperand[]){*resultOperand, branchOperand});
+            intermediateOperandClear(&branchOperand);
+            if (status != COMPILER_OK) {
+                clearOperandArray(operands, 4);
+                return status;
+            }
+
+            if (counter == 1) {
+                status = appendControlInstruction(generator, INTERMEDIATE_JUMP, node->location, 1, endLabel);
+                if (status != COMPILER_OK) {
+                    clearOperandArray(operands, 4);
+                    return status;
+                }
+
+                status = appendControlInstruction(generator, INTERMEDIATE_LABEL, node->location, 1, elseLabel);
+                if (status != COMPILER_OK) {
+                    clearOperandArray(operands, 4);
+                    return status;
+                }
+            }
+
+            counter++;
+        }
+
+        status = appendControlInstruction(generator, INTERMEDIATE_LABEL, node->location, 1, endLabel);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 4);
+            return status;
+        }
+
+        *operand = *resultOperand;
+        resultOperand->text = NULL;
+
+        clearOperandArray(operands, 4);
+
+        return status;
+    }
     case ABSTRACT_SYNTAX_BINARY_EXPRESSION: {
         if (node->childCount != 2) {
             return COMPILER_INTERNAL_ERROR;
@@ -1789,6 +1916,48 @@ static CompilerStatus generateExpressionStatement(IntermediateGenerator *generat
     return status;
 }
 
+static CompilerStatus generateRangeValue(IntermediateGenerator *generator, const IntermediateOperand *destination, const AbstractSyntaxNode *node) {
+    IntermediateOperand valueOperand = {0};
+    CompilerStatus status = generateExpression(generator, &valueOperand, node);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, node->location, 2, (IntermediateOperand[]){*destination, valueOperand});
+    intermediateOperandClear(&valueOperand);
+
+    return status;
+}
+
+static CompilerStatus generateForGuards(IntermediateGenerator *generator, const AbstractSyntaxNode *clauses, const IntermediateOperand *advanceLabel) {
+    size_t counter = 1;
+    while (counter < clauses->childCount) {
+        const AbstractSyntaxNode *guard = clauses->children[counter];
+        if (guard == NULL || guard->kind != ABSTRACT_SYNTAX_FOR_GUARD || guard->childCount != 1 ||
+            guard->children == NULL || guard->children[0] == NULL ||
+            descriptorDataType(&guard->children[0]->type) != DATA_TYPE_BOOLEAN) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        IntermediateOperand guardOperand = {0};
+        CompilerStatus status = generateExpression(generator, &guardOperand, guard->children[0]);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
+        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, guard->location, 3, (IntermediateOperand[]){*advanceLabel, guardOperand, falseOperand});
+        intermediateOperandClear(&guardOperand);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        counter++;
+    }
+
+    return COMPILER_OK;
+}
+
 static CompilerStatus generateStatement(IntermediateGenerator *generator,
                                         const AbstractSyntaxNode *node) {
     if (generator == NULL || node == NULL) {
@@ -2012,6 +2181,198 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
         intermediateOperandClear(&conditionOperand);
         intermediateOperandClear(&elseLabelOperand);
         intermediateOperandClear(&endLabelOperand);
+
+        return status;
+    }
+    case ABSTRACT_SYNTAX_FOR: {
+        if (node->childCount != 2 || node->children == NULL || node->children[0] == NULL || node->children[1] == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        const AbstractSyntaxNode *clauses = node->children[0];
+        if (clauses->kind != ABSTRACT_SYNTAX_FOR_CLAUSES || clauses->childCount == 0 ||
+            clauses->children == NULL || clauses->children[0] == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        const AbstractSyntaxNode *binding = clauses->children[0];
+        if (binding->kind != ABSTRACT_SYNTAX_FOR_GENERATOR || binding->childCount != 1 ||
+            binding->children == NULL || binding->children[0] == NULL ||
+            descriptorDataType(&binding->type) != DATA_TYPE_INT || binding->variableId == 0) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        const AbstractSyntaxNode *range = binding->children[0];
+        if (range->kind != ABSTRACT_SYNTAX_RANGE_EXPRESSION || range->text == NULL ||
+            (range->childCount != 2 && range->childCount != 3) || range->children == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        bool isInclusive = strcmp(range->text, "to") == 0;
+        if (!isInclusive && strcmp(range->text, "until") != 0) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        size_t counter = 0;
+        while (counter < range->childCount) {
+            const AbstractSyntaxNode *part = range->children[counter];
+            if (part == NULL || descriptorDataType(&part->type) != DATA_TYPE_INT) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+
+            counter++;
+        }
+
+        IntermediateOperand operands[11] = {0};
+        IntermediateOperand *iteratorOperand = &operands[0];
+        IntermediateOperand *endOperand = &operands[1];
+        IntermediateOperand *stepOperand = &operands[2];
+        IntermediateOperand *conditionOperand = &operands[3];
+        IntermediateOperand *positiveOperand = &operands[4];
+        IntermediateOperand *stepLabel = &operands[5];
+        IntermediateOperand *loopLabel = &operands[6];
+        IntermediateOperand *bodyLabel = &operands[7];
+        IntermediateOperand *positiveLabel = &operands[8];
+        IntermediateOperand *advanceLabel = &operands[9];
+        IntermediateOperand *endLabel = &operands[10];
+        IntermediateOperand *temporaries[] = {conditionOperand, positiveOperand};
+        IntermediateOperand *labels[] = {stepLabel, loopLabel, bodyLabel, positiveLabel, advanceLabel, endLabel};
+        SourceLocation origin = node->location;
+
+        CompilerStatus status = generateVariable(iteratorOperand, binding);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 11);
+            return status;
+        }
+
+        status = appendVariableDeclaration(generator, iteratorOperand, binding->location);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 11);
+            return status;
+        }
+
+        status = generateRangeValue(generator, iteratorOperand, range->children[0]);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 11);
+            return status;
+        }
+
+        status = generateTemporary(generator, endOperand, range->children[1]->location);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 11);
+            return status;
+        }
+
+        status = generateRangeValue(generator, endOperand, range->children[1]);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 11);
+            return status;
+        }
+
+        stepOperand->kind = INTERMEDIATE_OPERAND_INT;
+        stepOperand->value.intValue = 1;
+        if (range->childCount == 3) {
+            status = generateTemporary(generator, stepOperand, range->children[2]->location);
+            if (status != COMPILER_OK) {
+                clearOperandArray(operands, 11);
+                return status;
+            }
+
+            status = generateRangeValue(generator, stepOperand, range->children[2]);
+            if (status != COMPILER_OK) {
+                clearOperandArray(operands, 11);
+                return status;
+            }
+        }
+
+        counter = 0;
+        while (counter < sizeof(temporaries) / sizeof(temporaries[0])) {
+            status = generateTemporary(generator, temporaries[counter], origin);
+            if (status != COMPILER_OK) {
+                clearOperandArray(operands, 11);
+                return status;
+            }
+
+            counter++;
+        }
+
+        counter = 0;
+        while (counter < sizeof(labels) / sizeof(labels[0])) {
+            status = generateLabel(generator, labels[counter]);
+            if (status != COMPILER_OK) {
+                clearOperandArray(operands, 11);
+                return status;
+            }
+
+            counter++;
+        }
+
+        IntermediateOperand zeroOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
+        IntermediateOperand errorOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 40};
+        IntermediateOperand trueOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
+
+        if (range->childCount == 3) {
+            status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){*stepLabel, *stepOperand, zeroOperand});
+            if (status != COMPILER_OK) {
+                clearOperandArray(operands, 11);
+                return status;
+            }
+
+            status = appendControlInstruction(generator, INTERMEDIATE_EXIT, origin, 1, &errorOperand);
+            if (status != COMPILER_OK) {
+                clearOperandArray(operands, 11);
+                return status;
+            }
+        }
+
+        IntermediateInstruction loopInstructions[] = {
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, stepLabel),
+            controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){*positiveOperand, zeroOperand, *stepOperand}),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, loopLabel),
+            controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){*positiveLabel, *positiveOperand, trueOperand}),
+            controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){*conditionOperand, *iteratorOperand, *endOperand}),
+            controlInstruction(INTERMEDIATE_JUMP, origin, 1, bodyLabel),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, positiveLabel),
+            controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){*conditionOperand, *endOperand, *iteratorOperand}),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, bodyLabel),
+            controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){*endLabel, *conditionOperand, trueOperand}),
+        };
+        status = appendInstructionArray(generator, loopInstructions, sizeof(loopInstructions) / sizeof(loopInstructions[0]));
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 11);
+            return status;
+        }
+
+        if (!isInclusive) {
+            status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){*endLabel, *iteratorOperand, *endOperand});
+            if (status != COMPILER_OK) {
+                clearOperandArray(operands, 11);
+                return status;
+            }
+        }
+
+        status = generateForGuards(generator, clauses, advanceLabel);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 11);
+            return status;
+        }
+
+        status = generateStatement(generator, node->children[1]);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 11);
+            return status;
+        }
+
+        IntermediateInstruction advanceInstructions[] = {
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, advanceLabel),
+            controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){*endLabel, *iteratorOperand, *endOperand}),
+            controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){*iteratorOperand, *iteratorOperand, *stepOperand}),
+            controlInstruction(INTERMEDIATE_JUMP, origin, 1, loopLabel),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, endLabel),
+        };
+        status = appendInstructionArray(generator, advanceInstructions, sizeof(advanceInstructions) / sizeof(advanceInstructions[0]));
+
+        clearOperandArray(operands, 11);
 
         return status;
     }
