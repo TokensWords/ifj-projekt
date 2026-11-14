@@ -1871,6 +1871,46 @@ static CompilerStatus generateMatchPattern(IntermediateGenerator *generator, con
     return status;
 }
 
+static CompilerStatus generateStatement(IntermediateGenerator *generator, const AbstractSyntaxNode *node);
+
+static CompilerStatus generateMatchBranchValue(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *body) {
+    if (body->kind != ABSTRACT_SYNTAX_BLOCK) {
+        return generateExpression(generator, operand, body);
+    }
+    if (body->childCount == 0 || body->children == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    size_t counter = 0;
+    while (counter + 1 < body->childCount) {
+        CompilerStatus status = generateStatement(generator, body->children[counter]);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        counter++;
+    }
+
+    const AbstractSyntaxNode *last = body->children[counter];
+    if (last == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    if (last->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT) {
+        if (last->childCount != 1 || last->children == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+        return generateExpression(generator, operand, last->children[0]);
+    }
+    if (last->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION) {
+        return generateExpression(generator, operand, last);
+    }
+
+    CompilerStatus status = generateStatement(generator, last);
+    if (status == COMPILER_OK) {
+        *operand = (IntermediateOperand){.kind = INTERMEDIATE_OPERAND_UNIT};
+    }
+    return status;
+}
+
 static CompilerStatus generateMatchCase(IntermediateGenerator *generator, const AbstractSyntaxNode *branch, const IntermediateOperand *subject, const IntermediateOperand *runtimeType, const IntermediateOperand *result, DataType resultType, const IntermediateOperand *endLabel) {
     if (branch == NULL || branch->kind != ABSTRACT_SYNTAX_MATCH_CASE || (branch->childCount != 2 && branch->childCount != 3) ||
         branch->children == NULL || branch->children[0] == NULL || branch->children[branch->childCount - 1] == NULL) {
@@ -1904,7 +1944,7 @@ static CompilerStatus generateMatchCase(IntermediateGenerator *generator, const 
 
     const AbstractSyntaxNode *expression = branch->children[branch->childCount - 1];
     IntermediateOperand value = {0};
-    status = generateExpression(generator, &value, expression);
+    status = generateMatchBranchValue(generator, &value, expression);
     if (status == COMPILER_OK) {
         status = convertValue(generator, &value, valueTypes(generator, &expression->type), resultType, expression->location);
     }
@@ -3795,8 +3835,6 @@ static CompilerStatus generateForGuards(IntermediateGenerator *generator, const 
 
     return COMPILER_OK;
 }
-
-static CompilerStatus generateStatement(IntermediateGenerator *generator, const AbstractSyntaxNode *node);
 
 static CompilerStatus generateListFor(IntermediateGenerator *generator, const AbstractSyntaxNode *binding, const AbstractSyntaxNode *clauses, const AbstractSyntaxNode *body) {
     IntermediateOperand operands[8] = {0};

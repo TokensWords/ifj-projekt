@@ -1,37 +1,49 @@
 /*
  * Project: IFJ26 compiler
- * Authors: TODO(team)
+ * Authors: xkubanm00, xhajeka00
  * AI-assisted scaffold.
  * Prompt: Create one root entrypoint for the modular compiler pipeline.
  */
 
 #include "abstractSyntaxTree.h"
 #include "compilerTypes.h"
+#include "generator.h"
+#include "intermediateCode.h"
 #include "lexicalAnalyzer.h"
+#include "semanticAnalyzer.h"
 #include "syntaxAnalyzer.h"
 
 #include <stdio.h>
 
 int main(void) {
     LexicalAnalyzer *lexicalAnalyzer = lexicalAnalyzerCreate(stdin);
-    if (lexicalAnalyzer == NULL) {
-        fprintf(stderr, "Internal compiler allocation failure.\n");
-        return COMPILER_INTERNAL_ERROR;
-    }
-
-    SyntaxAnalyzer *syntaxAnalyzer = syntaxAnalyzerCreate(lexicalAnalyzer);
-    if (syntaxAnalyzer == NULL) {
-        lexicalAnalyzerDestroy(lexicalAnalyzer);
-        fprintf(stderr, "Internal compiler allocation failure.\n");
-        return COMPILER_INTERNAL_ERROR;
-    }
-
+    SyntaxAnalyzer *syntaxAnalyzer = NULL;
     SourceProgram *program = NULL;
-    CompilerStatus status = syntaxAnalyzerParseProgram(syntaxAnalyzer, &program);
+    IntermediateProgram *intermediateProgram = NULL;
+    CompilerStatus status = COMPILER_INTERNAL_ERROR;
+
+    if (lexicalAnalyzer != NULL) {
+        syntaxAnalyzer = syntaxAnalyzerCreate(lexicalAnalyzer);
+    }
+    if (syntaxAnalyzer != NULL) {
+        status = syntaxAnalyzerParseProgram(syntaxAnalyzer, &program);
+    }
+    if (status == COMPILER_OK) {
+        status = semanticAnalyzerAnalyze(program);
+    }
+    if (status == COMPILER_OK) {
+        intermediateProgram = intermediateProgramCreate();
+        status = intermediateProgram == NULL ? COMPILER_INTERNAL_ERROR :
+                 intermediateCodeGenerate(program, intermediateProgram);
+    }
+    if (status == COMPILER_OK) {
+        status = generatorWrite(intermediateProgram, stdout);
+    }
     if (status != COMPILER_OK) {
         fprintf(stderr, "Compiler stopped with status %d.\n", (int)status);
     }
 
+    intermediateProgramDestroy(intermediateProgram);
     sourceProgramDestroy(program);
     syntaxAnalyzerDestroy(syntaxAnalyzer);
     lexicalAnalyzerDestroy(lexicalAnalyzer);
