@@ -21,6 +21,7 @@ typedef struct {
     IntermediateProgram *functionDeclarations;
     const SourceProgram *sourceProgram;
     DataType returnType;
+    bool needsListString;
 } IntermediateGenerator;
 
 static DataType descriptorDataType(const TypeDescriptor *type) {
@@ -963,6 +964,7 @@ static const struct {
     {DATA_TYPE_STRING, "string"},
     {DATA_TYPE_BOOLEAN, "bool"},
     {DATA_TYPE_UNIT, "nil"},
+    {DATA_TYPE_LIST, "array"},
 };
 
 static CompilerStatus appendTypeJump(IntermediateGenerator *generator, IntermediateOpcode opcode, const IntermediateOperand *label, const IntermediateOperand *typeOperand, const char *typeName, SourceLocation origin) {
@@ -971,7 +973,7 @@ static CompilerStatus appendTypeJump(IntermediateGenerator *generator, Intermedi
 }
 
 static bool isValueType(DataType type) {
-    DataType supported = DATA_TYPE_INT | DATA_TYPE_DOUBLE | DATA_TYPE_STRING | DATA_TYPE_UNIT | DATA_TYPE_BOOLEAN | DATA_TYPE_CASE_CLASS;
+    DataType supported = DATA_TYPE_INT | DATA_TYPE_DOUBLE | DATA_TYPE_STRING | DATA_TYPE_UNIT | DATA_TYPE_BOOLEAN | DATA_TYPE_CASE_CLASS | DATA_TYPE_LIST;
     return type != DATA_TYPE_UNKNOWN && (type & supported) == type;
 }
 
@@ -1044,7 +1046,7 @@ static CompilerStatus generateTypedPatternJumps(IntermediateGenerator *generator
 
     size_t counter = 0;
     while (counter < sizeof(runtimeTypes) / sizeof(runtimeTypes[0])) {
-        if (type->datatypeBitflag & runtimeTypes[counter].type) {
+        if (runtimeTypes[counter].type != DATA_TYPE_LIST && (type->datatypeBitflag & runtimeTypes[counter].type)) {
             CompilerStatus status = appendTypeJump(generator, INTERMEDIATE_JUMP_IF_EQUAL, matchedLabel, runtimeType, runtimeTypes[counter].name, origin);
             if (status != COMPILER_OK) {
                 return status;
@@ -1053,7 +1055,10 @@ static CompilerStatus generateTypedPatternJumps(IntermediateGenerator *generator
         counter++;
     }
     if (type->datatypeBitflag & DATA_TYPE_LIST) {
-        return COMPILER_INTERNAL_ERROR;
+        CompilerStatus status = generateClassJump(generator, subject, runtimeType, "$List", matchedLabel, origin);
+        if (status != COMPILER_OK) {
+            return status;
+        }
     }
 
     const TypeDescriptorAliasNode *name = type->classes;
@@ -1112,6 +1117,8 @@ static CompilerStatus bindPatternValue(IntermediateGenerator *generator, const A
     return status;
 }
 
+static CompilerStatus generateListString(IntermediateGenerator *generator, const IntermediateOperand *result, const IntermediateOperand *value, SourceLocation origin);
+
 static CompilerStatus generateUnionString(IntermediateGenerator *generator, IntermediateOperand *result, const IntermediateOperand *value, DataType types, SourceLocation origin) {
     IntermediateOperand operands[3] = {0};
     IntermediateOperand *type = &operands[0];
@@ -1151,7 +1158,9 @@ static CompilerStatus generateUnionString(IntermediateGenerator *generator, Inte
             return status;
         }
 
-        if (current == DATA_TYPE_BOOLEAN) {
+        if (current == DATA_TYPE_LIST) {
+            status = generateListString(generator, result, value, origin);
+        } else if (current == DATA_TYPE_BOOLEAN) {
             status = generateBooleanString(generator, result, value, origin);
         } else if (current == DATA_TYPE_UNIT) {
             IntermediateOperand unit = {.kind = INTERMEDIATE_OPERAND_STRING, .text = "()"};
@@ -1193,7 +1202,42 @@ static CompilerStatus generateUnionString(IntermediateGenerator *generator, Inte
     return status;
 }
 
-static CompilerStatus generateUnionPrint(IntermediateGenerator *generator, const IntermediateOperand *value, SourceLocation origin) {
+static CompilerStatus generateUnionPrint(IntermediateGenerator *generator, const IntermediateOperand *value, DataType type, SourceLocation origin) {
+    if (type & DATA_TYPE_LIST) {
+        IntermediateOperand operands[3] = {0};
+        CompilerStatus status = generateTemporary(generator, &operands[0], origin);
+        if (status == COMPILER_OK) {
+            status = generateTemporary(generator, &operands[1], origin);
+        }
+        if (status == COMPILER_OK) {
+            status = generateLabel(generator, &operands[2]);
+        }
+        if (status == COMPILER_OK) {
+            IntermediateOperand arrayType = {.kind = INTERMEDIATE_OPERAND_STRING, .text = "array"};
+            IntermediateInstruction check[] = {
+                controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){operands[0], *value}),
+                controlInstruction(INTERMEDIATE_GET_TYPE, origin, 2, (IntermediateOperand[]){operands[1], *value}),
+                controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){operands[2], operands[1], arrayType}),
+            };
+            status = appendInstructionArray(generator, check, sizeof(check) / sizeof(check[0]));
+        }
+        if (status == COMPILER_OK) {
+            status = generateListString(generator, &operands[0], value, origin);
+        }
+        if (status == COMPILER_OK) {
+            status = appendControlInstruction(generator, INTERMEDIATE_LABEL, origin, 1, &operands[2]);
+        }
+        if (status == COMPILER_OK) {
+            status = generateUnionPrint(generator, &operands[0], type & ~DATA_TYPE_LIST, origin);
+        }
+        clearOperandArray(operands, 3);
+        return status;
+    }
+
+    if (!(type & DATA_TYPE_UNIT)) {
+        return appendControlInstruction(generator, INTERMEDIATE_WRITE, origin, 1, value);
+    }
+
     IntermediateOperand labels[2] = {0};
     IntermediateOperand *valueLabel = &labels[0];
     IntermediateOperand *endLabel = &labels[1];
@@ -1997,9 +2041,604 @@ static CompilerStatus generateClassConstructor(IntermediateGenerator *generator,
     return COMPILER_OK;
 }
 
+static CompilerStatus generateRangeValue(IntermediateGenerator *generator, const IntermediateOperand *destination, const AbstractSyntaxNode *node) {
+    IntermediateOperand valueOperand = {0};
+    CompilerStatus status = generateExpression(generator, &valueOperand, node);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, node->location, 2, (IntermediateOperand[]){*destination, valueOperand});
+    intermediateOperandClear(&valueOperand);
+
+    return status;
+}
+
+static IntermediateOperand integerOperand(int64_t value) {
+    return (IntermediateOperand){.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = value};
+}
+
+static IntermediateOperand stringOperand(char *value) {
+    return (IntermediateOperand){.kind = INTERMEDIATE_OPERAND_STRING, .text = value};
+}
+
+static CompilerStatus generateListOperands(IntermediateGenerator *generator, IntermediateOperand *operands, size_t temporaryCount, size_t labelCount, SourceLocation origin) {
+    size_t counter = 0;
+    while (counter < temporaryCount + labelCount) {
+        CompilerStatus status = counter < temporaryCount ? generateTemporary(generator, &operands[counter], origin) :
+                                                           generateLabel(generator, &operands[counter]);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        counter++;
+    }
+    return COMPILER_OK;
+}
+
+static CompilerStatus generateListArray(IntermediateGenerator *generator, const IntermediateOperand *result, const IntermediateOperand *length, SourceLocation origin) {
+    IntermediateOperand size = {0};
+    CompilerStatus status = generateTemporary(generator, &size, origin);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    // Slot 0 identifies the array as a list. Slot 1 holds its length.
+    IntermediateInstruction instructions[] = {
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){size, *length, integerOperand(2)}),
+        controlInstruction(INTERMEDIATE_ARRAY_CREATE, origin, 2, (IntermediateOperand[]){*result, size}),
+        controlInstruction(INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){*result, integerOperand(0), stringOperand("$List")}),
+        controlInstruction(INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){*result, integerOperand(1), *length}),
+    };
+    status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    intermediateOperandClear(&size);
+    return status;
+}
+
+static CompilerStatus generateListLength(IntermediateGenerator *generator, const IntermediateOperand *result, const IntermediateOperand *list, SourceLocation origin) {
+    return appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){*result, *list, integerOperand(1)});
+}
+
+static CompilerStatus generateListConstructor(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
+    IntermediateOperand result = {0};
+    CompilerStatus status = generateTemporary(generator, &result, node->location);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    IntermediateOperand length = integerOperand((int64_t)(node->childCount - 1));
+    status = generateListArray(generator, &result, &length, node->location);
+    size_t counter = 1;
+    while (status == COMPILER_OK && counter < node->childCount) {
+        const AbstractSyntaxNode *element = node->children[counter];
+        IntermediateOperand value = {0};
+        status = generateExpression(generator, &value, element);
+        if (status == COMPILER_OK) {
+            const TypeDescriptorRecursiveNode *elementType = node->type.recursiveTypes;
+            DataType target = elementType == NULL ? DATA_TYPE_UNKNOWN : valueTypes(generator, &elementType->elementType);
+            status = convertValue(generator, &value, valueTypes(generator, &element->type), target, element->location);
+        }
+        if (status == COMPILER_OK) {
+            status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, element->location, 3,
+                                              (IntermediateOperand[]){result, integerOperand((int64_t)counter + 1), value});
+        }
+        intermediateOperandClear(&value);
+        counter++;
+    }
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&result);
+        return status;
+    }
+    *operand = result;
+    return COMPILER_OK;
+}
+
+static CompilerStatus generateListIndex(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *receiver, const AbstractSyntaxNode *indexNode, const TypeDescriptor *type, SourceLocation origin) {
+    IntermediateOperand operands[7] = {0};
+    IntermediateOperand *list = &operands[0];
+    IntermediateOperand *index = &operands[1];
+    IntermediateOperand *result = &operands[2];
+    IntermediateOperand *length = &operands[3];
+    IntermediateOperand *condition = &operands[4];
+    IntermediateOperand *invalid = &operands[5];
+    IntermediateOperand *valid = &operands[6];
+    CompilerStatus status = generateExpression(generator, list, receiver);
+    if (status == COMPILER_OK) {
+        *index = integerOperand(0);
+        if (indexNode != NULL) {
+            status = generateExpression(generator, index, indexNode);
+        }
+    }
+    if (status == COMPILER_OK) {
+        status = generateListOperands(generator, result, 3, 2, origin);
+    }
+    if (status == COMPILER_OK) {
+        status = generateListLength(generator, length, list, origin);
+    }
+    if (status == COMPILER_OK) {
+        IntermediateOperand yes = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
+        IntermediateInstruction instructions[] = {
+            controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){*condition, *index, integerOperand(0)}),
+            controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){*invalid, *condition, yes}),
+            controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){*condition, *index, *length}),
+            controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){*valid, *condition, yes}),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, invalid),
+            controlInstruction(INTERMEDIATE_EXIT, origin, 1, &(IntermediateOperand){.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 40}),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, valid),
+            controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){*length, *index, integerOperand(2)}),
+            controlInstruction(INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){*result, *list, *length}),
+        };
+        status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    }
+    if (status == COMPILER_OK) {
+        DataType target = valueTypes(generator, type);
+        if ((target & DATA_TYPE_DOUBLE) && !(target & DATA_TYPE_INT)) {
+            status = convertValue(generator, result, target | DATA_TYPE_INT, target, origin);
+        }
+    }
+    if (status == COMPILER_OK) {
+        *operand = *result;
+        result->text = NULL;
+    }
+    clearOperandArray(operands, 7);
+    return status;
+}
+
+static CompilerStatus generateListCopy(IntermediateGenerator *generator, const IntermediateOperand *result, const IntermediateOperand *destinationStart, const IntermediateOperand *source, const IntermediateOperand *start, const IntermediateOperand *end, SourceLocation origin) {
+    IntermediateOperand operands[7] = {0};
+    CompilerStatus status = generateListOperands(generator, operands, 5, 2, origin);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 7);
+        return status;
+    }
+
+    IntermediateOperand position = operands[0];
+    IntermediateOperand destination = operands[1];
+    IntermediateOperand sourceIndex = operands[2];
+    IntermediateOperand element = operands[3];
+    IntermediateOperand condition = operands[4];
+    IntermediateOperand loop = operands[5];
+    IntermediateOperand done = operands[6];
+    IntermediateOperand one = integerOperand(1);
+    IntermediateOperand two = integerOperand(2);
+    IntermediateOperand no = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
+    IntermediateInstruction instructions[] = {
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){position, *start}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){destination, *destinationStart, two}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &loop),
+        controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, position, *end}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){done, condition, no}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){sourceIndex, position, two}),
+        controlInstruction(INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){element, *source, sourceIndex}),
+        controlInstruction(INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){*result, destination, element}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){position, position, one}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){destination, destination, one}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &loop),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &done),
+    };
+    status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    clearOperandArray(operands, 7);
+    return status;
+}
+
+static CompilerStatus generateListConcat(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
+    IntermediateOperand operands[6] = {0};
+    IntermediateOperand *left = &operands[0];
+    IntermediateOperand *right = &operands[1];
+    IntermediateOperand *result = &operands[2];
+    IntermediateOperand *leftLength = &operands[3];
+    IntermediateOperand *rightLength = &operands[4];
+    IntermediateOperand *total = &operands[5];
+    CompilerStatus status = generateExpression(generator, left, node->children[0]);
+    if (status == COMPILER_OK) {
+        status = generateExpression(generator, right, node->children[1]);
+    }
+    if (status == COMPILER_OK) {
+        status = generateListOperands(generator, result, 4, 0, node->location);
+    }
+    if (status == COMPILER_OK) {
+        status = generateListLength(generator, leftLength, left, node->location);
+    }
+    if (status == COMPILER_OK) {
+        status = generateListLength(generator, rightLength, right, node->location);
+    }
+    if (status == COMPILER_OK) {
+        status = appendControlInstruction(generator, INTERMEDIATE_ADD, node->location, 3,
+                                          (IntermediateOperand[]){*total, *leftLength, *rightLength});
+    }
+    if (status == COMPILER_OK) {
+        status = generateListArray(generator, result, total, node->location);
+    }
+    IntermediateOperand zero = integerOperand(0);
+    if (status == COMPILER_OK) {
+        status = generateListCopy(generator, result, &zero, left, &zero, leftLength, node->location);
+    }
+    if (status == COMPILER_OK) {
+        status = generateListCopy(generator, result, leftLength, right, &zero, rightLength, node->location);
+    }
+    if (status == COMPILER_OK) {
+        *operand = *result;
+        result->text = NULL;
+    }
+    clearOperandArray(operands, 6);
+    return status;
+}
+
+static CompilerStatus capListIndex(IntermediateGenerator *generator, const IntermediateOperand *index, const IntermediateOperand *limit, bool upperLimit, SourceLocation origin) {
+    IntermediateOperand operands[2] = {0};
+    CompilerStatus status = generateListOperands(generator, operands, 1, 1, origin);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 2);
+        return status;
+    }
+
+    IntermediateOperand no = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
+    IntermediateOpcode comparison = upperLimit ? INTERMEDIATE_COMPARE_GREATER : INTERMEDIATE_COMPARE_LESS;
+    IntermediateInstruction instructions[] = {
+        controlInstruction(comparison, origin, 3, (IntermediateOperand[]){operands[0], *index, *limit}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){operands[1], operands[0], no}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){*index, *limit}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &operands[1]),
+    };
+    status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    clearOperandArray(operands, 2);
+    return status;
+}
+
+static CompilerStatus generateListSlice(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *receiver, const AbstractSyntaxNode *from, const AbstractSyntaxNode *until, bool isTail, SourceLocation origin) {
+    IntermediateOperand operands[7] = {0};
+    IntermediateOperand *list = &operands[0];
+    IntermediateOperand *result = &operands[1];
+    IntermediateOperand *length = &operands[2];
+    IntermediateOperand *start = &operands[3];
+    IntermediateOperand *end = &operands[4];
+    IntermediateOperand *count = &operands[5];
+    IntermediateOperand *nonempty = &operands[6];
+    CompilerStatus status = generateExpression(generator, list, receiver);
+    if (status == COMPILER_OK) {
+        status = generateListOperands(generator, result, 5, isTail ? 1 : 0, origin);
+    }
+    if (status == COMPILER_OK) {
+        status = generateListLength(generator, length, list, origin);
+    }
+
+    IntermediateOperand zero = integerOperand(0);
+    if (status == COMPILER_OK && isTail) {
+        IntermediateOperand error = integerOperand(40);
+        IntermediateInstruction instructions[] = {
+            controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){*nonempty, *length, zero}),
+            controlInstruction(INTERMEDIATE_EXIT, origin, 1, &error),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, nonempty),
+        };
+        status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    }
+
+    if (status == COMPILER_OK) {
+        if (from == NULL) {
+            status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){*start, integerOperand(isTail ? 1 : 0)});
+        } else {
+            status = generateRangeValue(generator, start, from);
+        }
+    }
+    if (status == COMPILER_OK) {
+        if (until == NULL) {
+            status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){*end, *length});
+        } else {
+            status = generateRangeValue(generator, end, until);
+        }
+    }
+
+    if (status == COMPILER_OK) {
+        status = capListIndex(generator, start, &zero, false, origin);
+    }
+    if (status == COMPILER_OK) {
+        status = capListIndex(generator, start, length, true, origin);
+    }
+    if (status == COMPILER_OK) {
+        status = capListIndex(generator, end, length, true, origin);
+    }
+    if (status == COMPILER_OK) {
+        status = capListIndex(generator, end, start, false, origin);
+    }
+    if (status == COMPILER_OK) {
+        status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
+                                          (IntermediateOperand[]){*count, *end, *start});
+    }
+    if (status == COMPILER_OK) {
+        status = generateListArray(generator, result, count, origin);
+    }
+    if (status == COMPILER_OK) {
+        status = generateListCopy(generator, result, &zero, list, start, end, origin);
+    }
+    if (status == COMPILER_OK) {
+        *operand = *result;
+        result->text = NULL;
+    }
+    clearOperandArray(operands, 7);
+    return status;
+}
+
+static CompilerStatus generateListRange(IntermediateGenerator *generator, IntermediateOperand *operand, AbstractSyntaxNode *const *parts, size_t count, bool inclusive, SourceLocation origin) {
+    if (parts == NULL || (count != 2 && count != 3)) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    IntermediateOperand operands[12] = {0};
+    CompilerStatus status = generateListOperands(generator, operands, 7, 5, origin);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 12);
+        return status;
+    }
+
+    IntermediateOperand result = operands[0];
+    IntermediateOperand value = operands[1];
+    IntermediateOperand end = operands[2];
+    IntermediateOperand step = operands[3];
+    IntermediateOperand distance = operands[4];
+    IntermediateOperand stride = operands[5];
+    IntermediateOperand length = operands[6];
+    IntermediateOperand nonzero = operands[7];
+    IntermediateOperand positive = operands[8];
+    IntermediateOperand allocate = operands[9];
+    IntermediateOperand loop = operands[10];
+    IntermediateOperand done = operands[11];
+
+    status = generateRangeValue(generator, &value, parts[0]);
+    if (status == COMPILER_OK) {
+        status = generateRangeValue(generator, &end, parts[1]);
+    }
+    if (status == COMPILER_OK) {
+        status = count == 3 ? generateRangeValue(generator, &step, parts[2]) :
+                             appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){step, integerOperand(1)});
+    }
+
+    IntermediateOperand zero = integerOperand(0);
+    IntermediateOperand one = integerOperand(1);
+    IntermediateOperand two = integerOperand(2);
+    IntermediateOperand error = integerOperand(40);
+    IntermediateOperand no = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
+    if (status == COMPILER_OK) {
+        IntermediateInstruction instructions[] = {
+            controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){nonzero, step, zero}),
+            controlInstruction(INTERMEDIATE_EXIT, origin, 1, &error),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, &nonzero),
+            controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){distance, end, value}),
+            controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){stride, step}),
+            controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){end, step, zero}),
+            controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){positive, end, no}),
+            controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){distance, zero, distance}),
+            controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){stride, zero, step}),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, &positive),
+            controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){length, zero}),
+            controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){distance, distance, integerOperand(inclusive ? 0 : 1)}),
+            controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){end, distance, zero}),
+            controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){allocate, end, no}),
+            controlInstruction(INTERMEDIATE_INTEGER_DIVIDE, origin, 3, (IntermediateOperand[]){length, distance, stride}),
+            controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){length, length, one}),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, &allocate),
+        };
+        status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    }
+    if (status == COMPILER_OK) {
+        status = generateListArray(generator, &result, &length, origin);
+    }
+    if (status == COMPILER_OK) {
+        IntermediateInstruction instructions[] = {
+            controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){length, length, two}),
+            controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){distance, two}),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, &loop),
+            controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){done, distance, length}),
+            controlInstruction(INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){result, distance, value}),
+            controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){distance, distance, one}),
+            controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){value, value, step}),
+            controlInstruction(INTERMEDIATE_JUMP, origin, 1, &loop),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, &done),
+        };
+        status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    }
+    if (status == COMPILER_OK) {
+        *operand = result;
+        operands[0].text = NULL;
+    }
+    clearOperandArray(operands, 12);
+    return status;
+}
+
+static CompilerStatus generateListString(IntermediateGenerator *generator, const IntermediateOperand *result, const IntermediateOperand *value, SourceLocation origin) {
+    generator->needsListString = true;
+    IntermediateOperand label = {.kind = INTERMEDIATE_OPERAND_LABEL, .text = "$listToString"};
+    IntermediateInstruction instructions[] = {
+        controlInstruction(INTERMEDIATE_PUSH, origin, 1, value),
+        controlInstruction(INTERMEDIATE_CREATE_FRAME, origin, 0, NULL),
+        controlInstruction(INTERMEDIATE_CALL, origin, 1, &label),
+        controlInstruction(INTERMEDIATE_POP, origin, 1, result),
+    };
+    return appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+}
+
+static CompilerStatus appendProgramInstructions(IntermediateProgram *destination,
+                                                const IntermediateProgram *source) {
+    if (destination == NULL || source == NULL || destination == source) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    if (source->count > 0) {
+        if (source->instructions == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+    }
+
+    size_t counter = 0;
+    CompilerStatus status = {0};
+
+    while (counter < source->count) {
+        status = intermediateProgramAppend(destination, &source->instructions[counter]);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+
+        counter++;
+    }
+
+    return COMPILER_OK;
+}
+
+static CompilerStatus generateListStringFunction(IntermediateGenerator *generator, SourceLocation origin) {
+    IntermediateGenerator function = *generator;
+    function.functionDeclarations = intermediateProgramCreate();
+    function.program = intermediateProgramCreate();
+    if (function.functionDeclarations == NULL || function.program == NULL) {
+        intermediateProgramDestroy(function.functionDeclarations);
+        intermediateProgramDestroy(function.program);
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateOperand operands[9] = {0};
+    CompilerStatus status = generateListOperands(&function, operands, 7, 2, origin);
+    IntermediateOperand list = operands[0];
+    IntermediateOperand result = operands[1];
+    IntermediateOperand length = operands[2];
+    IntermediateOperand position = operands[3];
+    IntermediateOperand item = operands[4];
+    IntermediateOperand text = operands[5];
+    IntermediateOperand condition = operands[6];
+    IntermediateOperand loop = operands[7];
+    IntermediateOperand done = operands[8];
+
+    if (status == COMPILER_OK) {
+        status = appendControlInstruction(&function, INTERMEDIATE_POP, origin, 1, &list);
+    }
+    if (status == COMPILER_OK) {
+        status = generateListLength(&function, &length, &list, origin);
+    }
+    IntermediateOperand no = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
+    if (status == COMPILER_OK) {
+        IntermediateInstruction loopInstructions[] = {
+            controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){length, length, integerOperand(2)}),
+            controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){position, integerOperand(2)}),
+            controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){result, stringOperand("List(")}),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, &loop),
+            controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, position, length}),
+            controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){done, condition, no}),
+            controlInstruction(INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){item, list, position}),
+        };
+        status = appendInstructionArray(&function, loopInstructions, sizeof(loopInstructions) / sizeof(loopInstructions[0]));
+    }
+    if (status == COMPILER_OK) {
+        DataType printable = DATA_TYPE_INT | DATA_TYPE_DOUBLE | DATA_TYPE_BOOLEAN | DATA_TYPE_STRING | DATA_TYPE_UNIT | DATA_TYPE_LIST;
+        status = generateUnionString(&function, &text, &item, printable, origin);
+    }
+    if (status == COMPILER_OK) {
+        IntermediateInstruction finish[] = {
+            controlInstruction(INTERMEDIATE_CONCATENATE, origin, 3, (IntermediateOperand[]){result, result, text}),
+            controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){position, position, integerOperand(1)}),
+            controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){done, position, length}),
+            controlInstruction(INTERMEDIATE_CONCATENATE, origin, 3, (IntermediateOperand[]){result, result, stringOperand(", ")}),
+            controlInstruction(INTERMEDIATE_JUMP, origin, 1, &loop),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, &done),
+            controlInstruction(INTERMEDIATE_CONCATENATE, origin, 3, (IntermediateOperand[]){result, result, stringOperand(")")}),
+            controlInstruction(INTERMEDIATE_PUSH, origin, 1, &result),
+            controlInstruction(INTERMEDIATE_POP_FRAME, origin, 0, NULL),
+            controlInstruction(INTERMEDIATE_RETURN, origin, 0, NULL),
+        };
+        status = appendInstructionArray(&function, finish, sizeof(finish) / sizeof(finish[0]));
+    }
+
+    if (status == COMPILER_OK) {
+        IntermediateOperand label = {.kind = INTERMEDIATE_OPERAND_LABEL, .text = "$listToString"};
+        IntermediateInstruction header[] = {
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, &label),
+            controlInstruction(INTERMEDIATE_PUSH_FRAME, origin, 0, NULL),
+        };
+        status = appendInstructionArray(generator, header, sizeof(header) / sizeof(header[0]));
+    }
+    if (status == COMPILER_OK) {
+        status = appendProgramInstructions(generator->program, function.functionDeclarations);
+    }
+    if (status == COMPILER_OK) {
+        status = appendProgramInstructions(generator->program, function.program);
+    }
+
+    clearOperandArray(operands, 9);
+    intermediateProgramDestroy(function.program);
+    intermediateProgramDestroy(function.functionDeclarations);
+    return status;
+}
+
+static CompilerStatus generateListMember(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
+    const AbstractSyntaxNode *receiver = node->children[0];
+    if (strcmp(node->text, "head") == 0) {
+        return generateListIndex(generator, operand, receiver, NULL, &node->type, node->location);
+    }
+    if (strcmp(node->text, "tail") == 0) {
+        return generateListSlice(generator, operand, receiver, NULL, NULL, true, node->location);
+    }
+    if (strcmp(node->text, "toString") != 0) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateOperand value = {0};
+    IntermediateOperand result = {0};
+    CompilerStatus status = generateExpression(generator, &value, receiver);
+    if (status == COMPILER_OK) {
+        status = generateTemporary(generator, &result, node->location);
+    }
+    if (status == COMPILER_OK) {
+        status = generateListString(generator, &result, &value, node->location);
+    }
+    intermediateOperandClear(&value);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&result);
+        return status;
+    }
+    *operand = result;
+    return COMPILER_OK;
+}
+
+static CompilerStatus generateListCall(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
+    const AbstractSyntaxNode *callee = node->children[0];
+    if (valueTypes(generator, &callee->type) == DATA_TYPE_LIST) {
+        if (node->childCount != 2 || node->children[1] == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+        return generateListIndex(generator, operand, callee, node->children[1], &node->type, node->location);
+    }
+
+    if (callee->kind != ABSTRACT_SYNTAX_MEMBER_ACCESS || callee->text == NULL ||
+        callee->childCount != 1 || callee->children == NULL || callee->children[0] == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    const AbstractSyntaxNode *receiver = callee->children[0];
+    if (receiver->kind == ABSTRACT_SYNTAX_IDENTIFIER && receiver->text != NULL &&
+        strcmp(receiver->text, "List") == 0 && strcmp(callee->text, "range") == 0) {
+        if (node->childCount != 3 && node->childCount != 4) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+        return generateListRange(generator, operand, node->children + 1, node->childCount - 1, false, node->location);
+    }
+    if (strcmp(callee->text, "slice") == 0 && node->childCount == 3) {
+        return generateListSlice(generator, operand, receiver, node->children[1], node->children[2], false, node->location);
+    }
+    if (strcmp(callee->text, "drop") == 0 && node->childCount == 2) {
+        return generateListSlice(generator, operand, receiver, node->children[1], NULL, false, node->location);
+    }
+    if (strcmp(callee->text, "take") == 0 && node->childCount == 2) {
+        return generateListSlice(generator, operand, receiver, NULL, node->children[1], false, node->location);
+    }
+    return COMPILER_INTERNAL_ERROR;
+}
+
 static CompilerStatus generateMemberAccess(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
-    if (node->text == NULL || node->childCount != 1 || node->children == NULL || node->children[0] == NULL ||
-        valueTypes(generator, &node->children[0]->type) != DATA_TYPE_CASE_CLASS) {
+    if (node->text == NULL || node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    const AbstractSyntaxNode *object = node->children[0];
+    if (object->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION && strcmp(node->text, "toList") == 0 &&
+        object->text != NULL && (object->childCount == 2 || object->childCount == 3)) {
+        return generateListRange(generator, operand, object->children, object->childCount, strcmp(object->text, "to") == 0, node->location);
+    }
+    DataType receiverType = valueTypes(generator, &object->type);
+    if (receiverType == DATA_TYPE_LIST) {
+        return generateListMember(generator, operand, node);
+    }
+    if (receiverType != DATA_TYPE_CASE_CLASS) {
         return COMPILER_INTERNAL_ERROR;
     }
 
@@ -2254,6 +2893,10 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
 
         if (node->text == NULL) {
             return COMPILER_INTERNAL_ERROR;
+        }
+
+        if (strcmp(node->text, "++") == 0) {
+            return generateListConcat(generator, operand, node);
         }
 
         bool isAnd = strcmp(node->text, "&&") == 0;
@@ -2602,13 +3245,20 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         }
 
         const AbstractSyntaxNode *callee = node->children[0];
-        if (callee->kind != ABSTRACT_SYNTAX_IDENTIFIER || callee->text == NULL) {
+        if (callee->kind != ABSTRACT_SYNTAX_IDENTIFIER || valueTypes(generator, &callee->type) == DATA_TYPE_LIST) {
+            return generateListCall(generator, operand, node);
+        }
+        if (callee->text == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
 
         const char *functionName = callee->text;
         size_t argumentCount = node->childCount - 1;
         AbstractSyntaxNode *const *arguments = node->children + 1;
+
+        if (strcmp(functionName, "List") == 0) {
+            return generateListConstructor(generator, operand, node);
+        }
 
         bool isDoubleMaybe = strcmp(functionName, "readDoubleMaybe") == 0;
         if (strcmp(functionName, "readIntMaybe") == 0 || isDoubleMaybe) {
@@ -2625,7 +3275,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
 
             const AbstractSyntaxNode *argument = arguments[0];
             DataType argumentType = valueTypes(generator, &argument->type);
-            if (!isValueType(argumentType) || (argumentType & DATA_TYPE_CASE_CLASS)) {
+            if (!isValueType(argumentType) || (argumentType & DATA_TYPE_CASE_CLASS) ||
+                ((argumentType & DATA_TYPE_LIST) && argument->type.recursiveTypes == NULL)) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -2647,8 +3298,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 };
             }
 
-            if ((argumentType & DATA_TYPE_UNIT) && argumentType != DATA_TYPE_UNIT) {
-                status = generateUnionPrint(generator, &argumentOperand, node->location);
+            if ((argumentType & DATA_TYPE_LIST) || ((argumentType & DATA_TYPE_UNIT) && argumentType != DATA_TYPE_UNIT)) {
+                status = generateUnionPrint(generator, &argumentOperand, argumentType, node->location);
             } else {
                 status = intermediateProgramAppend(generator->program, &printInstruction);
             }
@@ -2760,7 +3411,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
 
             const AbstractSyntaxNode *argument = arguments[0];
             DataType argumentType = valueTypes(generator, &argument->type);
-            if (!isValueType(argumentType) || (argumentType & DATA_TYPE_CASE_CLASS)) {
+            if (!isValueType(argumentType) || (argumentType & DATA_TYPE_CASE_CLASS) ||
+                ((argumentType & DATA_TYPE_LIST) && argument->type.recursiveTypes == NULL)) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -2802,7 +3454,9 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 return status;
             }
 
-            if (argumentType == DATA_TYPE_BOOLEAN) {
+            if (argumentType == DATA_TYPE_LIST) {
+                status = generateListString(generator, &resultOperand, &argumentOperand, node->location);
+            } else if (argumentType == DATA_TYPE_BOOLEAN) {
                 status = generateBooleanString(generator, &resultOperand, &argumentOperand, node->location);
             } else if (argumentType != DATA_TYPE_INT && argumentType != DATA_TYPE_DOUBLE) {
                 status = generateUnionString(generator, &resultOperand, &argumentOperand, argumentType, node->location);
@@ -3113,19 +3767,6 @@ static CompilerStatus generateExpressionStatement(IntermediateGenerator *generat
     return status;
 }
 
-static CompilerStatus generateRangeValue(IntermediateGenerator *generator, const IntermediateOperand *destination, const AbstractSyntaxNode *node) {
-    IntermediateOperand valueOperand = {0};
-    CompilerStatus status = generateExpression(generator, &valueOperand, node);
-    if (status != COMPILER_OK) {
-        return status;
-    }
-
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, node->location, 2, (IntermediateOperand[]){*destination, valueOperand});
-    intermediateOperandClear(&valueOperand);
-
-    return status;
-}
-
 static CompilerStatus generateForGuards(IntermediateGenerator *generator, const AbstractSyntaxNode *clauses, const IntermediateOperand *advanceLabel) {
     size_t counter = 1;
     while (counter < clauses->childCount) {
@@ -3153,6 +3794,83 @@ static CompilerStatus generateForGuards(IntermediateGenerator *generator, const 
     }
 
     return COMPILER_OK;
+}
+
+static CompilerStatus generateStatement(IntermediateGenerator *generator, const AbstractSyntaxNode *node);
+
+static CompilerStatus generateListFor(IntermediateGenerator *generator, const AbstractSyntaxNode *binding, const AbstractSyntaxNode *clauses, const AbstractSyntaxNode *body) {
+    IntermediateOperand operands[8] = {0};
+    IntermediateOperand *list = &operands[0];
+    IntermediateOperand *iterator = &operands[1];
+    CompilerStatus status = generateTemporary(generator, list, binding->location);
+    if (status == COMPILER_OK) {
+        status = generateRangeValue(generator, list, binding->children[0]);
+    }
+    if (status == COMPILER_OK) {
+        status = generateVariable(iterator, binding);
+    }
+    SourceLocation origin = binding->location;
+    if (status == COMPILER_OK) {
+        status = appendVariableDeclaration(generator, iterator, origin);
+    }
+    if (status == COMPILER_OK) {
+        status = generateListOperands(generator, &operands[2], 3, 3, origin);
+    }
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 8);
+        return status;
+    }
+
+    IntermediateOperand length = operands[2];
+    IntermediateOperand position = operands[3];
+    IntermediateOperand condition = operands[4];
+    IntermediateOperand loop = operands[5];
+    IntermediateOperand advance = operands[6];
+    IntermediateOperand end = operands[7];
+    IntermediateOperand no = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
+    status = generateListLength(generator, &length, list, origin);
+    if (status == COMPILER_OK) {
+        IntermediateInstruction setup[] = {
+            controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){length, length, integerOperand(2)}),
+            controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){position, integerOperand(2)}),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, &loop),
+            controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, position, length}),
+            controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, no}),
+            controlInstruction(INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){*iterator, *list, position}),
+        };
+        status = appendInstructionArray(generator, setup, sizeof(setup) / sizeof(setup[0]));
+    }
+    DataType target = valueTypes(generator, &binding->type);
+    if (status == COMPILER_OK && (target & DATA_TYPE_DOUBLE) && !(target & DATA_TYPE_INT)) {
+        IntermediateOperand runtimeValue = {.kind = iterator->kind, .text = memoryDuplicateString(iterator->text)};
+        if (runtimeValue.text == NULL) {
+            status = COMPILER_INTERNAL_ERROR;
+        } else {
+            status = convertValue(generator, &runtimeValue, target | DATA_TYPE_INT, target, origin);
+            if (status == COMPILER_OK) {
+                status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
+                                                  (IntermediateOperand[]){*iterator, runtimeValue});
+            }
+        }
+        intermediateOperandClear(&runtimeValue);
+    }
+    if (status == COMPILER_OK) {
+        status = generateForGuards(generator, clauses, &advance);
+    }
+    if (status == COMPILER_OK) {
+        status = generateStatement(generator, body);
+    }
+    if (status == COMPILER_OK) {
+        IntermediateInstruction next[] = {
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, &advance),
+            controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){position, position, integerOperand(1)}),
+            controlInstruction(INTERMEDIATE_JUMP, origin, 1, &loop),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, &end),
+        };
+        status = appendInstructionArray(generator, next, sizeof(next) / sizeof(next[0]));
+    }
+    clearOperandArray(operands, 8);
+    return status;
 }
 
 static CompilerStatus generateStatement(IntermediateGenerator *generator,
@@ -3397,12 +4115,15 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
         const AbstractSyntaxNode *binding = clauses->children[0];
         if (binding->kind != ABSTRACT_SYNTAX_FOR_GENERATOR || binding->childCount != 1 ||
             binding->children == NULL || binding->children[0] == NULL ||
-            descriptorDataType(&binding->type) != DATA_TYPE_INT || binding->variableId == 0) {
+            binding->variableId == 0) {
             return COMPILER_INTERNAL_ERROR;
         }
 
         const AbstractSyntaxNode *range = binding->children[0];
-        if (range->kind != ABSTRACT_SYNTAX_RANGE_EXPRESSION || range->text == NULL ||
+        if (valueTypes(generator, &range->type) == DATA_TYPE_LIST) {
+            return generateListFor(generator, binding, clauses, node->children[1]);
+        }
+        if (descriptorDataType(&binding->type) != DATA_TYPE_INT || range->kind != ABSTRACT_SYNTAX_RANGE_EXPRESSION || range->text == NULL ||
             (range->childCount != 2 && range->childCount != 3) || range->children == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
@@ -3746,32 +4467,6 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
     }
 }
 
-static CompilerStatus appendProgramInstructions(IntermediateProgram *destination,
-                                                const IntermediateProgram *source) {
-    if (destination == NULL || source == NULL || destination == source) {
-        return COMPILER_INTERNAL_ERROR;
-    }
-
-    if (source->count > 0) {
-        if (source->instructions == NULL) {
-            return COMPILER_INTERNAL_ERROR;
-        }
-    }
-
-    size_t counter = 0;
-    CompilerStatus status = {0};
-
-    while (counter < source->count) {
-        status = intermediateProgramAppend(destination, &source->instructions[counter]);
-        if (status != COMPILER_OK) {
-            return status;
-        }
-
-        counter++;
-    }
-
-    return COMPILER_OK;
-}
 
 static CompilerStatus generateParameters(IntermediateGenerator *generator,
                                          const AbstractSyntaxNode *function) {
@@ -3949,6 +4644,7 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator,
 
     generator->temporaryCounter = functionGenerator.temporaryCounter;
     generator->labelCounter = functionGenerator.labelCounter;
+    generator->needsListString = functionGenerator.needsListString;
 
     if (status != COMPILER_OK) {
         intermediateProgramDestroy(functionBody);
@@ -4147,6 +4843,9 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program,
         counter++;
     }
 
+    if (generator.needsListString) {
+        return generateListStringFunction(&generator, entryFunction->location);
+    }
     return COMPILER_OK;
 }
 // Boeing

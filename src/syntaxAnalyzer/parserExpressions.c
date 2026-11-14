@@ -432,7 +432,7 @@ static CompilerStatus parseExpressionPostfix(SyntaxAnalyzer *syntaxAnalyzer,
             }
             *expression = call;
             call = NULL;
-            canCall = false;
+            canCall = true;
             continue;
         }
         break;
@@ -895,6 +895,7 @@ typedef struct {
     ExpressionTerminal terminal;
     SourceLocation location;
     AbstractSyntaxNode *node;
+    bool concatenation;
 } ExpressionStackEntry;
 
 static CompilerStatus reserveExpressionStack(ExpressionStackEntry **stack, size_t *capacity,
@@ -1003,6 +1004,9 @@ static ExpressionTerminal terminalForToken(const SyntaxAnalyzer *syntaxAnalyzer,
         return EXPR_TERMINAL_RIGHT_PAREN;
     }
     if (token->type == TOKEN_OPERATOR) {
+        if (tokenHasText(token, "++")) {
+            return EXPR_TERMINAL_ADD;
+        }
         ExpressionTerminal terminal;
         if (syntaxOperatorFromToken(token, &terminal)) {
             if (expressionExpectsOperand(stack, stackCount)) {
@@ -1140,7 +1144,7 @@ static CompilerStatus reduceExpressionHandle(ExpressionStackEntry *stack, size_t
         if (node == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
-        CompilerStatus status = setNodeText(node, syntaxOperatorText(operator));
+        CompilerStatus status = setNodeText(node, stack[handleStart + 1].concatenation ? "++" : syntaxOperatorText(operator));
         if (status != COMPILER_OK) {
             abstractSyntaxNodeDestroy(node);
             return status;
@@ -1184,6 +1188,7 @@ static CompilerStatus shiftExpressionToken(SyntaxAnalyzer *syntaxAnalyzer,
     Token *token = syntaxAnalyzer->currentToken;
     ExpressionStackEntry entry = {
         .kind = EXPRESSION_STACK_TERMINAL, .terminal = terminal, .location = token->location};
+    entry.concatenation = terminal == EXPR_TERMINAL_ADD && tokenHasText(token, "++");
     if (terminal == EXPR_TERMINAL_OPERAND) {
         if (token->type == TOKEN_KEYWORD && tokenHasText(token, SYNTAX_KW_IF)) {
             CompilerStatus status = parseIfExpression(syntaxAnalyzer, &entry.node);

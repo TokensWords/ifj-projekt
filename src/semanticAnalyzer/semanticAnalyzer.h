@@ -332,15 +332,6 @@ int semAnalInRecursion(const char *funName, SemAnalData *data);
 CompilerStatus semAnalCheckRecursion(size_t recursionI, SemAnalData *data);
 
 /**
- * @brief Resolves indexed access to a list value.
- * @param functionCallNode The list-access call AST node.
- * @param data The semantic-analysis data to use.
- * @param varSymbol The symbol for the list being accessed.
- * @return status of the program - error codes
- */
-CompilerStatus semAnalResolveListAccess(AbstractSyntaxNode *functionCallNode, SemAnalData *data, Symbol *varSymbol);
-
-/**
  * @brief Resolves a list-constructor call and infers its element type.
  * @param functionCallNode The list-constructor call AST node.
  * @param data The semantic-analysis data to use.
