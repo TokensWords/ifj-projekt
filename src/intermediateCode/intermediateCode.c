@@ -825,12 +825,7 @@ static const AbstractSyntaxNode *findFunction(const SourceProgram *program,
         while (counter < program->root->childCount) {
             const AbstractSyntaxNode *function = program->root->children[counter];
 
-            if (function == NULL || function->kind != ABSTRACT_SYNTAX_FUNCTION ||
-                function->text == NULL) {
-                return NULL;
-            }
-
-            if (strcmp(function->text, functionName) == 0) {
+            if (function != NULL && function->kind == ABSTRACT_SYNTAX_FUNCTION && function->text != NULL && strcmp(function->text, functionName) == 0) {
                 return function;
             }
 
@@ -839,6 +834,39 @@ static const AbstractSyntaxNode *findFunction(const SourceProgram *program,
     }
 
     return NULL;
+}
+
+static const AbstractSyntaxNode *findTypeDeclaration(const SourceProgram *program, const char *name, AbstractSyntaxNodeKind kind) {
+    size_t counter = 0;
+    while (counter < program->root->childCount) {
+        const AbstractSyntaxNode *node = program->root->children[counter];
+        if (node != NULL && node->kind == kind && node->text != NULL && strcmp(node->text, name) == 0) {
+            return node;
+        }
+        counter++;
+    }
+
+    return NULL;
+}
+
+static DataType resolvedDataTypes(const SourceProgram *program, const TypeDescriptor *type, size_t remaining) {
+    if (remaining == 0) {
+        return DATA_TYPE_UNKNOWN;
+    }
+
+    DataType flags = type->datatypeBitflag & ~DATA_TYPE_ALIAS;
+    const TypeDescriptorAliasNode *alias = type->aliases;
+    while (alias != NULL) {
+        const AbstractSyntaxNode *declaration = findTypeDeclaration(program, alias->name, ABSTRACT_SYNTAX_TYPE_ALIAS);
+        if (declaration != NULL) {
+            flags |= resolvedDataTypes(program, &declaration->type, remaining - 1);
+        } else if (findTypeDeclaration(program, alias->name, ABSTRACT_SYNTAX_CASE_CLASS) != NULL) {
+            flags |= DATA_TYPE_CASE_CLASS;
+        }
+        alias = alias->next;
+    }
+
+    return flags;
 }
 
 static CompilerStatus generateBooleanString(IntermediateGenerator *generator, const IntermediateOperand *resultOperand, const IntermediateOperand *valueOperand, SourceLocation origin) {
@@ -893,6 +921,1177 @@ static CompilerStatus appendControlInstruction(IntermediateGenerator *generator,
     return intermediateProgramAppend(generator->program, &instruction);
 }
 
+static CompilerStatus generateClassJump(IntermediateGenerator *generator, const IntermediateOperand *subject, const IntermediateOperand *runtimeType, const char *className, const IntermediateOperand *matchedLabel, SourceLocation origin) {
+    IntermediateOperand operands[2] = {0};
+    IntermediateOperand *tag = &operands[0];
+    IntermediateOperand *skipLabel = &operands[1];
+    CompilerStatus status = generateTemporary(generator, tag, origin);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 2);
+        return status;
+    }
+    status = generateLabel(generator, skipLabel);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 2);
+        return status;
+    }
+
+    IntermediateOperand arrayName = {.kind = INTERMEDIATE_OPERAND_STRING, .text = "array"};
+    IntermediateOperand classTag = {.kind = INTERMEDIATE_OPERAND_STRING, .text = (char *)className};
+    IntermediateOperand zero = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
+    IntermediateInstruction instructions[] = {
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){*skipLabel, *runtimeType, arrayName}),
+        controlInstruction(INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){*tag, *subject, zero}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){*matchedLabel, *tag, classTag}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, skipLabel),
+    };
+    status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    clearOperandArray(operands, 2);
+    return status;
+}
+
+static DataType valueTypes(IntermediateGenerator *generator, const TypeDescriptor *type) {
+    return resolvedDataTypes(generator->sourceProgram, type, generator->sourceProgram->root->childCount + 1);
+}
+
+static const struct {
+    DataType type;
+    const char *name;
+} runtimeTypes[] = {
+    {DATA_TYPE_INT, "int"},
+    {DATA_TYPE_DOUBLE, "float"},
+    {DATA_TYPE_STRING, "string"},
+    {DATA_TYPE_BOOLEAN, "bool"},
+    {DATA_TYPE_UNIT, "nil"},
+};
+
+static CompilerStatus appendTypeJump(IntermediateGenerator *generator, IntermediateOpcode opcode, const IntermediateOperand *label, const IntermediateOperand *typeOperand, const char *typeName, SourceLocation origin) {
+    IntermediateOperand name = {.kind = INTERMEDIATE_OPERAND_STRING, .text = (char *)typeName};
+    return appendControlInstruction(generator, opcode, origin, 3, (IntermediateOperand[]){*label, *typeOperand, name});
+}
+
+static bool isValueType(DataType type) {
+    DataType supported = DATA_TYPE_INT | DATA_TYPE_DOUBLE | DATA_TYPE_STRING | DATA_TYPE_UNIT | DATA_TYPE_BOOLEAN | DATA_TYPE_CASE_CLASS;
+    return type != DATA_TYPE_UNKNOWN && (type & supported) == type;
+}
+
+static bool canConvertValue(DataType from, DataType to) {
+    if (!isValueType(from) || !isValueType(to)) {
+        return false;
+    }
+    if ((from & to) == from) {
+        return true;
+    }
+
+    return (to & DATA_TYPE_DOUBLE) && (from & DATA_TYPE_INT) && ((from & ~DATA_TYPE_INT) & to) == (from & ~DATA_TYPE_INT);
+}
+
+static CompilerStatus convertValue(IntermediateGenerator *generator, IntermediateOperand *operand, DataType from, DataType to, SourceLocation origin) {
+    if (!canConvertValue(from, to)) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    if ((from & to) == from) {
+        return COMPILER_OK;
+    }
+
+    if (from == DATA_TYPE_INT) {
+        return convertIntToDouble(generator, operand, origin);
+    }
+
+    IntermediateOperand operands[3] = {0};
+    IntermediateOperand *result = &operands[0];
+    IntermediateOperand *type = &operands[1];
+    IntermediateOperand *end = &operands[2];
+    CompilerStatus status = generateTemporary(generator, result, origin);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 3);
+        return status;
+    }
+    status = generateTemporary(generator, type, origin);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 3);
+        return status;
+    }
+    status = generateLabel(generator, end);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 3);
+        return status;
+    }
+
+    IntermediateOperand intName = {.kind = INTERMEDIATE_OPERAND_STRING, .text = "int"};
+    IntermediateInstruction instructions[] = {
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){*result, *operand}),
+        controlInstruction(INTERMEDIATE_GET_TYPE, origin, 2, (IntermediateOperand[]){*type, *operand}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){*end, *type, intName}),
+        controlInstruction(INTERMEDIATE_CONVERT_INT_TO_DOUBLE, origin, 2, (IntermediateOperand[]){*result, *operand}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, end),
+    };
+    status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    if (status == COMPILER_OK) {
+        intermediateOperandClear(operand);
+        *operand = *result;
+        result->text = NULL;
+    }
+    clearOperandArray(operands, 3);
+
+    return status;
+}
+
+static CompilerStatus generateTypedPatternJumps(IntermediateGenerator *generator, const TypeDescriptor *type, const IntermediateOperand *subject, const IntermediateOperand *runtimeType, const IntermediateOperand *matchedLabel, SourceLocation origin, size_t remaining) {
+    if (remaining == 0) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    size_t counter = 0;
+    while (counter < sizeof(runtimeTypes) / sizeof(runtimeTypes[0])) {
+        if (type->datatypeBitflag & runtimeTypes[counter].type) {
+            CompilerStatus status = appendTypeJump(generator, INTERMEDIATE_JUMP_IF_EQUAL, matchedLabel, runtimeType, runtimeTypes[counter].name, origin);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+        }
+        counter++;
+    }
+    if (type->datatypeBitflag & DATA_TYPE_LIST) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    const TypeDescriptorAliasNode *name = type->classes;
+    while (name != NULL) {
+        CompilerStatus status = generateClassJump(generator, subject, runtimeType, name->name, matchedLabel, origin);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        name = name->next;
+    }
+
+    name = type->aliases;
+    while (name != NULL) {
+        const AbstractSyntaxNode *alias = findTypeDeclaration(generator->sourceProgram, name->name, ABSTRACT_SYNTAX_TYPE_ALIAS);
+        CompilerStatus status;
+        if (alias != NULL) {
+            status = generateTypedPatternJumps(generator, &alias->type, subject, runtimeType, matchedLabel, origin, remaining - 1);
+        } else if (findTypeDeclaration(generator->sourceProgram, name->name, ABSTRACT_SYNTAX_CASE_CLASS) != NULL) {
+            status = generateClassJump(generator, subject, runtimeType, name->name, matchedLabel, origin);
+        } else {
+            return COMPILER_INTERNAL_ERROR;
+        }
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        name = name->next;
+    }
+
+    return COMPILER_OK;
+}
+
+static CompilerStatus bindPatternValue(IntermediateGenerator *generator, const AbstractSyntaxNode *pattern, const IntermediateOperand *subject, size_t fieldIndex) {
+    if (pattern->kind != ABSTRACT_SYNTAX_IDENTIFIER || pattern->text == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    if (strcmp(pattern->text, "_") == 0) {
+        return COMPILER_OK;
+    }
+
+    IntermediateOperand binding = {0};
+    CompilerStatus status = generateVariable(&binding, pattern);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    status = appendVariableDeclaration(generator, &binding, pattern->location);
+    if (status == COMPILER_OK) {
+        if (fieldIndex == 0) {
+            status = appendControlInstruction(generator, INTERMEDIATE_MOVE, pattern->location, 2, (IntermediateOperand[]){binding, *subject});
+        } else {
+            IntermediateOperand index = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = (int64_t)fieldIndex};
+            status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, pattern->location, 3, (IntermediateOperand[]){binding, *subject, index});
+        }
+    }
+    intermediateOperandClear(&binding);
+
+    return status;
+}
+
+static CompilerStatus generateUnionString(IntermediateGenerator *generator, IntermediateOperand *result, const IntermediateOperand *value, DataType types, SourceLocation origin) {
+    IntermediateOperand operands[3] = {0};
+    IntermediateOperand *type = &operands[0];
+    IntermediateOperand *endLabel = &operands[1];
+    IntermediateOperand *nextLabel = &operands[2];
+    CompilerStatus status = generateTemporary(generator, type, origin);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    status = generateLabel(generator, endLabel);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 3);
+        return status;
+    }
+    status = appendControlInstruction(generator, INTERMEDIATE_GET_TYPE, origin, 2, (IntermediateOperand[]){*type, *value});
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 3);
+        return status;
+    }
+
+    size_t counter = 0;
+    while (counter < sizeof(runtimeTypes) / sizeof(runtimeTypes[0])) {
+        DataType current = runtimeTypes[counter].type;
+        if (!(types & current)) {
+            counter++;
+            continue;
+        }
+
+        status = generateLabel(generator, nextLabel);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 3);
+            return status;
+        }
+        status = appendTypeJump(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, nextLabel, type, runtimeTypes[counter].name, origin);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 3);
+            return status;
+        }
+
+        if (current == DATA_TYPE_BOOLEAN) {
+            status = generateBooleanString(generator, result, value, origin);
+        } else if (current == DATA_TYPE_UNIT) {
+            IntermediateOperand unit = {.kind = INTERMEDIATE_OPERAND_STRING, .text = "()"};
+            status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){*result, unit});
+        } else {
+            IntermediateOpcode opcode = INTERMEDIATE_MOVE;
+            if (current == DATA_TYPE_INT) {
+                opcode = INTERMEDIATE_CONVERT_INT_TO_STRING;
+            } else if (current == DATA_TYPE_DOUBLE) {
+                opcode = INTERMEDIATE_CONVERT_DOUBLE_TO_STRING;
+            }
+            status = appendControlInstruction(generator, opcode, origin, 2, (IntermediateOperand[]){*result, *value});
+        }
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 3);
+            return status;
+        }
+
+        IntermediateInstruction instructions[] = {
+            controlInstruction(INTERMEDIATE_JUMP, origin, 1, endLabel),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, nextLabel),
+        };
+        status = appendInstructionArray(generator, instructions, 2);
+        intermediateOperandClear(nextLabel);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 3);
+            return status;
+        }
+        counter++;
+    }
+
+    IntermediateOperand error = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 40};
+    IntermediateInstruction instructions[] = {
+        controlInstruction(INTERMEDIATE_EXIT, origin, 1, &error),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, endLabel),
+    };
+    status = appendInstructionArray(generator, instructions, 2);
+    clearOperandArray(operands, 3);
+    return status;
+}
+
+static CompilerStatus generateUnionPrint(IntermediateGenerator *generator, const IntermediateOperand *value, SourceLocation origin) {
+    IntermediateOperand labels[2] = {0};
+    IntermediateOperand *valueLabel = &labels[0];
+    IntermediateOperand *endLabel = &labels[1];
+    CompilerStatus status = generateLabel(generator, valueLabel);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    status = generateLabel(generator, endLabel);
+    if (status != COMPILER_OK) {
+        clearOperandArray(labels, 2);
+        return status;
+    }
+
+    IntermediateOperand unit = {.kind = INTERMEDIATE_OPERAND_STRING, .text = "()"};
+    IntermediateOperand nil = {.kind = INTERMEDIATE_OPERAND_UNIT};
+    IntermediateInstruction instructions[] = {
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){*valueLabel, *value, nil}),
+        controlInstruction(INTERMEDIATE_WRITE, origin, 1, &unit),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, endLabel),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, valueLabel),
+        controlInstruction(INTERMEDIATE_WRITE, origin, 1, value),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, endLabel),
+    };
+    status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+    clearOperandArray(labels, 2);
+    return status;
+}
+
+static CompilerStatus generateOptionalReadInput(IntermediateGenerator *generator, const IntermediateOperand *result, SourceLocation origin, const IntermediateOperand *variables, const IntermediateOperand *labels) {
+    IntermediateOperand line = variables[0];
+    IntermediateOperand length = variables[1];
+    IntermediateOperand index = variables[2];
+    IntermediateOperand character = variables[3];
+    IntermediateOperand negative = variables[4];
+    IntermediateOperand noNewline = labels[0];
+    IntermediateOperand afterSign = labels[1];
+    IntermediateOperand digitsStart = labels[2];
+    IntermediateOperand end = labels[3];
+
+    IntermediateOperand stringType = {.kind = INTERMEDIATE_OPERAND_TYPE, .value.dataType = DATA_TYPE_STRING};
+    IntermediateOperand unit = {.kind = INTERMEDIATE_OPERAND_UNIT};
+    IntermediateOperand zero = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
+    IntermediateOperand one = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 1};
+    IntermediateOperand newline = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = '\n'};
+    IntermediateOperand minus = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = '-'};
+    IntermediateOperand plus = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = '+'};
+    IntermediateOperand trueValue = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
+
+    IntermediateInstruction instructions[] = {
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){*result, unit}),
+        controlInstruction(INTERMEDIATE_READ, origin, 2, (IntermediateOperand[]){line, stringType}),
+        controlInstruction(INTERMEDIATE_STRING_LENGTH, origin, 2, (IntermediateOperand[]){length, line}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, length, zero}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){index, length, one}),
+        controlInstruction(INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){character, line, index}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){noNewline, character, newline}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){length, index}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, length, zero}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &noNewline),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){index, zero}),
+        controlInstruction(INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){character, line, index}),
+        controlInstruction(INTERMEDIATE_COMPARE_EQUAL, origin, 3, (IntermediateOperand[]){negative, character, minus}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){afterSign, negative, trueValue}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){digitsStart, character, plus}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &afterSign),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){index, one}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, index, length}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &digitsStart),
+    };
+
+    return appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
+}
+
+static CompilerStatus generateReadIntMaybeBody(IntermediateGenerator *generator, const IntermediateOperand *result, SourceLocation origin, const IntermediateOperand *variables, const IntermediateOperand *labels) {
+    IntermediateOperand line = variables[0];
+    IntermediateOperand length = variables[1];
+    IntermediateOperand index = variables[2];
+    IntermediateOperand digit = variables[3];
+    IntermediateOperand negative = variables[4];
+    IntermediateOperand number = variables[5];
+    IntermediateOperand condition = variables[6];
+
+    IntermediateOperand loop = labels[4];
+    IntermediateOperand finish = labels[5];
+    IntermediateOperand store = labels[6];
+    IntermediateOperand end = labels[3];
+
+    IntermediateOperand zero = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
+    IntermediateOperand one = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 1};
+    IntermediateOperand ten = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 10};
+    IntermediateOperand firstDigit = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = '0'};
+    IntermediateOperand lastDigit = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = '9'};
+    IntermediateOperand trueValue = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
+    IntermediateOperand minValue = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = INT32_MIN};
+
+    IntermediateInstruction parseDigits[] = {
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){number, zero}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &loop),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){finish, index, length}),
+        controlInstruction(INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){digit, line, index}),
+        controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, digit, firstDigit}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, trueValue}),
+        controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, lastDigit, digit}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, trueValue}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){digit, digit, firstDigit}),
+        controlInstruction(INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){number, number, ten}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){number, number, digit}),
+        controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, number, minValue}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, trueValue}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){index, index, one}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &loop),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &finish),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){store, negative, trueValue}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, number, minValue}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){number, zero, number}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &store),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){*result, number}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &end),
+    };
+    return appendInstructionArray(generator, parseDigits, sizeof(parseDigits) / sizeof(parseDigits[0]));
+}
+
+static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generator, const IntermediateOperand *result, SourceLocation origin, const IntermediateOperand *variables, const IntermediateOperand *labels) {
+    IntermediateOperand line = variables[0];
+    IntermediateOperand length = variables[1];
+    IntermediateOperand index = variables[2];
+    IntermediateOperand ch = variables[3];
+    IntermediateOperand negative = variables[4];
+    IntermediateOperand base = variables[5];
+    IntermediateOperand digit = variables[6];
+    IntermediateOperand exponent = variables[7];
+    IntermediateOperand seen = variables[8];
+    IntermediateOperand dotted = variables[9];
+    IntermediateOperand digits = variables[10];
+    IntermediateOperand value = variables[11];
+    IntermediateOperand head = variables[12];
+    IntermediateOperand tail = variables[13];
+    IntermediateOperand point = variables[14];
+    IntermediateOperand exponentLimit = variables[15];
+    IntermediateOperand condition = variables[16];
+    IntermediateOperand exponentNegative = variables[17];
+    IntermediateOperand binaryExponent = variables[18];
+    IntermediateOperand extracting = variables[19];
+    IntermediateOperand carry = variables[20];
+    IntermediateOperand cursor = variables[21];
+    IntermediateOperand quotient = variables[22];
+    IntermediateOperand significand = variables[23];
+    IntermediateOperand bitCount = variables[24];
+    IntermediateOperand weight = variables[25];
+
+    IntermediateOperand end = labels[3];
+    IntermediateOperand hex = labels[4];
+    IntermediateOperand init = labels[5];
+    IntermediateOperand scan = labels[6];
+    IntermediateOperand checkExponent = labels[7];
+    IntermediateOperand hexExponent = labels[8];
+    IntermediateOperand readDigit = labels[9];
+    IntermediateOperand letter = labels[10];
+    IntermediateOperand upperLetter = labels[11];
+    IntermediateOperand checkLetter = labels[12];
+    IntermediateOperand accumulate = labels[13];
+    IntermediateOperand keepDigit = labels[14];
+    IntermediateOperand saveDigit = labels[15];
+    IntermediateOperand consume = labels[16];
+    IntermediateOperand exponentStart = labels[17];
+    IntermediateOperand exponentSigned = labels[18];
+    IntermediateOperand exponentLoop = labels[19];
+    IntermediateOperand exponentAdvance = labels[20];
+    IntermediateOperand exponentDigits = labels[21];
+    IntermediateOperand combine = labels[22];
+    IntermediateOperand hexOffset = labels[23];
+    IntermediateOperand normalize = labels[24];
+    IntermediateOperand normalizeUp = labels[25];
+    IntermediateOperand normalizeDown = labels[26];
+    IntermediateOperand divideStart = labels[27];
+    IntermediateOperand divideLoop = labels[28];
+    IntermediateOperand divideDone = labels[29];
+    IntermediateOperand divideTrim = labels[30];
+    IntermediateOperand divideNext = labels[31];
+    IntermediateOperand normalized = labels[32];
+    IntermediateOperand removeLeadingBit = labels[33];
+    IntermediateOperand roundLoop = labels[34];
+    IntermediateOperand bitReady = labels[35];
+    IntermediateOperand roundGuard = labels[36];
+    IntermediateOperand stickyLoop = labels[37];
+    IntermediateOperand roundUp = labels[38];
+    IntermediateOperand buildValue = labels[39];
+    IntermediateOperand convert = labels[40];
+    IntermediateOperand applyScale = labels[41];
+    IntermediateOperand scaleDown = labels[42];
+    IntermediateOperand signedResult = labels[43];
+    IntermediateOperand store = labels[44];
+    IntermediateOperand multiplyStart = labels[45];
+    IntermediateOperand multiplyLoop = labels[46];
+    IntermediateOperand multiplyDone = labels[47];
+
+    IntermediateOperand zero = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
+    IntermediateOperand one = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 1};
+    IntermediateOperand four = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 4};
+    IntermediateOperand five = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 5};
+    IntermediateOperand nine = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 9};
+    IntermediateOperand ten = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 10};
+    IntermediateOperand sixteen = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 16};
+    IntermediateOperand minus = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = '-'};
+    IntermediateOperand plus = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = '+'};
+    IntermediateOperand dot = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = '.'};
+    IntermediateOperand d0 = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = '0'};
+    IntermediateOperand d9 = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = '9'};
+    IntermediateOperand a = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 'a'};
+    IntermediateOperand A = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 'A'};
+    IntermediateOperand e = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 'e'};
+    IntermediateOperand E = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 'E'};
+    IntermediateOperand p = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 'p'};
+    IntermediateOperand P = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 'P'};
+    IntermediateOperand x = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 'x'};
+    IntermediateOperand X = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 'X'};
+    IntermediateOperand floatZero = {.kind = INTERMEDIATE_OPERAND_DOUBLE, .value.doubleValue = 0.0};
+    IntermediateOperand negativeOne = {.kind = INTERMEDIATE_OPERAND_DOUBLE, .value.doubleValue = -1.0};
+    IntermediateOperand twoFloat = {.kind = INTERMEDIATE_OPERAND_DOUBLE, .value.doubleValue = 2.0};
+    IntermediateOperand yes = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
+    IntermediateOperand no = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
+    IntermediateOperand extraSpace = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 2200};
+    IntermediateOperand headroom = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 1080};
+    IntermediateOperand maxDecimalPoint = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 309};
+    IntermediateOperand minDecimalPoint = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = -323};
+    IntermediateOperand two = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 2};
+    IntermediateOperand maximumExponent = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 1023};
+    IntermediateOperand halfMinimumExponent = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = -1075};
+    IntermediateOperand minimumNormalExponent = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = -1022};
+    IntermediateOperand subnormalOffset = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 1074};
+    IntermediateOperand fractionBits = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 52};
+    IntermediateOperand carryLimit = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = INT64_C(9007199254740992)};
+
+    IntermediateInstruction setup[] = {
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){base, ten}),
+        controlInstruction(INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){ch, line, index}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){init, ch, d0}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){digit, index, one}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){init, digit, length}),
+        controlInstruction(INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){ch, line, digit}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){hex, ch, x}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){init, ch, X}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &hex),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){base, sixteen}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){index, digit, one}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &init),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){exponent, zero}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){seen, no}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){dotted, no}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){digit, length, extraSpace}),
+        controlInstruction(INTERMEDIATE_ARRAY_CREATE, origin, 2, (IntermediateOperand[]){digits, digit}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){value, floatZero}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){head, headroom}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){tail, head}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){point, zero}),
+        controlInstruction(INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){exponentLimit, length, four}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){exponentLimit, exponentLimit, extraSpace}),
+    };
+    CompilerStatus status = appendInstructionArray(generator, setup, sizeof(setup) / sizeof(setup[0]));
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    IntermediateInstruction mantissa[] = {
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &scan),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){combine, index, length}),
+        controlInstruction(INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){ch, line, index}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){checkExponent, ch, dot}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, dotted, yes}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){dotted, yes}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &consume),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &checkExponent),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){hexExponent, base, sixteen}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){exponentStart, ch, e}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){exponentStart, ch, E}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &readDigit),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &hexExponent),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){exponentStart, ch, p}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){exponentStart, ch, P}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &readDigit),
+        controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, ch, d0}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes}),
+        controlInstruction(INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){condition, ch, d9}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){letter, condition, yes}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){digit, ch, d0}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &accumulate),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &letter),
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){end, base, sixteen}),
+        controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, ch, a}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){upperLetter, condition, yes}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){digit, ch, a}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &checkLetter),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &upperLetter),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){digit, ch, A}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &checkLetter),
+        controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, digit, zero}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes}),
+        controlInstruction(INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){condition, digit, five}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){digit, digit, ten}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &accumulate),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){seen, yes}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){keepDigit, dotted, no}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){point, point, one}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &keepDigit),
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){saveDigit, tail, head}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){consume, digit, zero}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &saveDigit),
+        controlInstruction(INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){digits, tail, digit}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){tail, tail, one}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &consume),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){index, index, one}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &scan),
+    };
+    status = appendInstructionArray(generator, mantissa, sizeof(mantissa) / sizeof(mantissa[0]));
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    IntermediateInstruction exponentInstructions[] = {
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &exponentStart),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, seen, no}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){index, index, one}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, index, length}),
+        controlInstruction(INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){ch, line, index}),
+        controlInstruction(INTERMEDIATE_COMPARE_EQUAL, origin, 3, (IntermediateOperand[]){exponentNegative, ch, minus}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){exponentSigned, exponentNegative, yes}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){exponentLoop, ch, plus}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &exponentSigned),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){index, index, one}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, index, length}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &exponentLoop),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){exponentDigits, index, length}),
+        controlInstruction(INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){digit, line, index}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){digit, digit, d0}),
+        controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, digit, zero}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes}),
+        controlInstruction(INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){condition, digit, nine}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes}),
+        controlInstruction(INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){condition, exponent, exponentLimit}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){exponentAdvance, condition, yes}),
+        controlInstruction(INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){exponent, exponent, ten}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){exponent, exponent, digit}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &exponentAdvance),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){index, index, one}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &exponentLoop),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &exponentDigits),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){combine, exponentNegative, no}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){exponent, zero, exponent}),
+    };
+    status = appendInstructionArray(generator, exponentInstructions, sizeof(exponentInstructions) / sizeof(exponentInstructions[0]));
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    IntermediateInstruction conversion[] = {
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &combine),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, seen, no}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){signedResult, tail, head}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){digit, tail, head}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){point, point, digit}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){binaryExponent, zero}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){hexOffset, base, sixteen}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){point, point, exponent}),
+        controlInstruction(INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){condition, point, maxDecimalPoint}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes}),
+        controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, point, minDecimalPoint}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &normalize),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &hexOffset),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){binaryExponent, point, one}),
+        controlInstruction(INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){binaryExponent, binaryExponent, four}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){binaryExponent, binaryExponent, exponent}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){point, one}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &normalize),
+        controlInstruction(INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){digit, digits, head}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){normalizeDown, point, one}),
+        controlInstruction(INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){condition, point, one}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){divideStart, condition, yes}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){binaryExponent, binaryExponent, one}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){extracting, no}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &multiplyStart),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &normalizeUp),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){normalize, carry, zero}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){head, head, one}),
+        controlInstruction(INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){digits, head, carry}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){point, point, one}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &normalize),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &normalizeDown),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){normalized, digit, one}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &divideStart),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){cursor, head}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){carry, zero}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &divideLoop),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){divideDone, cursor, tail}),
+        controlInstruction(INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){digit, digits, cursor}),
+        controlInstruction(INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){carry, carry, base}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){digit, digit, carry}),
+        controlInstruction(INTERMEDIATE_INTEGER_DIVIDE, origin, 3, (IntermediateOperand[]){quotient, digit, two}),
+        controlInstruction(INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){digits, cursor, quotient}),
+        controlInstruction(INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){carry, quotient, two}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){carry, digit, carry}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){cursor, cursor, one}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &divideLoop),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &divideDone),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){divideTrim, carry, zero}),
+        controlInstruction(INTERMEDIATE_INTEGER_DIVIDE, origin, 3, (IntermediateOperand[]){quotient, base, two}),
+        controlInstruction(INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){digits, tail, quotient}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){tail, tail, one}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &divideTrim),
+        controlInstruction(INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){digit, digits, head}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){divideNext, digit, zero}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){head, head, one}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){point, point, one}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &divideNext),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){binaryExponent, binaryExponent, one}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &normalize),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &normalized),
+        controlInstruction(INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){condition, binaryExponent, maximumExponent}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes}),
+        controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, binaryExponent, halfMinimumExponent}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){significand, one}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){bitCount, fractionBits}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){weight, binaryExponent}),
+        controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, binaryExponent, minimumNormalExponent}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){removeLeadingBit, condition, no}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){bitCount, binaryExponent, subnormalOffset}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){weight, minimumNormalExponent}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){removeLeadingBit, binaryExponent, halfMinimumExponent}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){significand, zero}),
+        controlInstruction(INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){digits, head, zero}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){carry, one}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &roundGuard),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &removeLeadingBit),
+        controlInstruction(INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){digits, head, zero}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){head, head, one}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &roundLoop),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){extracting, yes}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &multiplyStart),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &bitReady),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){roundGuard, bitCount, zero}),
+        controlInstruction(INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){significand, significand, two}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){significand, significand, carry}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){bitCount, bitCount, one}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &roundLoop),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &roundGuard),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){buildValue, carry, zero}),
+        controlInstruction(INTERMEDIATE_INTEGER_DIVIDE, origin, 3, (IntermediateOperand[]){quotient, significand, two}),
+        controlInstruction(INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){quotient, quotient, two}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){roundUp, quotient, significand}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){cursor, head}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &stickyLoop),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){buildValue, cursor, tail}),
+        controlInstruction(INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){digit, digits, cursor}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){roundUp, digit, zero}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){cursor, cursor, one}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &stickyLoop),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &roundUp),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){significand, significand, one}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &buildValue),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, significand, zero}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){convert, binaryExponent, maximumExponent}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, significand, carryLimit}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &convert),
+        controlInstruction(INTERMEDIATE_CONVERT_INT_TO_DOUBLE, origin, 2, (IntermediateOperand[]){value, significand}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){weight, weight, fractionBits}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &applyScale),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){signedResult, weight, zero}),
+        controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, weight, zero}),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){scaleDown, condition, yes}),
+        controlInstruction(INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){value, value, twoFloat}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){weight, weight, one}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &applyScale),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &scaleDown),
+        controlInstruction(INTERMEDIATE_DIVIDE, origin, 3, (IntermediateOperand[]){value, value, twoFloat}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){weight, weight, one}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &applyScale),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &signedResult),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){store, negative, no}),
+        controlInstruction(INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){value, value, negativeOne}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &store),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){*result, value}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &end),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &multiplyStart),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){cursor, tail}),
+        controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){carry, zero}),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &multiplyLoop),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){multiplyDone, cursor, head}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){cursor, cursor, one}),
+        controlInstruction(INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){digit, digits, cursor}),
+        controlInstruction(INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){digit, digit, two}),
+        controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){digit, digit, carry}),
+        controlInstruction(INTERMEDIATE_INTEGER_DIVIDE, origin, 3, (IntermediateOperand[]){carry, digit, base}),
+        controlInstruction(INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){quotient, carry, base}),
+        controlInstruction(INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){digit, digit, quotient}),
+        controlInstruction(INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){digits, cursor, digit}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &multiplyLoop),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &multiplyDone),
+        controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){bitReady, extracting, yes}),
+        controlInstruction(INTERMEDIATE_JUMP, origin, 1, &normalizeUp),
+        controlInstruction(INTERMEDIATE_LABEL, origin, 1, &end),
+    };
+    return appendInstructionArray(generator, conversion, sizeof(conversion) / sizeof(conversion[0]));
+}
+
+static CompilerStatus generateOptionalRead(IntermediateGenerator *generator, IntermediateOperand *operand, SourceLocation origin, bool isDouble) {
+    IntermediateOperand variables[26] = {0};
+    IntermediateOperand labels[48] = {0};
+    IntermediateOperand result = {0};
+    CompilerStatus status = generateTemporary(generator, &result, origin);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    size_t variableCount = isDouble ? 26 : 7;
+    size_t labelCount = isDouble ? 48 : 7;
+    size_t counter = 0;
+    while (counter < variableCount) {
+        status = generateTemporary(generator, &variables[counter++], origin);
+        if (status != COMPILER_OK) {
+            clearOperandArray(variables, variableCount);
+            intermediateOperandClear(&result);
+            return status;
+        }
+    }
+
+    counter = 0;
+    while (counter < labelCount) {
+        status = generateLabel(generator, &labels[counter++]);
+        if (status != COMPILER_OK) {
+            clearOperandArray(variables, variableCount);
+            clearOperandArray(labels, labelCount);
+            intermediateOperandClear(&result);
+            return status;
+        }
+    }
+
+    status = generateOptionalReadInput(generator, &result, origin, variables, labels);
+    if (status == COMPILER_OK) {
+        status = isDouble ? generateReadDoubleMaybeBody(generator, &result, origin, variables, labels) :
+                            generateReadIntMaybeBody(generator, &result, origin, variables, labels);
+    }
+    clearOperandArray(variables, variableCount);
+    clearOperandArray(labels, labelCount);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&result);
+        return status;
+    }
+
+    *operand = result;
+    return COMPILER_OK;
+}
+
+static CompilerStatus generateExpression(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node);
+
+static CompilerStatus generateMatchPattern(IntermediateGenerator *generator, const AbstractSyntaxNode *pattern, const IntermediateOperand *subject, const IntermediateOperand *runtimeType, const IntermediateOperand *nextLabel) {
+    SourceLocation origin = pattern->location;
+    if (pattern->kind == ABSTRACT_SYNTAX_IDENTIFIER && pattern->text != NULL && strcmp(pattern->text, "_") == 0) {
+        return COMPILER_OK;
+    }
+
+    if (pattern->kind == ABSTRACT_SYNTAX_IDENTIFIER || pattern->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION) {
+        IntermediateOperand matchedLabel = {0};
+        CompilerStatus status = generateLabel(generator, &matchedLabel);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        if (pattern->kind == ABSTRACT_SYNTAX_IDENTIFIER) {
+            status = generateTypedPatternJumps(generator, &pattern->type, subject, runtimeType, &matchedLabel, origin, generator->sourceProgram->root->childCount + 1);
+        } else if (pattern->childCount == 0 || pattern->children == NULL || pattern->children[0] == NULL || pattern->children[0]->text == NULL) {
+            status = COMPILER_INTERNAL_ERROR;
+        } else {
+            const char *name = pattern->children[0]->text;
+            const AbstractSyntaxNode *declaration = findTypeDeclaration(generator->sourceProgram, name, ABSTRACT_SYNTAX_CASE_CLASS);
+            if (declaration == NULL || declaration->childCount != pattern->childCount - 1) {
+                status = COMPILER_INTERNAL_ERROR;
+            } else {
+                status = generateClassJump(generator, subject, runtimeType, name, &matchedLabel, origin);
+            }
+        }
+        if (status == COMPILER_OK) {
+            IntermediateInstruction instructions[] = {
+                controlInstruction(INTERMEDIATE_JUMP, origin, 1, nextLabel),
+                controlInstruction(INTERMEDIATE_LABEL, origin, 1, &matchedLabel),
+            };
+            status = appendInstructionArray(generator, instructions, 2);
+        }
+        intermediateOperandClear(&matchedLabel);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        if (pattern->kind == ABSTRACT_SYNTAX_IDENTIFIER) {
+            return bindPatternValue(generator, pattern, subject, 0);
+        }
+
+        size_t counter = 1;
+        while (counter < pattern->childCount) {
+            if (pattern->children[counter] == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+            status = bindPatternValue(generator, pattern->children[counter], subject, counter);
+            if (status != COMPILER_OK) {
+                return status;
+            }
+            counter++;
+        }
+        return COMPILER_OK;
+    }
+
+    DataType patternType = descriptorDataType(&pattern->type);
+    size_t counter = 0;
+    while (counter < sizeof(runtimeTypes) / sizeof(runtimeTypes[0]) && runtimeTypes[counter].type != patternType) {
+        counter++;
+    }
+    if (counter == sizeof(runtimeTypes) / sizeof(runtimeTypes[0])) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    CompilerStatus status = appendTypeJump(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, nextLabel, runtimeType, runtimeTypes[counter].name, origin);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    IntermediateOperand literal = {0};
+    status = generateExpression(generator, &literal, pattern);
+    if (status == COMPILER_OK) {
+        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){*nextLabel, *subject, literal});
+    }
+    intermediateOperandClear(&literal);
+
+    return status;
+}
+
+static CompilerStatus generateMatchCase(IntermediateGenerator *generator, const AbstractSyntaxNode *branch, const IntermediateOperand *subject, const IntermediateOperand *runtimeType, const IntermediateOperand *result, DataType resultType, const IntermediateOperand *endLabel) {
+    if (branch == NULL || branch->kind != ABSTRACT_SYNTAX_MATCH_CASE || (branch->childCount != 2 && branch->childCount != 3) ||
+        branch->children == NULL || branch->children[0] == NULL || branch->children[branch->childCount - 1] == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    IntermediateOperand nextLabel = {0};
+    CompilerStatus status = generateLabel(generator, &nextLabel);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    status = generateMatchPattern(generator, branch->children[0], subject, runtimeType, &nextLabel);
+    if (status == COMPILER_OK && branch->childCount == 3) {
+        const AbstractSyntaxNode *guard = branch->children[1];
+        if (guard == NULL || guard->kind != ABSTRACT_SYNTAX_MATCH_GUARD || guard->childCount != 1 ||
+            guard->children == NULL || guard->children[0] == NULL || descriptorDataType(&guard->children[0]->type) != DATA_TYPE_BOOLEAN) {
+            status = COMPILER_INTERNAL_ERROR;
+        } else {
+            IntermediateOperand condition = {0};
+            status = generateExpression(generator, &condition, guard->children[0]);
+            if (status == COMPILER_OK) {
+                IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
+                status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, guard->location, 3, (IntermediateOperand[]){nextLabel, condition, falseOperand});
+            }
+            intermediateOperandClear(&condition);
+        }
+    }
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&nextLabel);
+        return status;
+    }
+
+    const AbstractSyntaxNode *expression = branch->children[branch->childCount - 1];
+    IntermediateOperand value = {0};
+    status = generateExpression(generator, &value, expression);
+    if (status == COMPILER_OK) {
+        status = convertValue(generator, &value, valueTypes(generator, &expression->type), resultType, expression->location);
+    }
+    if (status == COMPILER_OK) {
+        SourceLocation origin = branch->location;
+        IntermediateInstruction instructions[] = {
+            controlInstruction(INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){*result, value}),
+            controlInstruction(INTERMEDIATE_JUMP, origin, 1, endLabel),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, &nextLabel),
+        };
+        status = appendInstructionArray(generator, instructions, 3);
+    }
+    intermediateOperandClear(&value);
+    intermediateOperandClear(&nextLabel);
+
+    return status;
+}
+
+static CompilerStatus generateMatch(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
+    if (node->childCount < 2 || node->children == NULL || node->children[0] == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateOperand operands[4] = {0};
+    IntermediateOperand *subject = &operands[0];
+    IntermediateOperand *runtimeType = &operands[1];
+    IntermediateOperand *result = &operands[2];
+    IntermediateOperand *endLabel = &operands[3];
+    CompilerStatus status = generateExpression(generator, subject, node->children[0]);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 4);
+        return status;
+    }
+    status = generateTemporary(generator, runtimeType, node->location);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 4);
+        return status;
+    }
+    status = generateTemporary(generator, result, node->location);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 4);
+        return status;
+    }
+    status = generateLabel(generator, endLabel);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 4);
+        return status;
+    }
+    status = appendControlInstruction(generator, INTERMEDIATE_GET_TYPE, node->location, 2, (IntermediateOperand[]){*runtimeType, *subject});
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 4);
+        return status;
+    }
+
+    size_t counter = 1;
+    DataType resultType = valueTypes(generator, &node->type);
+    while (counter < node->childCount) {
+        status = generateMatchCase(generator, node->children[counter], subject, runtimeType, result, resultType, endLabel);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 4);
+            return status;
+        }
+        counter++;
+    }
+
+    IntermediateOperand error = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 40};
+    IntermediateInstruction instructions[] = {
+        controlInstruction(INTERMEDIATE_EXIT, node->location, 1, &error),
+        controlInstruction(INTERMEDIATE_LABEL, node->location, 1, endLabel),
+    };
+    status = appendInstructionArray(generator, instructions, 2);
+    if (status == COMPILER_OK) {
+        *operand = *result;
+        result->text = NULL;
+    }
+    clearOperandArray(operands, 4);
+
+    return status;
+}
+
+static CompilerStatus generateClassConstructor(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node, const AbstractSyntaxNode *declaration) {
+    if (declaration->childCount != node->childCount - 1 || declaration->childCount > INT64_MAX - 1 ||
+        (declaration->childCount != 0 && declaration->children == NULL)) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateOperand result = {0};
+    CompilerStatus status = generateTemporary(generator, &result, node->location);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+
+    IntermediateOperand size = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = (int64_t)node->childCount};
+    IntermediateOperand zero = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
+    IntermediateOperand tag = {.kind = INTERMEDIATE_OPERAND_STRING, .text = declaration->text};
+    IntermediateInstruction instructions[] = {
+        controlInstruction(INTERMEDIATE_ARRAY_CREATE, node->location, 2, (IntermediateOperand[]){result, size}),
+        controlInstruction(INTERMEDIATE_ARRAY_SET, node->location, 3, (IntermediateOperand[]){result, zero, tag}),
+    };
+    status = appendInstructionArray(generator, instructions, 2);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&result);
+        return status;
+    }
+
+    size_t counter = 0;
+    while (counter < declaration->childCount) {
+        const AbstractSyntaxNode *field = declaration->children[counter];
+        const AbstractSyntaxNode *argument = node->children[counter + 1];
+        if (field == NULL || field->kind != ABSTRACT_SYNTAX_CASE_CLASS_FIELD || argument == NULL) {
+            intermediateOperandClear(&result);
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        IntermediateOperand value = {0};
+        status = generateExpression(generator, &value, argument);
+        if (status == COMPILER_OK) {
+            status = convertValue(generator, &value, valueTypes(generator, &argument->type), valueTypes(generator, &field->type), argument->location);
+        }
+        if (status == COMPILER_OK) {
+            IntermediateOperand index = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = (int64_t)(counter + 1)};
+            status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, argument->location, 3, (IntermediateOperand[]){result, index, value});
+        }
+        intermediateOperandClear(&value);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&result);
+            return status;
+        }
+        counter++;
+    }
+
+    *operand = result;
+
+    return COMPILER_OK;
+}
+
+static CompilerStatus generateMemberAccess(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
+    if (node->text == NULL || node->childCount != 1 || node->children == NULL || node->children[0] == NULL ||
+        valueTypes(generator, &node->children[0]->type) != DATA_TYPE_CASE_CLASS) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateOperand operands[4] = {0};
+    IntermediateOperand *receiver = &operands[0];
+    IntermediateOperand *result = &operands[1];
+    IntermediateOperand *tag = &operands[2];
+    IntermediateOperand *endLabel = &operands[3];
+    CompilerStatus status = generateExpression(generator, receiver, node->children[0]);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 4);
+        return status;
+    }
+    status = generateTemporary(generator, result, node->location);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 4);
+        return status;
+    }
+    status = generateTemporary(generator, tag, node->location);
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 4);
+        return status;
+    }
+    status = generateLabel(generator, endLabel);
+    if (status == COMPILER_OK) {
+        IntermediateOperand zero = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
+        status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, node->location, 3, (IntermediateOperand[]){*tag, *receiver, zero});
+    }
+    if (status != COMPILER_OK) {
+        clearOperandArray(operands, 4);
+        return status;
+    }
+
+    const SourceProgram *program = generator->sourceProgram;
+    size_t counter = 0;
+    bool foundField = false;
+    while (counter < program->root->childCount) {
+        const AbstractSyntaxNode *declaration = program->root->children[counter++];
+        if (declaration->kind != ABSTRACT_SYNTAX_CASE_CLASS) {
+            continue;
+        }
+        size_t fieldIndex = 0;
+        while (fieldIndex < declaration->childCount && strcmp(declaration->children[fieldIndex]->text, node->text) != 0) {
+            fieldIndex++;
+        }
+        if (fieldIndex == declaration->childCount) {
+            continue;
+        }
+        foundField = true;
+
+        IntermediateOperand nextLabel = {0};
+        status = generateLabel(generator, &nextLabel);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 4);
+            return status;
+        }
+        SourceLocation origin = node->location;
+        IntermediateOperand className = {.kind = INTERMEDIATE_OPERAND_STRING, .text = declaration->text};
+        IntermediateOperand index = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = (int64_t)(fieldIndex + 1)};
+        IntermediateInstruction instructions[] = {
+            controlInstruction(INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){nextLabel, *tag, className}),
+            controlInstruction(INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){*result, *receiver, index}),
+            controlInstruction(INTERMEDIATE_JUMP, origin, 1, endLabel),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, &nextLabel),
+        };
+        status = appendInstructionArray(generator, instructions, 4);
+        intermediateOperandClear(&nextLabel);
+        if (status != COMPILER_OK) {
+            clearOperandArray(operands, 4);
+            return status;
+        }
+    }
+    if (!foundField) {
+        clearOperandArray(operands, 4);
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    IntermediateOperand error = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 40};
+    IntermediateInstruction instructions[] = {
+        controlInstruction(INTERMEDIATE_EXIT, node->location, 1, &error),
+        controlInstruction(INTERMEDIATE_LABEL, node->location, 1, endLabel),
+    };
+    status = appendInstructionArray(generator, instructions, 2);
+    if (status == COMPILER_OK) {
+        *operand = *result;
+        result->text = NULL;
+    }
+    clearOperandArray(operands, 4);
+
+    return status;
+}
+
 static CompilerStatus generateExpression(IntermediateGenerator *generator,
                                          IntermediateOperand *operand,
                                          const AbstractSyntaxNode *node) {
@@ -934,6 +2133,10 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         operand->value.boolValue = node->value.boolValue;
 
         break;
+    case ABSTRACT_SYNTAX_MATCH_EXPRESSION:
+        return generateMatch(generator, operand, node);
+    case ABSTRACT_SYNTAX_MEMBER_ACCESS:
+        return generateMemberAccess(generator, operand, node);
     case ABSTRACT_SYNTAX_IF_EXPRESSION: {
         if (node->childCount != 3 || node->children == NULL || node->children[0] == NULL ||
             node->children[1] == NULL || node->children[2] == NULL ||
@@ -941,12 +2144,11 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             return COMPILER_INTERNAL_ERROR;
         }
 
-        DataType thenType = descriptorDataType(&node->children[1]->type);
-        DataType elseType = descriptorDataType(&node->children[2]->type);
-        DataType resultType = descriptorDataType(&node->type);
-        
-        if ((thenType != resultType && !(thenType == DATA_TYPE_INT && resultType == DATA_TYPE_DOUBLE)) ||
-            (elseType != resultType && !(elseType == DATA_TYPE_INT && resultType == DATA_TYPE_DOUBLE))) {
+        DataType thenType = valueTypes(generator, &node->children[1]->type);
+        DataType elseType = valueTypes(generator, &node->children[2]->type);
+        DataType resultType = valueTypes(generator, &node->type);
+
+        if (!canConvertValue(thenType, resultType) || !canConvertValue(elseType, resultType)) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -997,13 +2199,11 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 return status;
             }
 
-            if (descriptorDataType(&branch->type) != resultType) {
-                status = convertIntToDouble(generator, &branchOperand, branch->location);
-                if (status != COMPILER_OK) {
-                    intermediateOperandClear(&branchOperand);
-                    clearOperandArray(operands, 4);
-                    return status;
-                }
+            status = convertValue(generator, &branchOperand, valueTypes(generator, &branch->type), resultType, branch->location);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&branchOperand);
+                clearOperandArray(operands, 4);
+                return status;
             }
 
             status = appendControlInstruction(generator, INTERMEDIATE_MOVE, branch->location, 2, (IntermediateOperand[]){*resultOperand, branchOperand});
@@ -1410,17 +2610,22 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         size_t argumentCount = node->childCount - 1;
         AbstractSyntaxNode *const *arguments = node->children + 1;
 
+        bool isDoubleMaybe = strcmp(functionName, "readDoubleMaybe") == 0;
+        if (strcmp(functionName, "readIntMaybe") == 0 || isDoubleMaybe) {
+            if (argumentCount != 0) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+            return generateOptionalRead(generator, operand, node->location, isDoubleMaybe);
+        }
+
         if (strcmp(functionName, "print") == 0) {
             if (argumentCount != 1 || arguments[0] == NULL) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
             const AbstractSyntaxNode *argument = arguments[0];
-            if (descriptorDataType(&argument->type) != DATA_TYPE_INT &&
-                descriptorDataType(&argument->type) != DATA_TYPE_DOUBLE &&
-                descriptorDataType(&argument->type) != DATA_TYPE_STRING &&
-                descriptorDataType(&argument->type) != DATA_TYPE_UNIT &&
-                descriptorDataType(&argument->type) != DATA_TYPE_BOOLEAN) {
+            DataType argumentType = valueTypes(generator, &argument->type);
+            if (!isValueType(argumentType) || (argumentType & DATA_TYPE_CASE_CLASS)) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1435,14 +2640,18 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 fillInstruction(INTERMEDIATE_WRITE, 1, node->location);
             printInstruction.operands[0] = argumentOperand;
 
-            if (descriptorDataType(&argument->type) == DATA_TYPE_UNIT) {
+            if (argumentType == DATA_TYPE_UNIT) {
                 printInstruction.operands[0] = (IntermediateOperand){
                     .kind = INTERMEDIATE_OPERAND_STRING,
                     .text = "()",
                 };
             }
 
-            status = intermediateProgramAppend(generator->program, &printInstruction);
+            if ((argumentType & DATA_TYPE_UNIT) && argumentType != DATA_TYPE_UNIT) {
+                status = generateUnionPrint(generator, &argumentOperand, node->location);
+            } else {
+                status = intermediateProgramAppend(generator->program, &printInstruction);
+            }
 
             operand->kind = INTERMEDIATE_OPERAND_UNIT;
             operand->text = NULL;
@@ -1505,8 +2714,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             }
 
             const AbstractSyntaxNode *argument = arguments[0];
-            if (descriptorDataType(&argument->type) != DATA_TYPE_DOUBLE &&
-                descriptorDataType(&argument->type) != DATA_TYPE_INT) {
+            DataType argumentType = valueTypes(generator, &argument->type);
+            if (!canConvertValue(argumentType, DATA_TYPE_DOUBLE)) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1516,12 +2725,10 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 return status;
             }
 
-            if (descriptorDataType(&argument->type) == DATA_TYPE_INT) {
-                status = convertIntToDouble(generator, &argumentOperand, node->location);
-                if (status != COMPILER_OK) {
-                    intermediateOperandClear(&argumentOperand);
-                    return status;
-                }
+            status = convertValue(generator, &argumentOperand, argumentType, DATA_TYPE_DOUBLE, node->location);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&argumentOperand);
+                return status;
             }
 
             IntermediateOperand resultOperand = {0};
@@ -1552,11 +2759,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             }
 
             const AbstractSyntaxNode *argument = arguments[0];
-            if (descriptorDataType(&argument->type) != DATA_TYPE_INT &&
-                descriptorDataType(&argument->type) != DATA_TYPE_DOUBLE &&
-                descriptorDataType(&argument->type) != DATA_TYPE_STRING &&
-                descriptorDataType(&argument->type) != DATA_TYPE_UNIT &&
-                descriptorDataType(&argument->type) != DATA_TYPE_BOOLEAN) {
+            DataType argumentType = valueTypes(generator, &argument->type);
+            if (!isValueType(argumentType) || (argumentType & DATA_TYPE_CASE_CLASS)) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -1566,13 +2770,13 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 return status;
             }
 
-            if (descriptorDataType(&argument->type) == DATA_TYPE_STRING) {
+            if (argumentType == DATA_TYPE_STRING) {
                 *operand = argumentOperand;
 
                 return status;
             }
 
-            if (descriptorDataType(&argument->type) == DATA_TYPE_UNIT) {
+            if (argumentType == DATA_TYPE_UNIT) {
                 intermediateOperandClear(&argumentOperand);
 
                 char *unitText = malloc(3 * sizeof(char));
@@ -1598,11 +2802,13 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 return status;
             }
 
-            if (descriptorDataType(&argument->type) == DATA_TYPE_BOOLEAN) {
+            if (argumentType == DATA_TYPE_BOOLEAN) {
                 status = generateBooleanString(generator, &resultOperand, &argumentOperand, node->location);
+            } else if (argumentType != DATA_TYPE_INT && argumentType != DATA_TYPE_DOUBLE) {
+                status = generateUnionString(generator, &resultOperand, &argumentOperand, argumentType, node->location);
             } else {
                 IntermediateOpcode conversionOpcode = INTERMEDIATE_CONVERT_INT_TO_STRING;
-                if (descriptorDataType(&argument->type) == DATA_TYPE_DOUBLE) {
+                if (argumentType == DATA_TYPE_DOUBLE) {
                     conversionOpcode = INTERMEDIATE_CONVERT_DOUBLE_TO_STRING;
                 }
 
@@ -1755,6 +2961,11 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             return status;
         }
 
+        const AbstractSyntaxNode *declaration = findTypeDeclaration(generator->sourceProgram, functionName, ABSTRACT_SYNTAX_CASE_CLASS);
+        if (declaration != NULL) {
+            return generateClassConstructor(generator, operand, node, declaration);
+        }
+
         const AbstractSyntaxNode *function = findFunction(generator->sourceProgram, functionName);
         if (function == NULL) {
             return COMPILER_INTERNAL_ERROR;
@@ -1789,19 +3000,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 return COMPILER_INTERNAL_ERROR;
             }
 
-            if (descriptorDataType(&parameter->type) != DATA_TYPE_INT &&
-                descriptorDataType(&parameter->type) != DATA_TYPE_DOUBLE &&
-                descriptorDataType(&parameter->type) != DATA_TYPE_STRING &&
-                descriptorDataType(&parameter->type) != DATA_TYPE_UNIT &&
-                descriptorDataType(&parameter->type) != DATA_TYPE_BOOLEAN) {
+            if (!canConvertValue(valueTypes(generator, &argument->type), valueTypes(generator, &parameter->type))) {
                 return COMPILER_INTERNAL_ERROR;
-            }
-
-            if (descriptorDataType(&argument->type) != descriptorDataType(&parameter->type)) {
-                if (descriptorDataType(&argument->type) != DATA_TYPE_INT ||
-                    descriptorDataType(&parameter->type) != DATA_TYPE_DOUBLE) {
-                    return COMPILER_INTERNAL_ERROR;
-                }
             }
 
             counter++;
@@ -1819,13 +3019,10 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 return status;
             }
 
-            if (descriptorDataType(&argument->type) == DATA_TYPE_INT &&
-                descriptorDataType(&parameter->type) == DATA_TYPE_DOUBLE) {
-                status = convertIntToDouble(generator, &argumentOperand, argument->location);
-                if (status != COMPILER_OK) {
-                    intermediateOperandClear(&argumentOperand);
-                    return status;
-                }
+            status = convertValue(generator, &argumentOperand, valueTypes(generator, &argument->type), valueTypes(generator, &parameter->type), argument->location);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&argumentOperand);
+                return status;
             }
 
             IntermediateInstruction argumentInstruction =
@@ -2005,9 +3202,10 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
             return status;
         }
 
-        if (descriptorDataType(&node->type) == DATA_TYPE_DOUBLE &&
-            descriptorDataType(&node->children[0]->type) == DATA_TYPE_INT) {
-            status = convertIntToDouble(generator, &initializerOperand, node->location);
+        DataType destinationType = valueTypes(generator, &node->type);
+        DataType sourceType = valueTypes(generator, &node->children[0]->type);
+        if (destinationType != DATA_TYPE_UNKNOWN) {
+            status = convertValue(generator, &initializerOperand, sourceType, destinationType, node->location);
             if (status != COMPILER_OK) {
                 intermediateOperandClear(&initializerOperand);
                 return status;
@@ -2055,9 +3253,10 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
             return status;
         }
 
-        if (descriptorDataType(&node->type) == DATA_TYPE_DOUBLE &&
-            descriptorDataType(&node->children[0]->type) == DATA_TYPE_INT) {
-            status = convertIntToDouble(generator, &valueOperand, node->location);
+        DataType destinationType = valueTypes(generator, &node->type);
+        DataType sourceType = valueTypes(generator, &node->children[0]->type);
+        if (destinationType != DATA_TYPE_UNKNOWN) {
+            status = convertValue(generator, &valueOperand, sourceType, destinationType, node->location);
             if (status != COMPILER_OK) {
                 intermediateOperandClear(&valueOperand);
                 return status;
@@ -2478,9 +3677,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
             }
         }
 
-        if (generator->returnType != DATA_TYPE_INT && generator->returnType != DATA_TYPE_DOUBLE &&
-            generator->returnType != DATA_TYPE_STRING && generator->returnType != DATA_TYPE_UNIT &&
-            generator->returnType != DATA_TYPE_BOOLEAN) {
+        if (!isValueType(generator->returnType)) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -2507,18 +3704,10 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
             returnOperand.kind = INTERMEDIATE_OPERAND_UNIT;
             returnOperand.value = (IntermediateOperandValue){0};
         } else {
-            DataType valueType = descriptorDataType(&node->children[0]->type);
-            if (valueType != generator->returnType) {
-                if (valueType == DATA_TYPE_INT && generator->returnType == DATA_TYPE_DOUBLE) {
-                    status = convertIntToDouble(generator, &returnOperand, node->location);
-                    if (status != COMPILER_OK) {
-                        intermediateOperandClear(&returnOperand);
-                        return status;
-                    }
-                } else {
-                    intermediateOperandClear(&returnOperand);
-                    return COMPILER_INTERNAL_ERROR;
-                }
+            status = convertValue(generator, &returnOperand, valueTypes(generator, &node->children[0]->type), generator->returnType, node->location);
+            if (status != COMPILER_OK) {
+                intermediateOperandClear(&returnOperand);
+                return status;
             }
         }
 
@@ -2608,11 +3797,7 @@ static CompilerStatus generateParameters(IntermediateGenerator *generator,
             return COMPILER_INTERNAL_ERROR;
         }
 
-        if (descriptorDataType(&parameter->type) != DATA_TYPE_INT &&
-            descriptorDataType(&parameter->type) != DATA_TYPE_DOUBLE &&
-            descriptorDataType(&parameter->type) != DATA_TYPE_STRING &&
-            descriptorDataType(&parameter->type) != DATA_TYPE_UNIT &&
-            descriptorDataType(&parameter->type) != DATA_TYPE_BOOLEAN) {
+        if (!isValueType(valueTypes(generator, &parameter->type))) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -2702,18 +3887,10 @@ static CompilerStatus generateFunctionBody(IntermediateGenerator *generator,
         return status;
     }
 
-    if (descriptorDataType(&expressionNode->type) != generator->returnType) {
-        if (descriptorDataType(&expressionNode->type) == DATA_TYPE_INT &&
-            generator->returnType == DATA_TYPE_DOUBLE) {
-            status = convertIntToDouble(generator, &returnOperand, expressionNode->location);
-            if (status != COMPILER_OK) {
-                intermediateOperandClear(&returnOperand);
-                return status;
-            }
-        } else {
-            intermediateOperandClear(&returnOperand);
-            return COMPILER_INTERNAL_ERROR;
-        }
+    status = convertValue(generator, &returnOperand, valueTypes(generator, &expressionNode->type), generator->returnType, expressionNode->location);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&returnOperand);
+        return status;
     }
 
     IntermediateInstruction returnValueInstruction =
@@ -2759,7 +3936,7 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator,
     IntermediateGenerator functionGenerator = *generator;
     functionGenerator.program = functionBody;
     functionGenerator.functionDeclarations = functionDeclarations;
-    functionGenerator.returnType = descriptorDataType(&node->type);
+    functionGenerator.returnType = valueTypes(generator, &node->type);
 
     CompilerStatus status = generateParameters(&functionGenerator, node);
     if (status != COMPILER_OK) {
@@ -2878,7 +4055,26 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program,
     while (counter < program->root->childCount) {
         const AbstractSyntaxNode *function = program->root->children[counter];
 
-        if (function == NULL || function->kind != ABSTRACT_SYNTAX_FUNCTION || function->text == NULL) {
+        if (function == NULL || function->text == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+        if (function->kind == ABSTRACT_SYNTAX_TYPE_ALIAS || function->kind == ABSTRACT_SYNTAX_CASE_CLASS) {
+            if (function->kind == ABSTRACT_SYNTAX_CASE_CLASS) {
+                if (function->childCount != 0 && function->children == NULL) {
+                    return COMPILER_INTERNAL_ERROR;
+                }
+                size_t fieldIndex = 0;
+                while (fieldIndex < function->childCount) {
+                    const AbstractSyntaxNode *field = function->children[fieldIndex++];
+                    if (field == NULL || field->kind != ABSTRACT_SYNTAX_CASE_CLASS_FIELD || field->text == NULL) {
+                        return COMPILER_INTERNAL_ERROR;
+                    }
+                }
+            }
+            counter++;
+            continue;
+        }
+        if (function->kind != ABSTRACT_SYNTAX_FUNCTION) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -2940,9 +4136,12 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program,
     counter = 0;
 
     while (counter < program->root->childCount) {
-        CompilerStatus status = generateFunction(&generator, program->root->children[counter]);
-        if (status != COMPILER_OK) {
-            return status;
+        const AbstractSyntaxNode *node = program->root->children[counter];
+        if (node->kind == ABSTRACT_SYNTAX_FUNCTION) {
+            status = generateFunction(&generator, node);
+            if (status != COMPILER_OK) {
+                return status;
+            }
         }
 
         counter++;

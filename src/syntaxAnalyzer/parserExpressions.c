@@ -734,7 +734,6 @@ static CompilerStatus parseMatchCase(SyntaxAnalyzer *syntaxAnalyzer,
     if (status != COMPILER_OK) {
         goto cleanup;
     }
-    bool isWildcard = isWildcardPattern(pattern);
     status = appendOwnedChild(matchCase, pattern);
     pattern = NULL;
     if (status != COMPILER_OK) {
@@ -742,10 +741,6 @@ static CompilerStatus parseMatchCase(SyntaxAnalyzer *syntaxAnalyzer,
     }
 
     if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_IF)) {
-        if (isWildcard) {
-            status = COMPILER_SYNTAX_ERROR;
-            goto cleanup;
-        }
         SourceLocation guardLocation = syntaxAnalyzer->currentToken->location;
         guard = createNode(ABSTRACT_SYNTAX_MATCH_GUARD, guardLocation);
         if (guard == NULL) {
@@ -845,7 +840,7 @@ static CompilerStatus parseMatchExpression(SyntaxAnalyzer *syntaxAnalyzer,
         }
         bool resultConsumedNewline = syntaxAnalyzer->newlineConsumed;
         syntaxAnalyzer->newlineConsumed = false;
-        hasDefaultCase = isWildcardPattern(matchCase->children[0]);
+        hasDefaultCase = matchCase->childCount == 2 && isWildcardPattern(matchCase->children[0]);
         status = appendOwnedChild(matchExpression, matchCase);
         matchCase = NULL;
         if (status != COMPILER_OK) {
@@ -868,7 +863,7 @@ static CompilerStatus parseMatchExpression(SyntaxAnalyzer *syntaxAnalyzer,
         }
     }
 
-    if (!hasDefaultCase) {
+    if (matchExpression->childCount == 1) {
         status = COMPILER_SYNTAX_ERROR;
         goto cleanup;
     }
@@ -877,7 +872,7 @@ static CompilerStatus parseMatchExpression(SyntaxAnalyzer *syntaxAnalyzer,
         goto cleanup;
     }
 
-    syntaxAnalyzer->newlineConsumed = previousConsumedNewline;
+    syntaxAnalyzer->newlineConsumed = true;
     *outNode = matchExpression;
     return COMPILER_OK;
 
