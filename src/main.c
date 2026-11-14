@@ -12,8 +12,7 @@
 
 #include <stdio.h>
 
-int main(void)
-{
+int main(void) {
     LexicalAnalyzer *lexicalAnalyzer = lexicalAnalyzerCreate(stdin);
     if (lexicalAnalyzer == NULL) {
         fprintf(stderr, "Internal compiler allocation failure.\n");

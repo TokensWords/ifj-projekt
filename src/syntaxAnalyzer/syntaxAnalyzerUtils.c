@@ -141,7 +141,7 @@ CompilerStatus appendOwnedChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *
     return status;
 }
 
-AbstractSyntaxNode *createNode(AbstractSyntaxNodeType type, SourceLocation location) {
+AbstractSyntaxNode *createNode(AbstractSyntaxNodeKind type, SourceLocation location) {
     return abstractSyntaxNodeCreate(type, location);
 }
 
