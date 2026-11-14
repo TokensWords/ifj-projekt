@@ -1147,17 +1147,26 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
 
         break;
     }
-    case ABSTRACT_SYNTAX_FUNCTION_CALL: {
-        if (node->text == NULL) {
+    case ABSTRACT_SYNTAX_CALL_EXPRESSION: {
+        if (node->childCount == 0 || node->children == NULL || node->children[0] == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
 
-        if (strcmp(node->text, "print") == 0) {
-            if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+        const AbstractSyntaxNode *callee = node->children[0];
+        if (callee->kind != ABSTRACT_SYNTAX_IDENTIFIER || callee->text == NULL) {
+            return COMPILER_INTERNAL_ERROR;
+        }
+
+        const char *functionName = callee->text;
+        size_t argumentCount = node->childCount - 1;
+        AbstractSyntaxNode *const *arguments = node->children + 1;
+
+        if (strcmp(functionName, "print") == 0) {
+            if (argumentCount != 1 || arguments[0] == NULL) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
-            const AbstractSyntaxNode *argument = node->children[0];
+            const AbstractSyntaxNode *argument = arguments[0];
             if (descriptorDataType(&argument->type) != DATA_TYPE_INT &&
                 descriptorDataType(&argument->type) != DATA_TYPE_DOUBLE &&
                 descriptorDataType(&argument->type) != DATA_TYPE_STRING &&
@@ -1192,23 +1201,23 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             intermediateOperandClear(&argumentOperand);
 
             return status;
-        } else if (strcmp(node->text, "readLine") == 0 || strcmp(node->text, "readInt") == 0 ||
-                   strcmp(node->text, "readDouble") == 0) {
-            if (node->childCount != 0) {
+        } else if (strcmp(functionName, "readLine") == 0 || strcmp(functionName, "readInt") == 0 ||
+                   strcmp(functionName, "readDouble") == 0) {
+            if (argumentCount != 0) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
             DataType readType = {0};
 
-            if (strcmp(node->text, "readLine") == 0) {
+            if (strcmp(functionName, "readLine") == 0) {
                 readType = DATA_TYPE_STRING;
             }
 
-            if (strcmp(node->text, "readInt") == 0) {
+            if (strcmp(functionName, "readInt") == 0) {
                 readType = DATA_TYPE_INT;
             }
 
-            if (strcmp(node->text, "readDouble") == 0) {
+            if (strcmp(functionName, "readDouble") == 0) {
                 readType = DATA_TYPE_DOUBLE;
             }
 
@@ -1236,12 +1245,12 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             *operand = resultOperand;
 
             return status;
-        } else if (strcmp(node->text, "toInt") == 0) {
-            if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+        } else if (strcmp(functionName, "toInt") == 0) {
+            if (argumentCount != 1 || arguments[0] == NULL) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
-            const AbstractSyntaxNode *argument = node->children[0];
+            const AbstractSyntaxNode *argument = arguments[0];
             if (descriptorDataType(&argument->type) != DATA_TYPE_DOUBLE &&
                 descriptorDataType(&argument->type) != DATA_TYPE_INT) {
                 return COMPILER_INTERNAL_ERROR;
@@ -1283,12 +1292,12 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             *operand = resultOperand;
 
             return status;
-        } else if (strcmp(node->text, "toStr") == 0) {
-            if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+        } else if (strcmp(functionName, "toStr") == 0) {
+            if (argumentCount != 1 || arguments[0] == NULL) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
-            const AbstractSyntaxNode *argument = node->children[0];
+            const AbstractSyntaxNode *argument = arguments[0];
             if (descriptorDataType(&argument->type) != DATA_TYPE_INT &&
                 descriptorDataType(&argument->type) != DATA_TYPE_DOUBLE &&
                 descriptorDataType(&argument->type) != DATA_TYPE_STRING &&
@@ -1354,12 +1363,12 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             *operand = resultOperand;
 
             return status;
-        } else if (strcmp(node->text, "chr") == 0) {
-            if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+        } else if (strcmp(functionName, "chr") == 0) {
+            if (argumentCount != 1 || arguments[0] == NULL) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
-            const AbstractSyntaxNode *argument = node->children[0];
+            const AbstractSyntaxNode *argument = arguments[0];
             if (descriptorDataType(&argument->type) != DATA_TYPE_INT) {
                 return COMPILER_INTERNAL_ERROR;
             }
@@ -1392,12 +1401,12 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             *operand = resultOperand;
 
             return status;
-        } else if (strcmp(node->text, "strLength") == 0) {
-            if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
+        } else if (strcmp(functionName, "strLength") == 0) {
+            if (argumentCount != 1 || arguments[0] == NULL) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
-            const AbstractSyntaxNode *argument = node->children[0];
+            const AbstractSyntaxNode *argument = arguments[0];
             if (descriptorDataType(&argument->type) != DATA_TYPE_STRING) {
                 return COMPILER_INTERNAL_ERROR;
             }
@@ -1432,16 +1441,15 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             return status;
         }
 
-        if (strcmp(node->text, "ord") == 0 || strcmp(node->text, "subStr") == 0) {
-            bool isOrdinal = strcmp(node->text, "ord") == 0;
-            size_t argumentCount = isOrdinal ? 2 : 3;
-            if (node->childCount != argumentCount || node->children == NULL) {
+        if (strcmp(functionName, "ord") == 0 || strcmp(functionName, "subStr") == 0) {
+            bool isOrdinal = strcmp(functionName, "ord") == 0;
+            if (argumentCount != (isOrdinal ? 2 : 3)) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
             size_t counter = 0;
             while (counter < argumentCount) {
-                const AbstractSyntaxNode *argument = node->children[counter];
+                const AbstractSyntaxNode *argument = arguments[counter];
                 DataType argumentType = counter == 0 ? DATA_TYPE_STRING : DATA_TYPE_INT;
                 if (argument == NULL || descriptorDataType(&argument->type) != argumentType) {
                     return COMPILER_INTERNAL_ERROR;
@@ -1454,7 +1462,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             counter = 0;
             while (counter < argumentCount) {
                 CompilerStatus status = generateExpression(generator, &argumentOperands[counter],
-                                                           node->children[counter]);
+                                                           arguments[counter]);
                 if (status != COMPILER_OK) {
                     clearOperandArray(argumentOperands, 3);
                     return status;
@@ -1489,7 +1497,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             return status;
         }
 
-        const AbstractSyntaxNode *function = findFunction(generator->sourceProgram, node->text);
+        const AbstractSyntaxNode *function = findFunction(generator->sourceProgram, functionName);
         if (function == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
@@ -1505,21 +1513,15 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
 
         size_t parameterCount = function->childCount - 1;
 
-        if (node->childCount != parameterCount) {
+        if (argumentCount != parameterCount) {
             return COMPILER_INTERNAL_ERROR;
-        }
-
-        if (node->childCount != 0) {
-            if (node->children == NULL) {
-                return COMPILER_INTERNAL_ERROR;
-            }
         }
 
         size_t counter = 0;
 
         while (counter < parameterCount) {
             const AbstractSyntaxNode *parameter = function->children[counter];
-            const AbstractSyntaxNode *argument = node->children[counter];
+            const AbstractSyntaxNode *argument = arguments[counter];
 
             if (parameter == NULL || argument == NULL) {
                 return COMPILER_INTERNAL_ERROR;
@@ -1550,7 +1552,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
 
         while (counter < parameterCount) {
             const AbstractSyntaxNode *parameter = function->children[counter];
-            const AbstractSyntaxNode *argument = node->children[counter];
+            const AbstractSyntaxNode *argument = arguments[counter];
 
             IntermediateOperand argumentOperand = {0};
             CompilerStatus status = generateExpression(generator, &argumentOperand, argument);
@@ -2050,7 +2052,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
 
         return status;
     }
-    case ABSTRACT_SYNTAX_FUNCTION_CALL: {
+    case ABSTRACT_SYNTAX_CALL_EXPRESSION: {
         return generateExpressionStatement(generator, node);
     }
     case ABSTRACT_SYNTAX_EXPRESSION_STATEMENT: {
@@ -2181,7 +2183,7 @@ static CompilerStatus generateFunctionBody(IntermediateGenerator *generator,
         }
 
         expressionNode = lastStatement->children[0];
-    } else if (lastStatement->kind == ABSTRACT_SYNTAX_FUNCTION_CALL) {
+    } else if (lastStatement->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION) {
         expressionNode = lastStatement;
     } else {
         return generateStatement(generator, body);
