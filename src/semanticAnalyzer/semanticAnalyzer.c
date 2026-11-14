@@ -1450,7 +1450,7 @@ CompilerStatus semAnalResolveCaseClassPattern(AbstractSyntaxNode *patternNode, S
         }
 
         // temporarily fake the kind so semAnalAstNodeToSymbol maps it to SYMBOL_VARIABLE
-        AbstractSyntaxNodeType originalKind = argNode->kind;
+        AbstractSyntaxNodeKind originalKind = argNode->kind;
         argNode->kind = ABSTRACT_SYNTAX_VARIABLE_DECLARATION;
 
         abstractSyntaxNodeCopyInferredType(argNode, extractedType);
@@ -1512,7 +1512,7 @@ CompilerStatus semAnalResolveMatchPattern(AbstractSyntaxNode *patternNode, Abstr
                 return COMPILER_REDEFINITION_ERROR;
             }
 
-            AbstractSyntaxNodeType originalKind = patternNode->kind;
+            AbstractSyntaxNodeKind originalKind = patternNode->kind;
             patternNode->kind = ABSTRACT_SYNTAX_VARIABLE_DECLARATION;
             Symbol *newSymbol = semAnalAstNodeToSymbol(patternNode);
             patternNode->kind = originalKind;

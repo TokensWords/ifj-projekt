@@ -1,9 +1,28 @@
 BasedOnStyle: LLVM
+# Match src/intermediateCode/intermediateCode.c. A very high limit joins existing
+# wrapped signatures too; ColumnLimit: 0 would preserve those manual line breaks.
 IndentWidth: 4
-ColumnLimit: 100
+ContinuationIndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 1000000
+BreakBeforeBraces: Attach
+SpaceBeforeParens: ControlStatements
+SpaceBeforeAssignmentOperators: true
 DerivePointerAlignment: false
 PointerAlignment: Right
+BinPackParameters: true
+BinPackArguments: true
+AllowAllParametersOfDeclarationOnNextLine: false
+AlwaysBreakAfterReturnType: None
 AllowShortFunctionsOnASingleLine: None
 AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+IndentCaseLabels: false
+MaxEmptyLinesToKeep: 1
+IncludeBlocks: Preserve
 SortIncludes: CaseSensitive
+ReflowComments: false
 

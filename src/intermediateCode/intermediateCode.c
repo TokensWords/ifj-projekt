@@ -876,7 +876,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         operand->value.dataType = 0;
 
         break;
-    case ABSTRACT_SYNTAX_EXPRESSION_BINARY: {
+    case ABSTRACT_SYNTAX_BINARY_EXPRESSION: {
         if (node->childCount != 2) {
             return COMPILER_INTERNAL_ERROR;
         }
@@ -2381,8 +2381,7 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program,
     while (counter < program->root->childCount) {
         const AbstractSyntaxNode *function = program->root->children[counter];
 
-        if (function == NULL || function->kind != ABSTRACT_SYNTAX_FUNCTION ||
-            function->text == NULL) {
+        if (function == NULL || function->kind != ABSTRACT_SYNTAX_FUNCTION || function->text == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
 

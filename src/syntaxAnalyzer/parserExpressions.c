@@ -255,7 +255,7 @@ CompilerStatus parseTerm(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **ou
         return COMPILER_OK;
     }
 
-    AbstractSyntaxNodeType nodeType;
+    AbstractSyntaxNodeKind nodeType;
     DataType inferredType;
     switch (token->type) {
     case TOKEN_INT_LITERAL:

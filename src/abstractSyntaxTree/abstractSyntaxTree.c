@@ -32,7 +32,7 @@ void sourceProgramDestroy(SourceProgram *program) {
     free(program);
 }
 
-AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType type, SourceLocation location) {
+AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeKind type, SourceLocation location) {
     AbstractSyntaxNode *node = memoryAllocate(sizeof(AbstractSyntaxNode));
     if (node == NULL) {
         return NULL;

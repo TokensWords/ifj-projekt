@@ -77,7 +77,7 @@ bool isExpressionTerminator(const Token *token);
 CompilerStatus appendOwnedChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *child);
 
 /** @brief Creates an AST node with kind and source location initialized. */
-AbstractSyntaxNode *createNode(AbstractSyntaxNodeType type, SourceLocation location);
+AbstractSyntaxNode *createNode(AbstractSyntaxNodeKind type, SourceLocation location);
 
 /** @brief Copies text into the node using AST-owned storage. */
 CompilerStatus setNodeText(AbstractSyntaxNode *node, const char *text);

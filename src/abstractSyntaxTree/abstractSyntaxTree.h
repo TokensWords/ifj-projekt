@@ -182,6 +182,8 @@ typedef enum {
      * @children - left and right operands. example: [left, right]
      */
     ABSTRACT_SYNTAX_EXPRESSION_BINARY,
+    /* Both spellings identify the same node; retain the intermediate-code API. */
+    ABSTRACT_SYNTAX_BINARY_EXPRESSION = ABSTRACT_SYNTAX_EXPRESSION_BINARY,
 
     /**
      * Represents a unary expression
@@ -226,7 +228,7 @@ typedef enum {
      * Represents a unit literal. Unit is like void
      */
     ABSTRACT_SYNTAX_UNIT_LITERAL
-} AbstractSyntaxNodeType;
+} AbstractSyntaxNodeKind;
 
 typedef union {
     int64_t intValue;
@@ -235,7 +237,7 @@ typedef union {
 } AbstractSyntaxValue;
 
 typedef struct AbstractSyntaxNode {
-    AbstractSyntaxNodeType kind;
+    AbstractSyntaxNodeKind kind;
     SourceLocation location;
     TypeDescriptor type;
     char *text;
@@ -254,7 +256,7 @@ typedef struct {
 
 SourceProgram *sourceProgramCreate(void);
 void sourceProgramDestroy(SourceProgram *program);
-AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeType type, SourceLocation location);
+AbstractSyntaxNode *abstractSyntaxNodeCreate(AbstractSyntaxNodeKind type, SourceLocation location);
 void abstractSyntaxNodeDestroy(AbstractSyntaxNode *node);
 CompilerStatus abstractSyntaxNodeSetText(AbstractSyntaxNode *node, const char *text);
 CompilerStatus abstractSyntaxNodeAddChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *child);
