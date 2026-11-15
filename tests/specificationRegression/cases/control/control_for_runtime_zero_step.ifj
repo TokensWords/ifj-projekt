@@ -1,0 +1,9 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+@main
+def main(): Unit =
+    val step = readInt()
+    print("before\n")
+    for i <- 1 to 3 by step do
+        print(i)

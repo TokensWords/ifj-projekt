@@ -1,0 +1,11 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+@main
+def main(): Unit =
+    val to = 1
+    val until = 2
+    val by = 3
+    val sum = to + until + by
+    print(sum)
+    print("\n")

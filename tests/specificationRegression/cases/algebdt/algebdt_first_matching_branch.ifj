@@ -1,0 +1,14 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def select(v: Int | String): String =
+    v match
+        case n: Int if n > 0 => "first"
+        case n: Int if n > 3 => "second"
+        case _ => "other"
+
+@main
+def main(): Unit =
+    val text = select(5)
+    print(text)
+    print("\n")

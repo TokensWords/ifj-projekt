@@ -1,0 +1,14 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def extract(v: Int | String): Int =
+    v match
+        case n: Int => n
+        case _ => 0
+
+@main
+def main(): Unit =
+    val x: Int | String | Int = 6
+    val n = extract(x)
+    print(n)
+    print("\n")

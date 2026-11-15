@@ -1,0 +1,14 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def find(): Int =
+    for i <- 1 to 5 do
+        if i == 3 then
+            return i
+    return 0
+
+@main
+def main(): Unit =
+    val x = find()
+    print(x)
+    print("\n")

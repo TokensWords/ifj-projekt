@@ -1,0 +1,43 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+case class Point(x: Int, y: Int)
+type Value = Int | String | Point
+
+def fact(n: Int): Int =
+    if n <= 1 then
+        return 1
+    else
+        return n * fact(n - 1)
+
+def dangerous(): Boolean =
+    print("BAD")
+    true
+
+def describe(v: Value): String =
+    v match
+        case p: Point => "point " + toStr(p.x) + ":" + toStr(p.y)
+        case n: Int => toStr(n)
+        case s: String => s
+        case _ => "other"
+
+@main
+def main(): Unit =
+    val n = 2 * fact(5)
+    print(n)
+    print("\n")
+    val flag = true || dangerous()
+    print(flag)
+    print("\n")
+    val xs: List[Int] = List.range(1, 6)
+    for item <- xs if item > 2 do
+        print(item)
+    print("\n")
+    val selected = xs.drop(2)(0)
+    print(selected)
+    print("\n")
+    val text = describe(Point(2, 3))
+    print(text)
+    print("\n")
+    print(xs)
+    print("\n")

@@ -1,0 +1,7 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import/* separator */ifj26.*
+@main
+def main(): Unit =
+    val/* comment */x = 5
+    print(x)
+    print("\n")

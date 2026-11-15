@@ -1,0 +1,16 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def choose(x: Int): Int =
+    while x > 0 do
+        if x == 1 then
+            return 7
+        else
+            return 8
+    return 0
+
+@main
+def main(): Unit =
+    val x = choose(1)
+    print(x)
+    print("\n")

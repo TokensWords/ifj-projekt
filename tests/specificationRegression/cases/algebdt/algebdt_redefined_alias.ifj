@@ -1,0 +1,9 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+type Scalar = Int | String
+type Scalar = Int | Unit
+
+@main
+def main(): Unit =
+    ()

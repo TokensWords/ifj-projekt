@@ -1,0 +1,12 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+@main
+def main(): Unit =
+    val xs = List(10, 20, 30)
+    val a = xs(0)
+    val b = xs(2)
+    print(a)
+    print("|")
+    print(b)
+    print("\n")

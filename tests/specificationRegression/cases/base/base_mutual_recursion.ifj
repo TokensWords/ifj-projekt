@@ -1,0 +1,22 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def even(n: Int): Int =
+    if n == 0 then
+        return 1
+    else
+        val prev = n - 1
+        return odd(prev)
+
+def odd(n: Int): Int =
+    if n == 0 then
+        return 0
+    else
+        val prev = n - 1
+        return even(prev)
+
+@main
+def main(): Unit =
+    val x = even(8)
+    print(x)
+    print("\n")

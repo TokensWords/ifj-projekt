@@ -1,0 +1,4 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import other.*
+@main
+def main(): Unit = ()

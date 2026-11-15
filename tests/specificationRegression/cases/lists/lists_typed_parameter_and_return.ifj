@@ -1,0 +1,10 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def identity(xs: List[Int]): List[Int] = xs
+
+@main
+def main(): Unit =
+    val xs = identity(List())
+    print(xs)
+    print("\n")

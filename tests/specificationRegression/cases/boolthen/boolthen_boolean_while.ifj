@@ -1,0 +1,12 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+@main
+def main(): Unit =
+    var more = true
+    var n = 0
+    while more do
+        n = n + 1
+        more = n < 3
+    print(n)
+    print("\n")

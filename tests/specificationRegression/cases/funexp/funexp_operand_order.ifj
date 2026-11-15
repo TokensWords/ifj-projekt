@@ -1,0 +1,13 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def mark(x: Int): Int =
+    print(x)
+    x
+
+@main
+def main(): Unit =
+    val x = mark(1) + mark(2) * mark(3)
+    print("=")
+    print(x)
+    print("\n")

@@ -1,0 +1,16 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def good(): Int =
+    print("G")
+    7
+
+def bad(): Int =
+    print("BAD")
+    9
+
+@main
+def main(): Unit =
+    val x = if true then good() else bad()
+    print(x)
+    print("\n")

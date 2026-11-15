@@ -1,0 +1,14 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def total(xs: List[Int], n: Int): Int =
+    if n == 0 then
+        return 0
+    else
+        return xs.head + total(xs.tail, n - 1)
+
+@main
+def main(): Unit =
+    val xs = List(1, 2, 3)
+    print(total(xs, 3))
+    print("\n")

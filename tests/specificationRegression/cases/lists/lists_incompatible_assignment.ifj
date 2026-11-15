@@ -1,0 +1,7 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+@main
+def main(): Unit =
+    var xs: List[Int] = List(1)
+    xs = List("x")

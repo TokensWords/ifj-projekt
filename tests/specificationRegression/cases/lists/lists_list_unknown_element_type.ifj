@@ -1,0 +1,6 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+@main
+def main(): Unit =
+    val xs: List[Missing] = List()

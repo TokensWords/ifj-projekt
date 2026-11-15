@@ -1,0 +1,8 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+@main
+def main(): Unit =
+    for i <- -2 to 1 do
+        print(i)
+    print("\n")

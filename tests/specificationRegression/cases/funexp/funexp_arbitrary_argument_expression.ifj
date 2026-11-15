@@ -1,0 +1,9 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def sum(x: Int, y: Int): Int = x + y
+
+@main
+def main(): Unit =
+    print(sum(2 + 3 * 4, (8 - 2) / 3))
+    print("\n")

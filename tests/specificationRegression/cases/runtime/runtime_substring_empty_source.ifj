@@ -1,0 +1,8 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+@main
+def main(): Unit =
+    print("before\n")
+    val s = subStr("", 0, 0)
+    print(s)

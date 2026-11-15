@@ -1,0 +1,12 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def less(a: Int, b: Int): Boolean = a < b
+
+@main
+def main(): Unit =
+    var n = 0
+    while less(n, 3) do
+        print(n)
+        n = n + 1
+    print("\n")

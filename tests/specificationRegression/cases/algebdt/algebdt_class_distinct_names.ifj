@@ -1,0 +1,18 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+case class Point(x: Int)
+case class Other(x: Int)
+
+def total(v: Point | Other): Int =
+    v match
+        case Point(a) => a + 100
+        case Other(a) => a
+        case _ => 0
+
+@main
+def main(): Unit =
+    val p: Point | Other = Other(9)
+    val n = total(p)
+    print(n)
+    print("\n")

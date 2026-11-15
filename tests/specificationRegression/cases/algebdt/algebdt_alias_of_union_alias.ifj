@@ -1,0 +1,17 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+type Inner = Int | String
+type Outer = Inner | Unit
+
+def describe(v: Outer): String =
+    v match
+        case s: String => s
+        case _ => "other"
+
+@main
+def main(): Unit =
+    val x: Outer = "nested"
+    val text = describe(x)
+    print(text)
+    print("\n")

@@ -1,0 +1,12 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def values(): List[Int] =
+    print("F")
+    List(1, 2, 3)
+
+@main
+def main(): Unit =
+    for n <- values() do
+        print(n)
+    print("\n")

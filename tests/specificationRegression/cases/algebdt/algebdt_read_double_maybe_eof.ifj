@@ -1,0 +1,14 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def show(v: Double | Unit): String =
+    v match
+        case n: Double => toStr(n)
+        case _ => "none"
+
+@main
+def main(): Unit =
+    val value = readDoubleMaybe()
+    val text = show(value)
+    print(text)
+    print("\n")

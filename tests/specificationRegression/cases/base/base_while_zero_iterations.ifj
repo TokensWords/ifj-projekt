@@ -1,0 +1,9 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+@main
+def main(): Unit =
+    var x = 0
+    while x > 0 do
+        print("BAD")
+    print("OK\n")

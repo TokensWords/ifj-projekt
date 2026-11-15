@@ -1,0 +1,22 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+type Scalar = Int | String
+
+def describe(value: Scalar): String =
+    value match
+        case 0 => "zero"
+        case n: Int if n > 0 => "positive"
+        case text: String => text
+        case _ => "negative"
+
+@main
+def main(): Unit =
+    var value: Scalar = 3
+    val a = describe(value)
+    value = "hello"
+    val b = describe(value)
+    print(a)
+    print("|")
+    print(b)
+    print("\n")

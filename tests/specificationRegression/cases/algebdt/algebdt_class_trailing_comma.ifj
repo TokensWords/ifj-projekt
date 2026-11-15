@@ -1,0 +1,17 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+case class Point(
+    x: Int,
+    y: Int,
+    )
+
+@main
+def main(): Unit =
+    val p = Point(
+        3,
+        4,
+        )
+    val n = p.x + p.y
+    print(n)
+    print("\n")

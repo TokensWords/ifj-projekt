@@ -1,0 +1,13 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def inc(x: Int): Int = x + 1
+def combine(x: Int): Int =
+    val left = inc(x)
+    val right = inc(x + 5)
+    left + right
+
+@main
+def main(): Unit =
+    print(combine(4))
+    print("\n")

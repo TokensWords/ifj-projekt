@@ -1,0 +1,16 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def check(n: Int): Boolean =
+    print("BAD")
+    true
+
+@main
+def main(): Unit =
+    val value: Int | String = "text"
+    val text = value match
+        case n: Int if check(n) => "number"
+        case s: String => s
+        case _ => "other"
+    print(text)
+    print("\n")

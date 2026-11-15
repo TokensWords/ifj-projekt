@@ -1,0 +1,11 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+def inc(x: Int): Int = x + 1
+def twice(x: Int): Int =
+    return inc(inc(x)) * 2
+
+@main
+def main(): Unit =
+    print(twice(3))
+    print("\n")

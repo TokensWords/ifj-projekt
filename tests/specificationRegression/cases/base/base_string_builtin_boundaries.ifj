@@ -1,0 +1,28 @@
+// AI-generated regression fixture; specification references and prompt are in README.md.
+import ifj26.*
+
+@main
+def main(): Unit =
+    val s = "abcd"
+    val empty = subStr(s, 1, 1)
+    val suffix = subStr(s, 1, 4)
+    val length = strLength(empty)
+    val first = ord(s, 0)
+    val bad1 = ord(s, -1)
+    val bad2 = ord(s, 4)
+    val bad3 = ord("", 0)
+    val letter = chr(65)
+    print(length)
+    print("|")
+    print(suffix)
+    print("|")
+    print(first)
+    print("|")
+    print(bad1)
+    print("|")
+    print(bad2)
+    print("|")
+    print(bad3)
+    print("|")
+    print(letter)
+    print("\n")
