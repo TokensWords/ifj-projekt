@@ -1391,6 +1391,34 @@ CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
         allBranchesType = merged;
     }
 
+    // if as expression all branches same type check
+    if (ifNode->kind == ABSTRACT_SYNTAX_IF_EXPRESSION) {
+        DataType typeFlags = allBranchesType->datatypeBitflag;
+        if ((typeFlags & (typeFlags - 1)) == 0 && typeFlags != DATA_TYPE_UNKNOWN) { // only one type
+            if ((typeFlags & DATA_TYPE_ALIAS || (typeFlags & DATA_TYPE_CASE_CLASS) || (typeFlags & DATA_TYPE_LIST))) {
+                // are aliases/classes/lists the same type
+                for (size_t branchI = 1; branchI < ifNode->childCount; ++branchI) {
+                    AbstractSyntaxNode *branch = ifNode->children[branchI];
+                    TypeDescriptor *branchType = &branch->type;
+                    if (!semAnalIsSubtype(branchType, allBranchesType)) {
+                        semAnalDestroyTypeDescriptor(allBranchesType);
+                        return COMPILER_TYPE_ERROR;
+                    }
+                }
+            } else {
+                semAnalDestroyTypeDescriptor(allBranchesType);
+                return COMPILER_TYPE_ERROR;
+            }
+        } else if (typeFlags == (DATA_TYPE_INT || DATA_TYPE_DOUBLE)) {
+            // implicit conversion later
+            semAnalDestroyTypeDescriptor(allBranchesType);
+            allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_DOUBLE);
+        } else {
+            semAnalDestroyTypeDescriptor(allBranchesType);
+            return COMPILER_TYPE_ERROR;
+        }
+    }
+
     // not a expression evaluating as non Unit type
     if (ifNode->kind == ABSTRACT_SYNTAX_IF && allBranchesType != NULL &&
         allBranchesType->datatypeBitflag != DATA_TYPE_UNIT && !semAnalIsIfExpression(ifNode)) {
