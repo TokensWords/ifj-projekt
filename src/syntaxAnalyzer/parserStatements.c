@@ -96,6 +96,48 @@ static CompilerStatus expectBlockHeaderEnd(SyntaxAnalyzer *syntaxAnalyzer) {
     return skipNewlines(syntaxAnalyzer);
 }
 
+static CompilerStatus parseControlBody(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outBlock) {
+    if (syntaxAnalyzer == NULL || outBlock == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    *outBlock = NULL;
+
+    if (currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
+        CompilerStatus status = expectBlockHeaderEnd(syntaxAnalyzer);
+        if (status != COMPILER_OK) {
+            return status;
+        }
+        return parseBlock(syntaxAnalyzer, outBlock);
+    }
+
+    CompilerStatus status = ensureCurrentToken(syntaxAnalyzer);
+    if (status != COMPILER_OK) {
+        return status;
+    }
+    AbstractSyntaxNode *block = createNode(ABSTRACT_SYNTAX_BLOCK,
+                                            syntaxAnalyzer->currentToken->location);
+    AbstractSyntaxNode *statement = NULL;
+    if (block == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+    status = parseStatement(syntaxAnalyzer, &statement);
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    status = appendOwnedChild(block, statement);
+    statement = NULL;
+    if (status != COMPILER_OK) {
+        goto cleanup;
+    }
+    *outBlock = block;
+    return COMPILER_OK;
+
+cleanup:
+    abstractSyntaxNodeDestroy(statement);
+    abstractSyntaxNodeDestroy(block);
+    return status;
+}
+
 static CompilerStatus parseIfAtColumn(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **outNode,
                                       size_t elseColumn) {
     if (syntaxAnalyzer == NULL || outNode == NULL) {
@@ -137,12 +179,7 @@ static CompilerStatus parseIfAtColumn(SyntaxAnalyzer *syntaxAnalyzer, AbstractSy
     if (status != COMPILER_OK) {
         goto cleanup;
     }
-    status = expectBlockHeaderEnd(syntaxAnalyzer);
-    if (status != COMPILER_OK) {
-        goto cleanup;
-    }
-
-    status = parseBlock(syntaxAnalyzer, &thenBlock);
+    status = parseControlBody(syntaxAnalyzer, &thenBlock);
     if (status != COMPILER_OK) {
         goto cleanup;
     }
@@ -157,7 +194,8 @@ static CompilerStatus parseIfAtColumn(SyntaxAnalyzer *syntaxAnalyzer, AbstractSy
         goto cleanup;
     }
     if (!currentIsWord(syntaxAnalyzer, SYNTAX_KW_ELSE) ||
-        syntaxAnalyzer->currentToken->location.column != elseColumn) {
+        (syntaxAnalyzer->currentToken->location.column != elseColumn &&
+         syntaxAnalyzer->currentToken->location.line != location.line)) {
         elseBlock = createNode(ABSTRACT_SYNTAX_BLOCK, location);
         if (elseBlock == NULL) {
             status = COMPILER_INTERNAL_ERROR;
@@ -183,10 +221,7 @@ static CompilerStatus parseIfAtColumn(SyntaxAnalyzer *syntaxAnalyzer, AbstractSy
             status = appendOwnedChild(elseBlock, elseIfNode);
             elseIfNode = NULL;
         } else {
-            status = expectBlockHeaderEnd(syntaxAnalyzer);
-            if (status == COMPILER_OK) {
-                status = parseBlock(syntaxAnalyzer, &elseBlock);
-            }
+            status = parseControlBody(syntaxAnalyzer, &elseBlock);
         }
         if (status != COMPILER_OK) {
             goto cleanup;
@@ -260,12 +295,7 @@ CompilerStatus parseWhile(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **o
     if (status != COMPILER_OK) {
         goto cleanup;
     }
-    status = expectBlockHeaderEnd(syntaxAnalyzer);
-    if (status != COMPILER_OK) {
-        goto cleanup;
-    }
-
-    status = parseBlock(syntaxAnalyzer, &body);
+    status = parseControlBody(syntaxAnalyzer, &body);
     if (status != COMPILER_OK) {
         goto cleanup;
     }
@@ -475,11 +505,7 @@ CompilerStatus parseFor(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **out
     if (status != COMPILER_OK) {
         goto cleanup;
     }
-    status = expectBlockHeaderEnd(syntaxAnalyzer);
-    if (status != COMPILER_OK) {
-        goto cleanup;
-    }
-    status = parseBlock(syntaxAnalyzer, &body);
+    status = parseControlBody(syntaxAnalyzer, &body);
     if (status != COMPILER_OK) {
         goto cleanup;
     }

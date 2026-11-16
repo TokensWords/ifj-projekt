@@ -874,7 +874,7 @@ static CompilerStatus parseMatchExpression(SyntaxAnalyzer *syntaxAnalyzer,
         }
     }
 
-    if (matchExpression->childCount == 1) {
+    if (matchExpression->childCount == 1 || !hasDefaultCase) {
         status = COMPILER_SYNTAX_ERROR;
         goto cleanup;
     }

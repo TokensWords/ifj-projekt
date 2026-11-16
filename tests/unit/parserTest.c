@@ -434,6 +434,26 @@ int main(void) {
     assert(parsedIfNode->children[2]->childCount == 0);
     abstractSyntaxNodeDestroy(parsedIfNode);
 
+    static const TestToken inlineIfBranchesTokens[] = {
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 1), {TOKEN_BOOL_LITERAL, "true", 1, 4, 1},
+        TEST_TOKEN(TOKEN_KEYWORD, "then", 1, 9), TEST_TOKEN(TOKEN_IDENTIFIER, "print", 1, 14),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 19), TEST_TOKEN(TOKEN_STRING_LITERAL, "YES", 1, 20),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 25), TEST_TOKEN(TOKEN_KEYWORD, "else", 1, 27),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "print", 1, 32), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 37),
+        TEST_TOKEN(TOKEN_STRING_LITERAL, "NO", 1, 38), TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 42),
+        TEST_TOKEN(TOKEN_EOF, NULL, 1, 43)};
+    parsedIfNode = NULL;
+    assert(parseIfTokens(inlineIfBranchesTokens,
+                         sizeof(inlineIfBranchesTokens) / sizeof(inlineIfBranchesTokens[0]),
+                         &parsedIfNode) == COMPILER_OK);
+    assert(parsedIfNode->children[1]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(parsedIfNode->children[1]->childCount == 1);
+    assert(parsedIfNode->children[1]->children[0]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
+    assert(parsedIfNode->children[2]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(parsedIfNode->children[2]->childCount == 1);
+    assert(parsedIfNode->children[2]->children[0]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
+    abstractSyntaxNodeDestroy(parsedIfNode);
+
     static const TestToken elseIfTokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 1),
                                              {TOKEN_BOOL_LITERAL, "true", 1, 4, 1},
                                              TEST_TOKEN(TOKEN_KEYWORD, "then", 1, 9),
@@ -847,6 +867,22 @@ int main(void) {
     assert(range->children[0]->children[0]->value.intValue == 2);
     assert(range->children[1]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
     assert(range->children[1]->value.intValue == 1);
+    abstractSyntaxNodeDestroy(forNode);
+
+    static const TestToken inlineForBodyTokens[] = {
+        TEST_TOKEN(TOKEN_KEYWORD, "for", 1, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 1, 5),
+        TEST_TOKEN(TOKEN_OPERATOR, "<-", 1, 7), {TOKEN_INT_LITERAL, "1", 1, 10, 1},
+        TEST_TOKEN(TOKEN_KEYWORD, "to", 1, 12), {TOKEN_INT_LITERAL, "3", 1, 15, 3},
+        TEST_TOKEN(TOKEN_KEYWORD, "do", 1, 17), TEST_TOKEN(TOKEN_IDENTIFIER, "print", 1, 20),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 25), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 1, 26),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 27), TEST_TOKEN(TOKEN_EOF, NULL, 1, 28)};
+    forNode = NULL;
+    assert(parseForTokens(inlineForBodyTokens,
+                          sizeof(inlineForBodyTokens) / sizeof(inlineForBodyTokens[0]),
+                          &forNode) == COMPILER_OK);
+    assert(forNode->children[1]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(forNode->children[1]->childCount == 1);
+    assert(forNode->children[1]->children[0]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
     abstractSyntaxNodeDestroy(forNode);
 
     static const TestToken inlineForGuardTokens[] = {
