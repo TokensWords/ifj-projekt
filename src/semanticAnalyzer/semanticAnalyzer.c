@@ -122,7 +122,7 @@ CompilerStatus semAnalNormalizeTypeDescriptor(TypeDescriptor *desc, SemAnalData 
                         desc->datatypeBitflag &= ~DATA_TYPE_ALIAS;
                     }
                     continue; // we have already moved to next node because of the removal
-                } else if (typeSymbol->dataType != NULL) {
+                } else if (typeSymbol->dataType != NULL) { // resolve the alias
                     if (++expansions > data->root->childCount) {
                         return COMPILER_TYPE_ERROR;
                     }
@@ -153,8 +153,8 @@ CompilerStatus semAnalNormalizeTypeDescriptor(TypeDescriptor *desc, SemAnalData 
                     continue;
                 }
             }
-            prev = current;
-            current = current->next;
+            // not an alias, not a class
+            return COMPILER_UNDEFINED_SYMBOL_ERROR;
         }
     }
 
