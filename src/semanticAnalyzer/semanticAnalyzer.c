@@ -1154,6 +1154,14 @@ static CompilerStatus resolveRange(AbstractSyntaxNode *node, SemAnalData *data) 
             return COMPILER_TYPE_ERROR;
         }
     }
+
+    if (node->childCount == 3) {
+        AbstractSyntaxNode *stepNode = node->children[2];
+        if (stepNode->kind == ABSTRACT_SYNTAX_INT_LITERAL && stepNode->value.intValue <= 0) {
+            return COMPILER_SEMANTIC_ERROR;
+        }
+    }
+
     return COMPILER_OK;
 }
 
