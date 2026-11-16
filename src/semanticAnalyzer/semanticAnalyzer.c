@@ -1110,6 +1110,8 @@ CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SemAna
         return COMPILER_INTERNAL_ERROR;
     }
 
+    SymbolTable *currentTable = data->symbolTables[data->numberOfTables - 1];
+
     CompilerStatus status = COMPILER_OK;
 
     // move class cases form the aliases
@@ -1118,15 +1120,19 @@ CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SemAna
         return status;
     }
 
+    Symbol *symbolTmp = symbolTableFind(currentTable, parameterNode->text);
+    if (symbolTmp == NULL) {
+        return COMPILER_REDEFINITION_ERROR;
+    }
+
     Symbol *parameterSymbol = semAnalAstNodeToSymbol(parameterNode);
     if (parameterSymbol == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
-    ++data->variableIdCounter;
-    parameterSymbol->variableId = data->variableIdCounter;
+    parameterSymbol->variableId = ++data->variableIdCounter;
 
-    status = symbolTableInsert(data->symbolTables[data->numberOfTables - 1], parameterSymbol);
+    status = symbolTableInsert(currentTable, parameterSymbol);
     if (status != COMPILER_OK) {
         semAnalFreeSymbol(parameterSymbol);
         return status;
