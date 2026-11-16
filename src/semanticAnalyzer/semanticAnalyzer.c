@@ -1391,8 +1391,19 @@ CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
         allBranchesType = merged;
     }
 
-    // if as expression all branches same type check
+    bool isExpressionSyntax = false;
     if (ifNode->kind == ABSTRACT_SYNTAX_IF_EXPRESSION) {
+        isExpressionSyntax = true;
+    }
+    bool actsAsExpression = false;
+    if (ifNode->kind == ABSTRACT_SYNTAX_IF) {
+        if (ifNode->childCount == 3) {
+            actsAsExpression = true;
+        }
+    }
+
+    // if as expression all branches same type check
+    if (isExpressionSyntax || actsAsExpression) {
         DataType typeFlags = allBranchesType->datatypeBitflag;
         if ((typeFlags & (typeFlags - 1)) == 0 && typeFlags != DATA_TYPE_UNKNOWN) { // only one type
             if ((typeFlags & DATA_TYPE_ALIAS || (typeFlags & DATA_TYPE_CASE_CLASS) || (typeFlags & DATA_TYPE_LIST))) {
@@ -1401,29 +1412,39 @@ CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
                     AbstractSyntaxNode *branch = ifNode->children[branchI];
                     TypeDescriptor *branchType = &branch->type;
                     if (!semAnalIsSubtype(branchType, allBranchesType)) {
-                        semAnalDestroyTypeDescriptor(allBranchesType);
-                        return COMPILER_TYPE_ERROR;
+                        if (isExpressionSyntax) {
+                            semAnalDestroyTypeDescriptor(allBranchesType);
+                            return COMPILER_TYPE_ERROR;
+                        } else {
+                            semAnalDestroyTypeDescriptor(allBranchesType);
+                            allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_UNKNOWN);
+                            break;
+                        }
                     }
                 }
-            } else {
-                semAnalDestroyTypeDescriptor(allBranchesType);
-                return COMPILER_TYPE_ERROR;
             }
-        } else if (typeFlags == (DATA_TYPE_INT || DATA_TYPE_DOUBLE)) {
+        } else if (typeFlags == (DATA_TYPE_INT | DATA_TYPE_DOUBLE)) {
             // implicit conversion later
             semAnalDestroyTypeDescriptor(allBranchesType);
             allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_DOUBLE);
         } else {
-            semAnalDestroyTypeDescriptor(allBranchesType);
-            return COMPILER_TYPE_ERROR;
+            if (isExpressionSyntax) {
+                semAnalDestroyTypeDescriptor(allBranchesType);
+                return COMPILER_TYPE_ERROR;
+            } else {
+                semAnalDestroyTypeDescriptor(allBranchesType);
+                allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_UNKNOWN);
+            }
         }
     }
 
-    // not a expression evaluating as non Unit type
-    if (ifNode->kind == ABSTRACT_SYNTAX_IF && allBranchesType != NULL &&
-        allBranchesType->datatypeBitflag != DATA_TYPE_UNIT && !semAnalIsIfExpression(ifNode)) {
-        semAnalDestroyTypeDescriptor(allBranchesType);
-        allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_UNKNOWN);
+    if (ifNode->kind == ABSTRACT_SYNTAX_IF) {
+        if (ifNode->childCount < 3) {
+            if (allBranchesType->datatypeBitflag != DATA_TYPE_UNIT) {
+                semAnalDestroyTypeDescriptor(allBranchesType);
+                allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_UNKNOWN);
+            }
+        }
     }
 
     if (allBranchesType != NULL) {
