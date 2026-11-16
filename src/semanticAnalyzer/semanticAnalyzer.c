@@ -122,7 +122,7 @@ CompilerStatus semAnalNormalizeTypeDescriptor(TypeDescriptor *desc, SemAnalData 
                         desc->datatypeBitflag &= ~DATA_TYPE_ALIAS;
                     }
                     continue; // we have already moved to next node because of the removal
-                } else if (typeSymbol->dataType != NULL) {
+                } else if (typeSymbol->dataType != NULL) { // resolve the alias
                     if (++expansions > data->root->childCount) {
                         return COMPILER_TYPE_ERROR;
                     }
@@ -153,8 +153,8 @@ CompilerStatus semAnalNormalizeTypeDescriptor(TypeDescriptor *desc, SemAnalData 
                     continue;
                 }
             }
-            prev = current;
-            current = current->next;
+            // not an alias, not a class
+            return COMPILER_UNDEFINED_SYMBOL_ERROR;
         }
     }
 
@@ -979,7 +979,7 @@ static CompilerStatus resolveWithListContext(AbstractSyntaxNode *node, TypeDescr
             return status;
         }
         if (!semAnalIsSubtype(element, &argument->type)) {
-            return COMPILER_TYPE_ERROR;
+            return COMPILER_ARGUMENT_ERROR;
         }
     }
     return setListType(node, element);
@@ -1110,6 +1110,8 @@ CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SemAna
         return COMPILER_INTERNAL_ERROR;
     }
 
+    SymbolTable *currentTable = data->symbolTables[data->numberOfTables - 1];
+
     CompilerStatus status = COMPILER_OK;
 
     // move class cases form the aliases
@@ -1118,15 +1120,19 @@ CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SemAna
         return status;
     }
 
+    Symbol *symbolTmp = symbolTableFind(currentTable, parameterNode->text);
+    if (symbolTmp == NULL) {
+        return COMPILER_REDEFINITION_ERROR;
+    }
+
     Symbol *parameterSymbol = semAnalAstNodeToSymbol(parameterNode);
     if (parameterSymbol == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
-    ++data->variableIdCounter;
-    parameterSymbol->variableId = data->variableIdCounter;
+    parameterSymbol->variableId = ++data->variableIdCounter;
 
-    status = symbolTableInsert(data->symbolTables[data->numberOfTables - 1], parameterSymbol);
+    status = symbolTableInsert(currentTable, parameterSymbol);
     if (status != COMPILER_OK) {
         semAnalFreeSymbol(parameterSymbol);
         return status;
@@ -1148,6 +1154,14 @@ static CompilerStatus resolveRange(AbstractSyntaxNode *node, SemAnalData *data) 
             return COMPILER_TYPE_ERROR;
         }
     }
+
+    if (node->childCount == 3) {
+        AbstractSyntaxNode *stepNode = node->children[2];
+        if (stepNode->kind == ABSTRACT_SYNTAX_INT_LITERAL && stepNode->value.intValue <= 0) {
+            return COMPILER_SEMANTIC_ERROR;
+        }
+    }
+
     return COMPILER_OK;
 }
 
@@ -1377,11 +1391,60 @@ CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
         allBranchesType = merged;
     }
 
-    // not a expression evaluating as non Unit type
-    if (ifNode->kind == ABSTRACT_SYNTAX_IF && allBranchesType != NULL &&
-        allBranchesType->datatypeBitflag != DATA_TYPE_UNIT && !semAnalIsIfExpression(ifNode)) {
-        semAnalDestroyTypeDescriptor(allBranchesType);
-        allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_UNKNOWN);
+    bool isExpressionSyntax = false;
+    if (ifNode->kind == ABSTRACT_SYNTAX_IF_EXPRESSION) {
+        isExpressionSyntax = true;
+    }
+    bool actsAsExpression = false;
+    if (ifNode->kind == ABSTRACT_SYNTAX_IF) {
+        if (ifNode->childCount == 3) {
+            actsAsExpression = true;
+        }
+    }
+
+    // if as expression all branches same type check
+    if (isExpressionSyntax || actsAsExpression) {
+        DataType typeFlags = allBranchesType->datatypeBitflag;
+        if ((typeFlags & (typeFlags - 1)) == 0 && typeFlags != DATA_TYPE_UNKNOWN) { // only one type
+            if ((typeFlags & DATA_TYPE_ALIAS || (typeFlags & DATA_TYPE_CASE_CLASS) || (typeFlags & DATA_TYPE_LIST))) {
+                // are aliases/classes/lists the same type
+                for (size_t branchI = 1; branchI < ifNode->childCount; ++branchI) {
+                    AbstractSyntaxNode *branch = ifNode->children[branchI];
+                    TypeDescriptor *branchType = &branch->type;
+                    if (!semAnalIsSubtype(branchType, allBranchesType)) {
+                        if (isExpressionSyntax) {
+                            semAnalDestroyTypeDescriptor(allBranchesType);
+                            return COMPILER_TYPE_ERROR;
+                        } else {
+                            semAnalDestroyTypeDescriptor(allBranchesType);
+                            allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_UNKNOWN);
+                            break;
+                        }
+                    }
+                }
+            }
+        } else if (typeFlags == (DATA_TYPE_INT | DATA_TYPE_DOUBLE)) {
+            // implicit conversion later
+            semAnalDestroyTypeDescriptor(allBranchesType);
+            allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_DOUBLE);
+        } else {
+            if (isExpressionSyntax) {
+                semAnalDestroyTypeDescriptor(allBranchesType);
+                return COMPILER_TYPE_ERROR;
+            } else {
+                semAnalDestroyTypeDescriptor(allBranchesType);
+                allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_UNKNOWN);
+            }
+        }
+    }
+
+    if (ifNode->kind == ABSTRACT_SYNTAX_IF) {
+        if (ifNode->childCount < 3) {
+            if (allBranchesType->datatypeBitflag != DATA_TYPE_UNIT) {
+                semAnalDestroyTypeDescriptor(allBranchesType);
+                allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_UNKNOWN);
+            }
+        }
     }
 
     if (allBranchesType != NULL) {
@@ -1928,7 +1991,7 @@ static CompilerStatus resolveListAccess(AbstractSyntaxNode *call, SemAnalData *d
     TypeDescriptor *receiver = &call->children[0]->type;
     if (index->type.datatypeBitflag != DATA_TYPE_INT || receiver->recursiveTypes == NULL ||
         receiver->recursiveTypes->next != NULL) {
-        return COMPILER_TYPE_ERROR;
+        return COMPILER_ARGUMENT_ERROR;
     }
     return abstractSyntaxNodeCopyInferredType(call, &receiver->recursiveTypes->elementType);
 }
@@ -1959,7 +2022,7 @@ CompilerStatus semAnalResolveListConstructor(AbstractSyntaxNode *call, SemAnalDa
             return status;
         }
         if (!semAnalIsSubtype(element, &argument->type)) {
-            return COMPILER_TYPE_ERROR;
+            return COMPILER_ARGUMENT_ERROR;
         }
     }
     return setListType(call, element);
@@ -2052,7 +2115,7 @@ CompilerStatus semAnalResolveListMethodCall(AbstractSyntaxNode *callNode, SemAna
             return status;
         }
         if (argument->type.datatypeBitflag != DATA_TYPE_INT) {
-            return COMPILER_TYPE_ERROR;
+            return COMPILER_ARGUMENT_ERROR;
         }
     }
     return abstractSyntaxNodeCopyInferredType(callNode, type);
@@ -2083,7 +2146,7 @@ CompilerStatus semAnalResolveFunctionCall(AbstractSyntaxNode *functionCallNode, 
                     }
                     TypeDescriptor *argType = &functionCallNode->children[i]->type;
                     if (argType == NULL || argType->datatypeBitflag != DATA_TYPE_INT) {
-                        return COMPILER_TYPE_ERROR;
+                        return COMPILER_ARGUMENT_ERROR;
                     }
                 }
                 TypeDescriptor element = {.datatypeBitflag = DATA_TYPE_INT};
@@ -2390,7 +2453,9 @@ CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBina
 
     // numbers + concatenation
     else if (expressionBinaryNode->text[0] == '+') {
-        if (leftType->datatypeBitflag == rightType->datatypeBitflag) {
+        if (leftType->datatypeBitflag == DATA_TYPE_BOOLEAN || rightType->datatypeBitflag == DATA_TYPE_BOOLEAN) {
+            return COMPILER_TYPE_ERROR;
+        } else if (leftType->datatypeBitflag == rightType->datatypeBitflag) {
             abstractSyntaxNodeSetInferredType(expressionBinaryNode, leftType->datatypeBitflag);
             return COMPILER_OK;
         } else if (leftType->datatypeBitflag == DATA_TYPE_STRING || rightType->datatypeBitflag == DATA_TYPE_STRING) {
