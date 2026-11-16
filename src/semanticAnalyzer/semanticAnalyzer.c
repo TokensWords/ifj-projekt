@@ -979,7 +979,7 @@ static CompilerStatus resolveWithListContext(AbstractSyntaxNode *node, TypeDescr
             return status;
         }
         if (!semAnalIsSubtype(element, &argument->type)) {
-            return COMPILER_TYPE_ERROR;
+            return COMPILER_ARGUMENT_ERROR;
         }
     }
     return setListType(node, element);
@@ -1970,7 +1970,7 @@ static CompilerStatus resolveListAccess(AbstractSyntaxNode *call, SemAnalData *d
     TypeDescriptor *receiver = &call->children[0]->type;
     if (index->type.datatypeBitflag != DATA_TYPE_INT || receiver->recursiveTypes == NULL ||
         receiver->recursiveTypes->next != NULL) {
-        return COMPILER_TYPE_ERROR;
+        return COMPILER_ARGUMENT_ERROR;
     }
     return abstractSyntaxNodeCopyInferredType(call, &receiver->recursiveTypes->elementType);
 }
@@ -2001,7 +2001,7 @@ CompilerStatus semAnalResolveListConstructor(AbstractSyntaxNode *call, SemAnalDa
             return status;
         }
         if (!semAnalIsSubtype(element, &argument->type)) {
-            return COMPILER_TYPE_ERROR;
+            return COMPILER_ARGUMENT_ERROR;
         }
     }
     return setListType(call, element);
@@ -2094,7 +2094,7 @@ CompilerStatus semAnalResolveListMethodCall(AbstractSyntaxNode *callNode, SemAna
             return status;
         }
         if (argument->type.datatypeBitflag != DATA_TYPE_INT) {
-            return COMPILER_TYPE_ERROR;
+            return COMPILER_ARGUMENT_ERROR;
         }
     }
     return abstractSyntaxNodeCopyInferredType(callNode, type);
@@ -2125,7 +2125,7 @@ CompilerStatus semAnalResolveFunctionCall(AbstractSyntaxNode *functionCallNode, 
                     }
                     TypeDescriptor *argType = &functionCallNode->children[i]->type;
                     if (argType == NULL || argType->datatypeBitflag != DATA_TYPE_INT) {
-                        return COMPILER_TYPE_ERROR;
+                        return COMPILER_ARGUMENT_ERROR;
                     }
                 }
                 TypeDescriptor element = {.datatypeBitflag = DATA_TYPE_INT};
