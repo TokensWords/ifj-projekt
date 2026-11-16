@@ -594,8 +594,10 @@ int main(void) {
     expression = NULL;
     assert(parseExpressionTokens(chainedCallTokens,
                                  sizeof(chainedCallTokens) / sizeof(chainedCallTokens[0]),
-                                 &expression) == COMPILER_SYNTAX_ERROR);
-    assert(expression == NULL);
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION);
+    abstractSyntaxNodeDestroy(expression);
 
     static const TestToken groupedChainedCallTokens[] = {
         TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 1),   TEST_TOKEN(TOKEN_IDENTIFIER, "lst", 1, 2),
@@ -732,6 +734,40 @@ int main(void) {
                               &expression) == COMPILER_SYNTAX_ERROR);
     assert(expression == NULL);
 
+    static const TestToken unaryMinusRangeTokens[] = {
+        TEST_TOKEN(TOKEN_OPERATOR, "-", 1, 1), {TOKEN_INT_LITERAL, "2", 1, 2, 2},
+        TEST_TOKEN(TOKEN_KEYWORD, "to", 1, 4), {TOKEN_INT_LITERAL, "1", 1, 7, 1},
+        TEST_TOKEN(TOKEN_EOF, NULL, 1, 8)};
+    expression = NULL;
+    assert(parseExpressionTokens(unaryMinusRangeTokens,
+                                 sizeof(unaryMinusRangeTokens) / sizeof(unaryMinusRangeTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION);
+    assert(strcmp(expression->text, "to") == 0);
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_UNARY_EXPRESSION);
+    assert(strcmp(expression->children[0]->text, "-") == 0);
+    assert(expression->children[0]->children[0]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    assert(expression->children[0]->children[0]->value.intValue == 2);
+    assert(expression->children[1]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    assert(expression->children[1]->value.intValue == 1);
+    abstractSyntaxNodeDestroy(expression);
+
+    static const TestToken unaryPlusUntilTokens[] = {
+        TEST_TOKEN(TOKEN_OPERATOR, "+", 1, 1), {TOKEN_INT_LITERAL, "2", 1, 2, 2},
+        TEST_TOKEN(TOKEN_KEYWORD, "until", 1, 4), {TOKEN_INT_LITERAL, "1", 1, 10, 1},
+        TEST_TOKEN(TOKEN_EOF, NULL, 1, 11)};
+    expression = NULL;
+    assert(parseExpressionTokens(unaryPlusUntilTokens,
+                                 sizeof(unaryPlusUntilTokens) / sizeof(unaryPlusUntilTokens[0]),
+                                 &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION);
+    assert(strcmp(expression->text, "until") == 0);
+    assert(expression->children[0]->kind == ABSTRACT_SYNTAX_UNARY_EXPRESSION);
+    assert(strcmp(expression->children[0]->text, "+") == 0);
+    assert(expression->children[0]->children[0]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    assert(expression->children[1]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    abstractSyntaxNodeDestroy(expression);
+
     static const TestToken callOperandTokens[] = {TEST_TOKEN(TOKEN_IDENTIFIER, "readValue", 1, 1),
                                                   TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 10),
                                                   TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 11),
@@ -786,6 +822,31 @@ int main(void) {
     assert(forNode->children[1]->kind == ABSTRACT_SYNTAX_BLOCK);
     assert(forNode->children[1]->childCount == 1);
     assert(forNode->children[1]->children[0]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
+    abstractSyntaxNodeDestroy(forNode);
+
+    static const TestToken unaryMinusForTokens[] = {
+        TEST_TOKEN(TOKEN_KEYWORD, "for", 1, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 1, 5),
+        TEST_TOKEN(TOKEN_OPERATOR, "<-", 1, 7), TEST_TOKEN(TOKEN_OPERATOR, "-", 1, 10),
+        {TOKEN_INT_LITERAL, "2", 1, 11, 2}, TEST_TOKEN(TOKEN_KEYWORD, "to", 1, 13),
+        {TOKEN_INT_LITERAL, "1", 1, 16, 1}, TEST_TOKEN(TOKEN_KEYWORD, "do", 1, 18),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 20), TEST_TOKEN(TOKEN_INDENT, NULL, 2, 5),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "print", 2, 5), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 2, 10),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "i", 2, 11), TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 2, 12),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 13), TEST_TOKEN(TOKEN_DEDENT, NULL, 3, 1),
+        TEST_TOKEN(TOKEN_EOF, NULL, 3, 1)};
+    forNode = NULL;
+    assert(parseForTokens(unaryMinusForTokens,
+                          sizeof(unaryMinusForTokens) / sizeof(unaryMinusForTokens[0]),
+                          &forNode) == COMPILER_OK);
+    range = forNode->children[0]->children[0]->children[0];
+    assert(range->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION);
+    assert(strcmp(range->text, "to") == 0);
+    assert(range->children[0]->kind == ABSTRACT_SYNTAX_UNARY_EXPRESSION);
+    assert(strcmp(range->children[0]->text, "-") == 0);
+    assert(range->children[0]->children[0]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    assert(range->children[0]->children[0]->value.intValue == 2);
+    assert(range->children[1]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    assert(range->children[1]->value.intValue == 1);
     abstractSyntaxNodeDestroy(forNode);
 
     static const TestToken multiLineForTokens[] = {

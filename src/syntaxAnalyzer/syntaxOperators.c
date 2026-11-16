@@ -369,6 +369,9 @@ PrecedenceRelation syntaxPrecedenceRelation(ExpressionTerminal stacked,
         if (stacked == EXPR_TERMINAL_END) {
             return PRECEDENCE_SHIFT;
         }
+        if (isPrefixOperator(stacked)) {
+            return PRECEDENCE_REDUCE;
+        }
         if (stacked == EXPR_TERMINAL_OPERAND || stacked == EXPR_TERMINAL_RIGHT_PAREN ||
             stackedRange || isBinaryOperator(stacked)) {
             return PRECEDENCE_REDUCE;
@@ -405,6 +408,9 @@ PrecedenceRelation syntaxPrecedenceRelation(ExpressionTerminal stacked,
                                                               : PRECEDENCE_REDUCE;
             }
             return PRECEDENCE_ERROR;
+        }
+        if (isPrefixOperator(stacked)) {
+            return PRECEDENCE_REDUCE;
         }
         if (stacked == EXPR_TERMINAL_END || stacked == EXPR_TERMINAL_LEFT_PAREN) {
             return PRECEDENCE_SHIFT;
