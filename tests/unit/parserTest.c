@@ -849,6 +849,67 @@ int main(void) {
     assert(range->children[1]->value.intValue == 1);
     abstractSyntaxNodeDestroy(forNode);
 
+    static const TestToken inlineForGuardTokens[] = {
+        TEST_TOKEN(TOKEN_KEYWORD, "for", 1, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 1, 5),
+        TEST_TOKEN(TOKEN_OPERATOR, "<-", 1, 7), {TOKEN_INT_LITERAL, "1", 1, 10, 1},
+        TEST_TOKEN(TOKEN_KEYWORD, "to", 1, 12), {TOKEN_INT_LITERAL, "5", 1, 15, 5},
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 17), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 1, 20),
+        TEST_TOKEN(TOKEN_OPERATOR, ">", 1, 22), {TOKEN_INT_LITERAL, "2", 1, 24, 2},
+        TEST_TOKEN(TOKEN_KEYWORD, "do", 1, 26), TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 28),
+        TEST_TOKEN(TOKEN_INDENT, NULL, 2, 5), TEST_TOKEN(TOKEN_IDENTIFIER, "print", 2, 5),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 2, 10), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 2, 11),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 2, 12), TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 13),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 3, 1), TEST_TOKEN(TOKEN_EOF, NULL, 3, 1)};
+    forNode = NULL;
+    assert(parseForTokens(inlineForGuardTokens,
+                          sizeof(inlineForGuardTokens) / sizeof(inlineForGuardTokens[0]),
+                          &forNode) == COMPILER_OK);
+    forClauses = forNode->children[0];
+    assert(forClauses->childCount == 2);
+    assert(forClauses->children[0]->kind == ABSTRACT_SYNTAX_FOR_GENERATOR);
+    range = forClauses->children[0]->children[0];
+    assert(range->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION);
+    assert(range->children[0]->value.intValue == 1);
+    assert(range->children[1]->value.intValue == 5);
+    assert(forClauses->children[1]->kind == ABSTRACT_SYNTAX_FOR_GUARD);
+    assert(forClauses->children[1]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(strcmp(forClauses->children[1]->children[0]->text, ">") == 0);
+    abstractSyntaxNodeDestroy(forNode);
+
+    static const TestToken steppedInlineForGuardsTokens[] = {
+        TEST_TOKEN(TOKEN_KEYWORD, "for", 1, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 1, 5),
+        TEST_TOKEN(TOKEN_OPERATOR, "<-", 1, 7), {TOKEN_INT_LITERAL, "1", 1, 10, 1},
+        TEST_TOKEN(TOKEN_KEYWORD, "until", 1, 12), {TOKEN_INT_LITERAL, "6", 1, 18, 6},
+        TEST_TOKEN(TOKEN_KEYWORD, "by", 1, 20), {TOKEN_INT_LITERAL, "2", 1, 23, 2},
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 25), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 1, 28),
+        TEST_TOKEN(TOKEN_OPERATOR, ">", 1, 30), {TOKEN_INT_LITERAL, "1", 1, 32, 1},
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 34), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 1, 37),
+        TEST_TOKEN(TOKEN_OPERATOR, "<", 1, 39), {TOKEN_INT_LITERAL, "5", 1, 41, 5},
+        TEST_TOKEN(TOKEN_KEYWORD, "do", 1, 43), TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 45),
+        TEST_TOKEN(TOKEN_INDENT, NULL, 2, 5), TEST_TOKEN(TOKEN_IDENTIFIER, "print", 2, 5),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 2, 10), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 2, 11),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 2, 12), TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 13),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 3, 1), TEST_TOKEN(TOKEN_EOF, NULL, 3, 1)};
+    forNode = NULL;
+    assert(parseForTokens(steppedInlineForGuardsTokens,
+                          sizeof(steppedInlineForGuardsTokens) /
+                              sizeof(steppedInlineForGuardsTokens[0]),
+                          &forNode) == COMPILER_OK);
+    forClauses = forNode->children[0];
+    assert(forClauses->childCount == 3);
+    assert(forClauses->children[0]->kind == ABSTRACT_SYNTAX_FOR_GENERATOR);
+    range = forClauses->children[0]->children[0];
+    assert(range->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION);
+    assert(strcmp(range->text, "until") == 0);
+    assert(range->childCount == 3);
+    assert(range->children[2]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    assert(range->children[2]->value.intValue == 2);
+    assert(forClauses->children[1]->kind == ABSTRACT_SYNTAX_FOR_GUARD);
+    assert(forClauses->children[1]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(forClauses->children[2]->kind == ABSTRACT_SYNTAX_FOR_GUARD);
+    assert(forClauses->children[2]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    abstractSyntaxNodeDestroy(forNode);
+
     static const TestToken multiLineForTokens[] = {
         TEST_TOKEN(TOKEN_KEYWORD, "for", 1, 1),    TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 4),
         TEST_TOKEN(TOKEN_INDENT, NULL, 2, 5),      TEST_TOKEN(TOKEN_IDENTIFIER, "i", 2, 5),

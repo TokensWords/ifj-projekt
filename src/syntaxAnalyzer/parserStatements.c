@@ -319,7 +319,7 @@ static CompilerStatus parseForGenerator(SyntaxAnalyzer *syntaxAnalyzer,
         goto cleanup;
     }
 
-    status = analyzerExpressionsParse(syntaxAnalyzer, &source);
+    status = analyzerExpressionsParseForClause(syntaxAnalyzer, &source);
     if (status != COMPILER_OK) {
         goto cleanup;
     }
@@ -359,7 +359,7 @@ static CompilerStatus parseForGuard(SyntaxAnalyzer *syntaxAnalyzer, AbstractSynt
     if (status != COMPILER_OK) {
         goto cleanup;
     }
-    status = analyzerExpressionsParseValueOrCall(syntaxAnalyzer, &condition);
+    status = analyzerExpressionsParseForClause(syntaxAnalyzer, &condition);
     if (status != COMPILER_OK) {
         goto cleanup;
     }

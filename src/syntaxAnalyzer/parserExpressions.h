@@ -19,6 +19,9 @@ CompilerStatus parseFunctionCall(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxN
 CompilerStatus analyzerExpressionsParse(SyntaxAnalyzer *syntaxAnalyzer,
                                         AbstractSyntaxNode **outNode);
 
+CompilerStatus analyzerExpressionsParseForClause(SyntaxAnalyzer *syntaxAnalyzer,
+                                                 AbstractSyntaxNode **outNode);
+
 CompilerStatus analyzerExpressionsParseValueOrCall(SyntaxAnalyzer *syntaxAnalyzer,
                                                    AbstractSyntaxNode **outNode);
 

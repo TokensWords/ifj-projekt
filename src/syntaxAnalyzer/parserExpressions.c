@@ -990,7 +990,8 @@ static bool isBinaryExpressionOperator(ExpressionTerminal terminal) {
 }
 
 static ExpressionTerminal terminalForToken(const SyntaxAnalyzer *syntaxAnalyzer, const Token *token,
-                                           const ExpressionStackEntry *stack, size_t stackCount) {
+                                           const ExpressionStackEntry *stack, size_t stackCount,
+                                           bool stopAtForGuard) {
     if (token == NULL) {
         return EXPR_TERMINAL_END;
     }
@@ -1000,6 +1001,9 @@ static ExpressionTerminal terminalForToken(const SyntaxAnalyzer *syntaxAnalyzer,
         return EXPR_TERMINAL_END;
     }
     if (token->type == TOKEN_KEYWORD && tokenHasText(token, SYNTAX_KW_IF)) {
+        if (stopAtForGuard && stackCount > 1 && !expressionExpectsOperand(stack, stackCount)) {
+            return EXPR_TERMINAL_END;
+        }
         return EXPR_TERMINAL_OPERAND;
     }
     if (token->type == TOKEN_IDENTIFIER || token->type == TOKEN_INT_LITERAL ||
@@ -1233,8 +1237,8 @@ static CompilerStatus shiftExpressionToken(SyntaxAnalyzer *syntaxAnalyzer,
     return advanceToken(syntaxAnalyzer);
 }
 
-CompilerStatus analyzerExpressionsParse(SyntaxAnalyzer *syntaxAnalyzer,
-                                        AbstractSyntaxNode **outNode) {
+static CompilerStatus parseExpression(SyntaxAnalyzer *syntaxAnalyzer,
+                                      AbstractSyntaxNode **outNode, bool stopAtForGuard) {
     if (syntaxAnalyzer == NULL || outNode == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -1267,7 +1271,8 @@ CompilerStatus analyzerExpressionsParse(SyntaxAnalyzer *syntaxAnalyzer,
                                syntaxAnalyzer->nextToken->type == TOKEN_RIGHT_PAREN;
         }
 
-        ExpressionTerminal incoming = terminalForToken(syntaxAnalyzer, token, stack, stackCount);
+        ExpressionTerminal incoming =
+            terminalForToken(syntaxAnalyzer, token, stack, stackCount, stopAtForGuard);
         if (emptyParentheses) {
             incoming = EXPR_TERMINAL_OPERAND;
         }
@@ -1322,4 +1327,14 @@ CompilerStatus analyzerExpressionsParse(SyntaxAnalyzer *syntaxAnalyzer,
 cleanup:
     destroyExpressionStack(stack, stackCount);
     return status;
+}
+
+CompilerStatus analyzerExpressionsParse(SyntaxAnalyzer *syntaxAnalyzer,
+                                        AbstractSyntaxNode **outNode) {
+    return parseExpression(syntaxAnalyzer, outNode, false);
+}
+
+CompilerStatus analyzerExpressionsParseForClause(SyntaxAnalyzer *syntaxAnalyzer,
+                                                 AbstractSyntaxNode **outNode) {
+    return parseExpression(syntaxAnalyzer, outNode, true);
 }
