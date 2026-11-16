@@ -2390,7 +2390,9 @@ CompilerStatus semAnalResolveExpressionBinary(AbstractSyntaxNode *expressionBina
 
     // numbers + concatenation
     else if (expressionBinaryNode->text[0] == '+') {
-        if (leftType->datatypeBitflag == rightType->datatypeBitflag) {
+        if (leftType->datatypeBitflag == DATA_TYPE_BOOLEAN || rightType->datatypeBitflag == DATA_TYPE_BOOLEAN) {
+            return COMPILER_TYPE_ERROR;
+        } else if (leftType->datatypeBitflag == rightType->datatypeBitflag) {
             abstractSyntaxNodeSetInferredType(expressionBinaryNode, leftType->datatypeBitflag);
             return COMPILER_OK;
         } else if (leftType->datatypeBitflag == DATA_TYPE_STRING || rightType->datatypeBitflag == DATA_TYPE_STRING) {
