@@ -1006,6 +1006,17 @@ static ExpressionTerminal terminalForToken(const SyntaxAnalyzer *syntaxAnalyzer,
         }
         return EXPR_TERMINAL_OPERAND;
     }
+    if (!expressionExpectsOperand(stack, stackCount)) {
+        if (tokenHasText(token, SYNTAX_KW_TO)) {
+            return EXPR_TERMINAL_RANGE_TO;
+        }
+        if (tokenHasText(token, SYNTAX_KW_UNTIL)) {
+            return EXPR_TERMINAL_RANGE_UNTIL;
+        }
+        if (tokenHasText(token, SYNTAX_KW_BY)) {
+            return EXPR_TERMINAL_RANGE_BY;
+        }
+    }
     if (token->type == TOKEN_IDENTIFIER || token->type == TOKEN_INT_LITERAL ||
         token->type == TOKEN_DOUBLE_LITERAL || token->type == TOKEN_STRING_LITERAL ||
         token->type == TOKEN_BOOL_LITERAL || token->type == TOKEN_UNIT_LITERAL ||
@@ -1034,15 +1045,6 @@ static ExpressionTerminal terminalForToken(const SyntaxAnalyzer *syntaxAnalyzer,
             }
             return terminal;
         }
-    }
-    if (token->type == TOKEN_KEYWORD && tokenHasText(token, SYNTAX_KW_TO)) {
-        return EXPR_TERMINAL_RANGE_TO;
-    }
-    if (token->type == TOKEN_KEYWORD && tokenHasText(token, SYNTAX_KW_UNTIL)) {
-        return EXPR_TERMINAL_RANGE_UNTIL;
-    }
-    if (token->type == TOKEN_KEYWORD && tokenHasText(token, SYNTAX_KW_BY)) {
-        return EXPR_TERMINAL_RANGE_BY;
     }
     return EXPR_TERMINAL_END;
 }
