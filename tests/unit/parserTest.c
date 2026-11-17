@@ -1537,8 +1537,12 @@ int main(void) {
     assert(parseExpressionTokens(matchWithoutDefaultTokens,
                                  sizeof(matchWithoutDefaultTokens) /
                                      sizeof(matchWithoutDefaultTokens[0]),
-                                 &matchExpression) == COMPILER_SYNTAX_ERROR);
-    assert(matchExpression == NULL);
+                                 &matchExpression) == COMPILER_OK);
+    assert(matchExpression->kind == ABSTRACT_SYNTAX_MATCH_EXPRESSION);
+    assert(matchExpression->childCount == 2);
+    assert(matchExpression->children[1]->kind == ABSTRACT_SYNTAX_MATCH_CASE);
+    assert(matchExpression->children[1]->children[0]->kind == ABSTRACT_SYNTAX_BOOLEAN_LITERAL);
+    abstractSyntaxNodeDestroy(matchExpression);
 
     static const TestToken guardedWildcardTokens[] = {
         TEST_TOKEN(TOKEN_IDENTIFIER, "value", 1, 1),
@@ -1556,8 +1560,15 @@ int main(void) {
         TEST_TOKEN(TOKEN_EOF, NULL, 3, 1)};
     assert(parseExpressionTokens(guardedWildcardTokens,
                                  sizeof(guardedWildcardTokens) / sizeof(guardedWildcardTokens[0]),
-                                 &matchExpression) == COMPILER_SYNTAX_ERROR);
-    assert(matchExpression == NULL);
+                                 &matchExpression) == COMPILER_OK);
+    assert(matchExpression->kind == ABSTRACT_SYNTAX_MATCH_EXPRESSION);
+    assert(matchExpression->childCount == 2);
+    assert(matchExpression->children[1]->kind == ABSTRACT_SYNTAX_MATCH_CASE);
+    assert(matchExpression->children[1]->childCount == 3);
+    assert(matchExpression->children[1]->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    assert(strcmp(matchExpression->children[1]->children[0]->text, "_") == 0);
+    assert(matchExpression->children[1]->children[1]->kind == ABSTRACT_SYNTAX_MATCH_GUARD);
+    abstractSyntaxNodeDestroy(matchExpression);
     return 0;
 }
 

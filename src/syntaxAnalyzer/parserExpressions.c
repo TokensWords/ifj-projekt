@@ -709,11 +709,6 @@ cleanup:
     return status;
 }
 
-static bool isWildcardPattern(const AbstractSyntaxNode *pattern) {
-    return pattern != NULL && pattern->kind == ABSTRACT_SYNTAX_IDENTIFIER &&
-           pattern->text != NULL && strcmp(pattern->text, SYNTAX_PATTERN_WILDCARD) == 0;
-}
-
 static CompilerStatus parseMatchCase(SyntaxAnalyzer *syntaxAnalyzer,
                                      AbstractSyntaxNode **outMatchCase) {
     *outMatchCase = NULL;
@@ -812,7 +807,6 @@ static CompilerStatus parseMatchExpression(SyntaxAnalyzer *syntaxAnalyzer,
     AbstractSyntaxNode *matchExpression =
         createNode(ABSTRACT_SYNTAX_MATCH_EXPRESSION, scrutinee->location);
     AbstractSyntaxNode *matchCase = NULL;
-    bool hasDefaultCase = false;
     bool previousConsumedNewline = syntaxAnalyzer->newlineConsumed;
     syntaxAnalyzer->newlineConsumed = false;
     if (matchExpression == NULL) {
@@ -851,7 +845,6 @@ static CompilerStatus parseMatchExpression(SyntaxAnalyzer *syntaxAnalyzer,
         }
         bool resultConsumedNewline = syntaxAnalyzer->newlineConsumed;
         syntaxAnalyzer->newlineConsumed = false;
-        hasDefaultCase = matchCase->childCount == 2 && isWildcardPattern(matchCase->children[0]);
         status = appendOwnedChild(matchExpression, matchCase);
         matchCase = NULL;
         if (status != COMPILER_OK) {
@@ -868,13 +861,9 @@ static CompilerStatus parseMatchExpression(SyntaxAnalyzer *syntaxAnalyzer,
             goto cleanup;
         }
 
-        if (hasDefaultCase && !currentIsType(syntaxAnalyzer, TOKEN_DEDENT)) {
-            status = COMPILER_SYNTAX_ERROR;
-            goto cleanup;
-        }
     }
 
-    if (matchExpression->childCount == 1 || !hasDefaultCase) {
+    if (matchExpression->childCount == 1) {
         status = COMPILER_SYNTAX_ERROR;
         goto cleanup;
     }
