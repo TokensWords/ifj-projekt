@@ -437,10 +437,10 @@ int main(void) {
     static const TestToken inlineIfBranchesTokens[] = {
         TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 1), {TOKEN_BOOL_LITERAL, "true", 1, 4, 1},
         TEST_TOKEN(TOKEN_KEYWORD, "then", 1, 9), TEST_TOKEN(TOKEN_IDENTIFIER, "print", 1, 14),
-        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 19), TEST_TOKEN(TOKEN_STRING_LITERAL, "YES", 1, 20),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 19), TEST_TOKEN(TOKEN_STRING_LITERAL, "yes", 1, 20),
         TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 25), TEST_TOKEN(TOKEN_KEYWORD, "else", 1, 27),
         TEST_TOKEN(TOKEN_IDENTIFIER, "print", 1, 32), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 37),
-        TEST_TOKEN(TOKEN_STRING_LITERAL, "NO", 1, 38), TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 42),
+        TEST_TOKEN(TOKEN_STRING_LITERAL, "no", 1, 38), TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 42),
         TEST_TOKEN(TOKEN_EOF, NULL, 1, 43)};
     parsedIfNode = NULL;
     assert(parseIfTokens(inlineIfBranchesTokens,
@@ -946,6 +946,30 @@ int main(void) {
     assert(forClauses->children[2]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
     abstractSyntaxNodeDestroy(forNode);
 
+    static const TestToken collectionForGuardTokens[] = {
+        TEST_TOKEN(TOKEN_KEYWORD, "for", 1, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "x", 1, 5),
+        TEST_TOKEN(TOKEN_OPERATOR, "<-", 1, 7), TEST_TOKEN(TOKEN_IDENTIFIER, "xs", 1, 10),
+        TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 13), TEST_TOKEN(TOKEN_IDENTIFIER, "x", 1, 16),
+        TEST_TOKEN(TOKEN_OPERATOR, ">", 1, 18), {TOKEN_INT_LITERAL, "2", 1, 20, 2},
+        TEST_TOKEN(TOKEN_KEYWORD, "do", 1, 22), TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 24),
+        TEST_TOKEN(TOKEN_INDENT, NULL, 2, 5), TEST_TOKEN(TOKEN_IDENTIFIER, "print", 2, 5),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 2, 10), TEST_TOKEN(TOKEN_IDENTIFIER, "x", 2, 11),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 2, 12), TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 13),
+        TEST_TOKEN(TOKEN_DEDENT, NULL, 3, 1), TEST_TOKEN(TOKEN_EOF, NULL, 3, 1)};
+    forNode = NULL;
+    assert(parseForTokens(collectionForGuardTokens,
+                          sizeof(collectionForGuardTokens) / sizeof(collectionForGuardTokens[0]),
+                          &forNode) == COMPILER_OK);
+    forClauses = forNode->children[0];
+    assert(forClauses->childCount == 2);
+    assert(forClauses->children[0]->kind == ABSTRACT_SYNTAX_FOR_GENERATOR);
+    assert(forClauses->children[0]->children[0]->kind == ABSTRACT_SYNTAX_IDENTIFIER);
+    assert(strcmp(forClauses->children[0]->children[0]->text, "xs") == 0);
+    assert(forClauses->children[1]->kind == ABSTRACT_SYNTAX_FOR_GUARD);
+    assert(forClauses->children[1]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(strcmp(forClauses->children[1]->children[0]->text, ">") == 0);
+    abstractSyntaxNodeDestroy(forNode);
+
     static const TestToken multiLineForTokens[] = {
         TEST_TOKEN(TOKEN_KEYWORD, "for", 1, 1),    TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 4),
         TEST_TOKEN(TOKEN_INDENT, NULL, 2, 5),      TEST_TOKEN(TOKEN_IDENTIFIER, "i", 2, 5),
@@ -1097,11 +1121,11 @@ int main(void) {
 
     static const TestToken semicolonSeparatedBlockTokens[] = {
         TEST_TOKEN(TOKEN_INDENT, NULL, 1, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "print", 1, 1),
-        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 6), {TOKEN_INT_LITERAL, "1", 1, 7, 1},
-        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 8), TEST_TOKEN(TOKEN_SEMICOLON, ";", 1, 9),
-        TEST_TOKEN(TOKEN_IDENTIFIER, "print", 1, 11), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 16),
-        {TOKEN_INT_LITERAL, "2", 1, 17, 2}, TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 18),
-        TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 19), TEST_TOKEN(TOKEN_DEDENT, NULL, 2, 1),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 6), TEST_TOKEN(TOKEN_STRING_LITERAL, "a", 1, 7),
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 10), TEST_TOKEN(TOKEN_SEMICOLON, ";", 1, 11),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "print", 1, 13), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 18),
+        TEST_TOKEN(TOKEN_STRING_LITERAL, "b", 1, 19), TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 22),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 23), TEST_TOKEN(TOKEN_DEDENT, NULL, 2, 1),
         TEST_TOKEN(TOKEN_EOF, NULL, 2, 1)};
     AbstractSyntaxNode *semicolonBlock = NULL;
     assert(parseBlockTokens(semicolonSeparatedBlockTokens,
