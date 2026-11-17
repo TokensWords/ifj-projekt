@@ -928,7 +928,8 @@ static bool isListConcatenation(const AbstractSyntaxNode *node) {
     return node->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY && node->text != NULL && strcmp(node->text, "++") == 0;
 }
 
-static CompilerStatus resolveWithListContext(AbstractSyntaxNode *node, TypeDescriptor *expected, SemAnalData *data) {
+// new parameter mismatchstatus - tells the exact type of error to return
+static CompilerStatus resolveWithListContext(AbstractSyntaxNode *node, TypeDescriptor *expected, SemAnalData *data, CompilerStatus mismatchStatus) {
     bool hasExpectedElement = expected != NULL && expected->recursiveTypes != NULL && expected->recursiveTypes->next == NULL;
     if (hasExpectedElement && node->kind == ABSTRACT_SYNTAX_IF_EXPRESSION && node->childCount == 3) {
         CompilerStatus status = semAnalResolveNode(node->children[0], data);
@@ -940,12 +941,13 @@ static CompilerStatus resolveWithListContext(AbstractSyntaxNode *node, TypeDescr
         }
         for (size_t counter = 1; counter < node->childCount; counter++) {
             AbstractSyntaxNode *branch = node->children[counter];
-            status = resolveWithListContext(branch, expected, data);
+            status = resolveWithListContext(branch, expected, data, mismatchStatus);
             if (status != COMPILER_OK) {
                 return status;
             }
             if (!semAnalIsSubtype(expected, &branch->type)) {
-                return COMPILER_TYPE_ERROR;
+                //return COMPILER_TYPE_ERROR;
+                return mismatchStatus;
             }
         }
         return abstractSyntaxNodeCopyInferredType(node, expected);
@@ -953,12 +955,13 @@ static CompilerStatus resolveWithListContext(AbstractSyntaxNode *node, TypeDescr
     if (hasExpectedElement && expected->datatypeBitflag == DATA_TYPE_LIST && isListConcatenation(node)) {
         for (size_t counter = 0; counter < node->childCount; counter++) {
             AbstractSyntaxNode *part = node->children[counter];
-            CompilerStatus status = resolveWithListContext(part, expected, data);
+            CompilerStatus status = resolveWithListContext(part, expected, data, mismatchStatus);
             if (status != COMPILER_OK) {
                 return status;
             }
             if (!semAnalIsSubtype(expected, &part->type)) {
-                return COMPILER_TYPE_ERROR;
+                //return COMPILER_TYPE_ERROR;
+                return mismatchStatus;
             }
         }
         return abstractSyntaxNodeCopyInferredType(node, expected);
@@ -974,12 +977,13 @@ static CompilerStatus resolveWithListContext(AbstractSyntaxNode *node, TypeDescr
     TypeDescriptor *element = &expected->recursiveTypes->elementType;
     for (size_t counter = 1; counter < node->childCount; counter++) {
         AbstractSyntaxNode *argument = node->children[counter];
-        CompilerStatus status = resolveWithListContext(argument, element, data);
+        CompilerStatus status = resolveWithListContext(argument, element, data, mismatchStatus);
         if (status != COMPILER_OK) {
             return status;
         }
         if (!semAnalIsSubtype(element, &argument->type)) {
-            return COMPILER_ARGUMENT_ERROR;
+            //return COMPILER_ARGUMENT_ERROR;
+            return mismatchStatus;
         }
     }
     return setListType(node, element);
@@ -1120,8 +1124,10 @@ CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SemAna
         return status;
     }
 
-    Symbol *symbolTmp = symbolTableFind(currentTable, parameterNode->text);
-    if (symbolTmp == NULL) {
+    // search only in current scope
+    Symbol *symbolTmp = symbolTableFindCurrentScope(currentTable, parameterNode->text);
+    if (symbolTmp != NULL) {
+        // symbol already exists
         return COMPILER_REDEFINITION_ERROR;
     }
 
@@ -1284,7 +1290,8 @@ static CompilerStatus resolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *d
             value = child->children[0];
         }
         if (isListResult && (isListConstructor(value) || isListConcatenation(value) || value->kind == ABSTRACT_SYNTAX_IF_EXPRESSION)) {
-            status = resolveWithListContext(value, expected, data);
+            // COMPILER_TYPE_ERROR because value of block doesnt match the expected type
+            status = resolveWithListContext(value, expected, data, COMPILER_TYPE_ERROR);
             if (status == COMPILER_OK && child != value) {
                 status = abstractSyntaxNodeCopyInferredType(child, &value->type);
             }
@@ -1373,7 +1380,7 @@ CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
         }
     }
 
-    TypeDescriptor *allBranchesType = NULL;
+    /*TypeDescriptor *allBranchesType = NULL;
     for (size_t branchI = 1; branchI < ifNode->childCount; ++branchI) {
         AbstractSyntaxNode *branch = ifNode->children[branchI];
         TypeDescriptor *branchType = ifNode->kind == ABSTRACT_SYNTAX_IF_EXPRESSION ?
@@ -1390,6 +1397,7 @@ CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
         semAnalDestroyTypeDescriptor(branchType);
         allBranchesType = merged;
     }
+    
 
     bool isExpressionSyntax = false;
     if (ifNode->kind == ABSTRACT_SYNTAX_IF_EXPRESSION) {
@@ -1436,6 +1444,68 @@ CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
                 allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_UNKNOWN);
             }
         }
+    }*/
+
+    // isExpressionSyntax is true when parser created node with kind ABSTRACT_SYNTAX_IF_EXPRESSION
+    bool isExpressionSyntax = ifNode->kind == ABSTRACT_SYNTAX_IF_EXPRESSION;
+    TypeDescriptor *allBranchesType = NULL;
+
+    for (size_t branchI = 1; branchI < ifNode->childCount; ++branchI) {
+        AbstractSyntaxNode *branch = ifNode->children[branchI];
+        TypeDescriptor *branchType = isExpressionSyntax
+            ? semAnalCopyTypeDescriptor(&branch->type)
+            : semAnalEvaluatesToType(branch);
+
+        // if couldnt get branchType
+        if (branchType == NULL) {
+            semAnalDestroyTypeDescriptor(allBranchesType);
+            return COMPILER_INTERNAL_ERROR;
+        }
+        // if unknown type
+        if (branchType->datatypeBitflag == DATA_TYPE_UNKNOWN) {
+            semAnalDestroyTypeDescriptor(allBranchesType);
+            allBranchesType = branchType;
+            break;
+        }
+
+        // if candidate null - set it to the type of first branch
+        // else - can the value of the currently processed branch be used where I expect the type selected so far
+        // else - reverse
+        // else - not compatible either way
+        if (allBranchesType == NULL) {
+            allBranchesType = branchType;
+        } else if (semAnalIsSubtype(allBranchesType, branchType)){
+            semAnalDestroyTypeDescriptor(branchType);
+        } else if (semAnalIsSubtype(branchType, allBranchesType)) {
+            semAnalDestroyTypeDescriptor(allBranchesType);
+            allBranchesType = branchType;
+        } else {
+            semAnalDestroyTypeDescriptor(allBranchesType);
+            semAnalDestroyTypeDescriptor(branchType);
+
+            // for example Int and String dont have common acceptable type
+            if (isExpressionSyntax) {
+                return COMPILER_TYPE_ERROR;
+            }
+
+            // if initialization wasnt successful
+            allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_UNKNOWN);
+            if (allBranchesType == NULL) {
+                return COMPILER_INTERNAL_ERROR;
+            }
+            break;
+        }
+    }
+
+    if (allBranchesType == NULL) {
+        return COMPILER_INTERNAL_ERROR;
+    }
+
+    // if final type after if unknown -> type error
+    if (isExpressionSyntax &&
+        allBranchesType->datatypeBitflag == DATA_TYPE_UNKNOWN) {
+        semAnalDestroyTypeDescriptor(allBranchesType);
+        return COMPILER_TYPE_ERROR;
     }
 
     if (ifNode->kind == ABSTRACT_SYNTAX_IF) {
@@ -1651,7 +1721,8 @@ CompilerStatus semAnalResolveReturn(AbstractSyntaxNode *returnNode, SemAnalData 
     CompilerStatus status;
     if (returnNode->childCount > 0 && returnNode->children[0] != NULL) {
         AbstractSyntaxNode *value = returnNode->children[0];
-        status = resolveWithListContext(value, funcRetType, data);
+        // COMPILER_TYPE_ERROR because function returns uncompatible value
+        status = resolveWithListContext(value, funcRetType, data, COMPILER_TYPE_ERROR);
         if (status == COMPILER_OK) {
             status = abstractSyntaxNodeCopyInferredType(returnNode, &value->type);
         }
@@ -2022,7 +2093,9 @@ CompilerStatus semAnalResolveListConstructor(AbstractSyntaxNode *call, SemAnalDa
             return status;
         }
         if (!semAnalIsSubtype(element, &argument->type)) {
-            return COMPILER_ARGUMENT_ERROR;
+            //return COMPILER_ARGUMENT_ERROR;
+            return COMPILER_TYPE_ERROR;
+            //Návratový kód u nekompatibilních seznamů — 3 neshody.
         }
     }
     return setListType(call, element);
@@ -2053,7 +2126,8 @@ CompilerStatus semAnalResolveStandardCall(AbstractSyntaxNode *functionCallNode, 
         if (status != COMPILER_OK) {
             return status;
         }
-        status = resolveWithListContext(argNode, expectedType, data);
+        // COMPILER_ARGUMENT_ERROR because transferred value doesnt match the parameter
+        status = resolveWithListContext(argNode, expectedType, data, COMPILER_ARGUMENT_ERROR);
         if (status != COMPILER_OK) {
             return status;
         }
@@ -2286,7 +2360,8 @@ CompilerStatus semAnalResolveVariableDeclaration(AbstractSyntaxNode *variableDec
     if (status != COMPILER_OK) {
         return status;
     }
-    status = resolveWithListContext(initExpr, declType, data);
+    // COMPILER_TYPE_ERROR because the initial value does not match the variable type
+    status = resolveWithListContext(initExpr, declType, data, COMPILER_TYPE_ERROR);
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2344,7 +2419,8 @@ CompilerStatus semAnalResolveAssignment(AbstractSyntaxNode *assignmentNode, SemA
     }
 
     AbstractSyntaxNode *assignExpr = assignmentNode->children[0];
-    CompilerStatus status = resolveWithListContext(assignExpr, varSymbol->dataType, data);
+    // COMPILER_TYPE_ERROR because the assigned value has an incompatible type
+    CompilerStatus status = resolveWithListContext(assignExpr, varSymbol->dataType, data, COMPILER_TYPE_ERROR);
     if (status != COMPILER_OK) {
         return status;
     }
