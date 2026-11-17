@@ -1095,6 +1095,25 @@ int main(void) {
     assert(ifExpressionBlock->children[5]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
     abstractSyntaxNodeDestroy(ifExpressionBlock);
 
+    static const TestToken semicolonSeparatedBlockTokens[] = {
+        TEST_TOKEN(TOKEN_INDENT, NULL, 1, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "print", 1, 1),
+        TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 6), {TOKEN_INT_LITERAL, "1", 1, 7, 1},
+        TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 8), TEST_TOKEN(TOKEN_SEMICOLON, ";", 1, 9),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "print", 1, 11), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 16),
+        {TOKEN_INT_LITERAL, "2", 1, 17, 2}, TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 18),
+        TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 19), TEST_TOKEN(TOKEN_DEDENT, NULL, 2, 1),
+        TEST_TOKEN(TOKEN_EOF, NULL, 2, 1)};
+    AbstractSyntaxNode *semicolonBlock = NULL;
+    assert(parseBlockTokens(semicolonSeparatedBlockTokens,
+                            sizeof(semicolonSeparatedBlockTokens) /
+                                sizeof(semicolonSeparatedBlockTokens[0]),
+                            &semicolonBlock) == COMPILER_OK);
+    assert(semicolonBlock->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(semicolonBlock->childCount == 2);
+    assert(semicolonBlock->children[0]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
+    assert(semicolonBlock->children[1]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
+    abstractSyntaxNodeDestroy(semicolonBlock);
+
     static const TestToken missingElseExpressionTokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 1),
                                                             {TOKEN_BOOL_LITERAL, "true", 1, 4, 1},
                                                             TEST_TOKEN(TOKEN_KEYWORD, "then", 1, 9),

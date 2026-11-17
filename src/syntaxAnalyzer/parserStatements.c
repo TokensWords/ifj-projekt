@@ -740,6 +740,17 @@ CompilerStatus parseBlock(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **o
             if (status != COMPILER_OK) {
                 goto cleanup;
             }
+        } else if (currentIsType(syntaxAnalyzer, TOKEN_SEMICOLON)) {
+            status = advanceToken(syntaxAnalyzer);
+            if (status != COMPILER_OK) {
+                goto cleanup;
+            }
+            if (currentIsType(syntaxAnalyzer, TOKEN_NEWLINE)) {
+                status = skipNewlines(syntaxAnalyzer);
+                if (status != COMPILER_OK) {
+                    goto cleanup;
+                }
+            }
         } else if (!currentIsType(syntaxAnalyzer, TOKEN_DEDENT) && !isCompoundStatement &&
                    !statementConsumedNewline) {
             status = COMPILER_SYNTAX_ERROR;
