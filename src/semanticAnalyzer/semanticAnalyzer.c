@@ -1359,39 +1359,57 @@ CompilerStatus semAnalResolveIf(AbstractSyntaxNode *ifNode, SemAnalData *data) {
         }
     }
 
+    bool isStatement = ifNode->kind == ABSTRACT_SYNTAX_IF;
     TypeDescriptor *allBranchesType = NULL;
     for (size_t branchI = 1; branchI < ifNode->childCount; ++branchI) {
         AbstractSyntaxNode *branch = ifNode->children[branchI];
-        TypeDescriptor *branchType = ifNode->kind == ABSTRACT_SYNTAX_IF_EXPRESSION ?
-                                     semAnalCopyTypeDescriptor(&branch->type) : semAnalEvaluatesToType(branch);
-        if (branchType == NULL || branchType->datatypeBitflag == DATA_TYPE_UNKNOWN) {
+        TypeDescriptor *branchType = isStatement ? semAnalEvaluatesToType(branch) :
+                                                   semAnalCopyTypeDescriptor(&branch->type);
+        if (branchType == NULL) {
             semAnalDestroyTypeDescriptor(allBranchesType);
-            semAnalDestroyTypeDescriptor(branchType);
-            allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_UNKNOWN); // if one branch evaluates to unknown then also the if statement
+            return COMPILER_INTERNAL_ERROR;
+        }
+        if (branchType->datatypeBitflag == DATA_TYPE_UNKNOWN) {
+            semAnalDestroyTypeDescriptor(allBranchesType);
+            allBranchesType = branchType;
             break;
         }
 
-        TypeDescriptor *merged = semAnalUnifyTypes(allBranchesType, branchType);
+        TypeDescriptor *merged = NULL;
+        if (!isStatement) {
+            merged = semAnalUnifyTypes(allBranchesType, branchType);
+            if (merged == NULL) {
+                semAnalDestroyTypeDescriptor(allBranchesType);
+                semAnalDestroyTypeDescriptor(branchType);
+                return COMPILER_INTERNAL_ERROR;
+            }
+        } else if (allBranchesType == NULL || semAnalIsSubtype(branchType, allBranchesType)) {
+            merged = branchType;
+            branchType = NULL;
+        } else if (semAnalIsSubtype(allBranchesType, branchType)) {
+            merged = allBranchesType;
+            allBranchesType = NULL;
+        }
         semAnalDestroyTypeDescriptor(allBranchesType);
         semAnalDestroyTypeDescriptor(branchType);
         allBranchesType = merged;
+        if (allBranchesType == NULL) {
+            break;
+        }
     }
 
-    // not a expression evaluating as non Unit type
-    if (ifNode->kind == ABSTRACT_SYNTAX_IF && allBranchesType != NULL &&
-        allBranchesType->datatypeBitflag != DATA_TYPE_UNIT && !semAnalIsIfExpression(ifNode)) {
+    // The parser represents an omitted else as an empty block.
+    bool hasElse = ifNode->childCount >= 3 &&
+                   (ifNode->children[2]->kind != ABSTRACT_SYNTAX_BLOCK || ifNode->children[2]->childCount != 0);
+    if (allBranchesType == NULL ||
+        (isStatement && !hasElse && allBranchesType->datatypeBitflag != DATA_TYPE_UNIT)) {
         semAnalDestroyTypeDescriptor(allBranchesType);
-        allBranchesType = semAnalInitTypeDescriptor(DATA_TYPE_UNKNOWN);
+        return abstractSyntaxNodeSetInferredType(ifNode, DATA_TYPE_UNKNOWN);
     }
 
-    if (allBranchesType != NULL) {
-        abstractSyntaxNodeCopyInferredType(ifNode, allBranchesType);
-        semAnalDestroyTypeDescriptor(allBranchesType);
-    } else {
-        abstractSyntaxNodeSetInferredType(ifNode, DATA_TYPE_UNKNOWN);
-    }
-
-    return COMPILER_OK;
+    status = abstractSyntaxNodeCopyInferredType(ifNode, allBranchesType);
+    semAnalDestroyTypeDescriptor(allBranchesType);
+    return status;
 }
 
 

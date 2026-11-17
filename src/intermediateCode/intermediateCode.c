@@ -1802,11 +1802,15 @@ static CompilerStatus generateMatchPattern(IntermediateGenerator *generator, con
 
 static CompilerStatus generateStatement(IntermediateGenerator *generator, const AbstractSyntaxNode *node);
 
-static CompilerStatus generateMatchBranchValue(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *body) {
-    if (body->kind != ABSTRACT_SYNTAX_BLOCK) {
+static CompilerStatus generateBlockValue(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *body) {
+    if (body == NULL || body->kind != ABSTRACT_SYNTAX_BLOCK) {
         return generateExpression(generator, operand, body);
     }
-    if (body->childCount == 0 || body->children == NULL) {
+    if (body->childCount == 0) {
+        *operand = (IntermediateOperand){.kind = INTERMEDIATE_OPERAND_UNIT};
+        return COMPILER_OK;
+    }
+    if (body->children == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
@@ -1829,7 +1833,8 @@ static CompilerStatus generateMatchBranchValue(IntermediateGenerator *generator,
         }
         return generateExpression(generator, operand, last->children[0]);
     }
-    if (last->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION) {
+    if (last->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION || last->kind == ABSTRACT_SYNTAX_IF_EXPRESSION ||
+        (last->kind == ABSTRACT_SYNTAX_IF && isValueType(valueTypes(generator, &last->type)))) {
         return generateExpression(generator, operand, last);
     }
 
@@ -1873,7 +1878,7 @@ static CompilerStatus generateMatchCase(IntermediateGenerator *generator, const 
 
     const AbstractSyntaxNode *expression = branch->children[branch->childCount - 1];
     IntermediateOperand value = {0};
-    status = generateMatchBranchValue(generator, &value, expression);
+    status = generateBlockValue(generator, &value, expression);
     if (status == COMPILER_OK) {
         status = convertValue(generator, &value, valueTypes(generator, &expression->type), resultType, expression->location);
     }
@@ -2745,6 +2750,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         return generateMatch(generator, operand, node);
     case ABSTRACT_SYNTAX_MEMBER_ACCESS:
         return generateMemberAccess(generator, operand, node);
+    case ABSTRACT_SYNTAX_IF:
     case ABSTRACT_SYNTAX_IF_EXPRESSION: {
         if (node->childCount != 3 || node->children == NULL || node->children[0] == NULL ||
             node->children[1] == NULL || node->children[2] == NULL ||
@@ -2801,8 +2807,9 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         while (counter < 3) {
             const AbstractSyntaxNode *branch = node->children[counter];
             IntermediateOperand branchOperand = {0};
-            status = generateExpression(generator, &branchOperand, branch);
+            status = generateBlockValue(generator, &branchOperand, branch);
             if (status != COMPILER_OK) {
+                intermediateOperandClear(&branchOperand);
                 clearOperandArray(operands, 4);
                 return status;
             }
@@ -4528,7 +4535,11 @@ static CompilerStatus generateFunctionBody(IntermediateGenerator *generator,
         }
 
         expressionNode = lastStatement->children[0];
-    } else if (lastStatement->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION) {
+    } else if (lastStatement->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION ||
+               lastStatement->kind == ABSTRACT_SYNTAX_IF_EXPRESSION ||
+               (lastStatement->kind == ABSTRACT_SYNTAX_IF &&
+                isValueType(valueTypes(generator, &lastStatement->type)) &&
+                valueTypes(generator, &lastStatement->type) != DATA_TYPE_UNIT)) {
         expressionNode = lastStatement;
     } else {
         return generateStatement(generator, body);
