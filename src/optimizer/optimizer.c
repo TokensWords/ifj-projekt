@@ -66,6 +66,7 @@ bool optimizerGetNextBlock(size_t *start, size_t *end, IntermediateProgram *prog
     if (program->instructions[*end].opcode == INTERMEDIATE_LABEL) {
         ++(*end);
         if (*end == program->count) {
+            --(*end);
             return false; // label last
         }
     }
