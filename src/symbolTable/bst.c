@@ -1,11 +1,13 @@
-#include "avlTreePrivate.h"
-#include "avlTree.h"
+#include "bst.h"
 
 #include "memory.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
+
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define ABS(a) ((a) < 0 ? -(a) : (a))
     
 struct TAvlNode {
     void *key;

@@ -7,7 +7,7 @@
 
 #include "optimizerSymTable.h"
 #include "optimizerSymTablePrivate.h"
-#include "avlTree.h"
+#include "bst.h"
 
 #include "memory.h"
 #include "compilerTypes.h"
