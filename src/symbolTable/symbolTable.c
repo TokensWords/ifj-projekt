@@ -7,7 +7,7 @@
 
 #include "symbolTable.h"
 #include "symbolTablePrivate.h"
-#include "avlTree.h"
+#include "bst.h"
 #include "memory.h"
 #include "typeDescriptor.h"
 
