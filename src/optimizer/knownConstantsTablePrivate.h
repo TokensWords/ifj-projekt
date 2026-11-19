@@ -1,3 +1,8 @@
+/*
+ * Project: IFJ26 compiler
+ * Authors: Václav Krytinář xkrytiv00
+ */
+
 #ifndef KNOWN_CONSTANTS_TABLE_PRIVATE_H
 #define KNOWN_CONSTANTS_TABLE_PRIVATE_H
 

@@ -1,7 +1,12 @@
+/*
+ * Project: IFJ26 compiler
+ * Authors: Václav Krytinář xkrytiv00
+ */
+
 #ifndef SYMBOL_TABLE_PRIVATE_H
 #define SYMBOL_TABLE_PRIVATE_H
 
-#include "symbolTable.h"
+#include "symtable.h"
 
 #include <stdbool.h>
 #include <stddef.h>

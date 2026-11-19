@@ -1,6 +1,6 @@
 /*
  * Project: IFJ26 compiler
- * Authors: xkubanm00, xhajeka00
+ * Authors: Martin Kubáň xkubanm00, Albert Hájek xhajeka00
  * AI-assisted scaffold.
  * Prompt: Create one root entrypoint for the modular compiler pipeline.
  */

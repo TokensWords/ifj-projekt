@@ -9,7 +9,7 @@
 #include "abstractSyntaxTree.h"
 #include "compilerTypes.h"
 #include "memory.h"
-#include "symbolTable.h"
+#include "symtable.h"
 #include "syntax.h"
 #include "typeDescriptor.h"
 
@@ -2322,15 +2322,27 @@ CompilerStatus semAnalResolveMemberAccess(AbstractSyntaxNode *accessNode, SemAna
                 return COMPILER_TYPE_ERROR;
             }
 
+            // resolve type names
+            status = semAnalNormalizeTypeDescriptor(memberType, data);
+            if (status != COMPILER_OK) {
+                semAnalDestroyTypeDescriptor(unifiedMemberType);
+                return status;
+            }
+
             // unify the found type with the types from other classes in the union
             TypeDescriptor *merged = semAnalUnifyTypes(unifiedMemberType, memberType);
+            if (merged == NULL) {
+                semAnalDestroyTypeDescriptor(unifiedMemberType);
+                return COMPILER_INTERNAL_ERROR;
+            }
             semAnalDestroyTypeDescriptor(unifiedMemberType);
             unifiedMemberType = merged;
         }
 
         if (unifiedMemberType != NULL) {
-            abstractSyntaxNodeCopyInferredType(accessNode, unifiedMemberType);
+            status = abstractSyntaxNodeCopyInferredType(accessNode, unifiedMemberType);
             semAnalDestroyTypeDescriptor(unifiedMemberType);
+            return status;
         }
 
         return COMPILER_OK;

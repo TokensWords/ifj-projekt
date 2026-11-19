@@ -1,6 +1,6 @@
 # Symbol table
 
-The symbol table is an abstract data type. Semantic analysis uses only `symbolTable.h`.
+The symbol table is an abstract data type. Semantic analysis uses only `symtable.h`.
 
 ## Assignment constraint
 

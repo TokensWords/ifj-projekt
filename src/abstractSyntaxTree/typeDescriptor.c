@@ -1,4 +1,6 @@
 /**
+ * @project: IFJ26 compiler
+ * @authors: Matúš Čík xcikmat00
  * @file typeDescriptor.c
  * @brief Management of literal flags and linked type descriptor nodes.
  */

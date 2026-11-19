@@ -10,7 +10,7 @@
 
 #include "abstractSyntaxTree.h"
 #include "compilerTypes.h"
-#include "symbolTable.h"
+#include "symtable.h"
 #include "typeDescriptor.h"
 
 #include <stdbool.h>

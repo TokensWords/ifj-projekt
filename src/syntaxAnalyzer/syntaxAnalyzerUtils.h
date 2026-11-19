@@ -5,7 +5,7 @@
  * management, AST node creation, and parsing helpers.
  *
  * @project IFJ26 compiler
- * @author Matúš Čík
+ * @author Matúš Čík xcikmat00
  */
 
 #ifndef SYNTAX_ANALYZER_UTILS_H

@@ -4,7 +4,7 @@
  * @brief Implements the syntax analyzer (parser) interface and lifecycle.
  *
  * @project IFJ26 compiler
- * @author Matúš Čík
+ * @author Matúš Čík xcikmat00
  */
 
 #include "syntaxAnalyzer.h"

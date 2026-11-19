@@ -1,7 +1,7 @@
 
 /**
  * Project: IFJ26 compiler
- * Authors: TODO(team)
+ * Authors: Matúš Čík xcikmat00
  * AI-assisted scaffold.
  * Prompt: Implement generic abstract-syntax-tree ownership helpers.
  */

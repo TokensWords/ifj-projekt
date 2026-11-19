@@ -1,6 +1,6 @@
 /**
  * PROJECT: IFJ26 compiler
- * AUTHORS: Matúš Čík
+ * AUTHORS: Matúš Čík xcikmat00
  * BRIEF: Abstract syntax tree representation and ownership helpers
  *
  */

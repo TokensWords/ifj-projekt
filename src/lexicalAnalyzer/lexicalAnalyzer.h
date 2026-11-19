@@ -1,6 +1,6 @@
 /*
  * Project: IFJ26 compiler
- * Authors: xkubanm00
+ * Authors: Martin Kubáň xkubanm00
  * AI-assisted scaffold.
  * Prompt: Define an opaque lexical-analyzer interface without generating its automaton.
  */

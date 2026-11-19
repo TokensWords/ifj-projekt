@@ -2,7 +2,7 @@
  * @file  parserTypes.c
  *
  * @project IFJ26 compiler
- * @author Matúš Čík
+ * @author Matúš Čík xcikmat00
  */
 
 #include "parserTypes.h"
