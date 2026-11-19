@@ -1,6 +1,6 @@
 /*
  * Project: IFJ26 compiler
- * Authors: xhajeka00
+ * Authors: Albert Hajek xhajeka00
  * AI-assisted scaffold.
  * Prompt: Define IFJcode26 emission inputs and outputs.
  */
