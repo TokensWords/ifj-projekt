@@ -1,6 +1,6 @@
 /*
  * Project: IFJ26 compiler
- * Authors: TODO(team)
+ * Authors: Albert Hájek xhajeka00
  * AI-assisted scaffold.
  * Prompt: Provide overflow-safe allocation helpers for compiler structures.
  */

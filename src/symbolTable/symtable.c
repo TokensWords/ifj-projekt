@@ -2,11 +2,10 @@
  * Project: IFJ26 compiler
  * Authors: Václav Krytinář xkrytiv00
  * This file intentionally contains no AI-generated tree implementation.
- * Team TODO: implement the required height-balanced search tree manually.
  */
 
-#include "symbolTable.h"
-#include "symbolTablePrivate.h"
+#include "symtable.h"
+#include "symtablePrivate.h"
 #include "bst.h"
 #include "memory.h"
 #include "typeDescriptor.h"

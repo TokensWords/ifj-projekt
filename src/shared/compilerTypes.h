@@ -1,6 +1,6 @@
 /*
  * Project: IFJ26 compiler
- * Authors: TODO(team)
+ * Authors: Albert Hájek xhajeka00, Matúš Čík xcikmat00
  * AI-assisted scaffold.
  * Prompt: Define shared compiler statuses, types, and source locations.
  */

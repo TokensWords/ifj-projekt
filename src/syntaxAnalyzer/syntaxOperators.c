@@ -2,7 +2,7 @@
  * @file  syntaxOperators.c
  *
  * @project IFJ26 compiler
- * @author Matúš Čík
+ * @author Matúš Čík xcikmat00
  */
 
 #include "syntaxOperators.h"

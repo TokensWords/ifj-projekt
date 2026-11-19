@@ -1,4 +1,6 @@
 /**
+ * @project: IFJ26 compiler
+ * @authors: Matúš Čík xcikmat00
  * @file typeDescriptor.h
  * @brief Compact literal flags and linked named or recursive type alternatives.
  */

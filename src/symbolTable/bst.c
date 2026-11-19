@@ -1,3 +1,8 @@
+/*
+ * Project: IFJ26 compiler
+ * Authors: Václav Krytinář xkrytiv00
+ */
+
 #include "bst.h"
 
 #include "memory.h"

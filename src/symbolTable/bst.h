@@ -1,3 +1,8 @@
+/*
+ * Project: IFJ26 compiler
+ * Authors: Václav Krytinář xkrytiv00
+ */
+
 #ifndef BST_H
 #define BST_H
 

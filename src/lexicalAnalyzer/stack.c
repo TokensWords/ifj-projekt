@@ -1,6 +1,6 @@
 /*
  * Project: IFJ26 compiler
- * Authors: xkubanm00
+ * Authors: Martin Kubáň xkubanm00
  */
 
 #include "stack.h"
@@ -16,6 +16,11 @@ struct Stack{
     StackNode *top;
 };
 
+/**
+ * Creates empty stack for lexicalAnalyzer
+ * @return NULL if there was a problem when creating stack,
+ * otherwise return pointer to the created stack
+ */
 Stack *stackCreate(void)
 {
     Stack *stack = malloc(sizeof(Stack));
@@ -28,6 +33,10 @@ Stack *stackCreate(void)
     return stack;
 }
 
+/**
+ * Pops all the items in stack and destroys the stack, if stack == NULL does nothing
+ * @param stack pointer to the stack which will be destroyed
+ */
 void stackDestroy(Stack *stack)
 {
     if(stack == NULL)
@@ -42,6 +51,13 @@ void stackDestroy(Stack *stack)
     free(stack);
 }
 
+/**
+ * Pushes new int value into the stack
+ * @param stack pointer to the stack which will be modified
+ * @param value int value which will be  pushed into the stack
+ * @return false if stack wasn't created (NULL), or allocation of new stack node failed,
+ * otherwise true
+ */
 bool stackPush(Stack *stack, int value)
 {
     if(stack == NULL)
@@ -61,6 +77,10 @@ bool stackPush(Stack *stack, int value)
     return true;
 }
 
+/**
+ * Pops one item (int) from the stack, if stack == NULL, does nothing
+ * @param stack pointer to the stack which will be modified
+ */
 void stackPop(Stack *stack)
 {
     if(stackIsEmpty(stack))
@@ -73,6 +93,11 @@ void stackPop(Stack *stack)
     free(node);
 }
 
+/**
+ * Returns 0 or top value from the stack
+ * @param stack pointer to the stack
+ * @return 0 when stack is empty, otherwise the top value in stack
+ */
 int stackTop(Stack *stack)
 {
     if(stackIsEmpty(stack))
@@ -82,6 +107,9 @@ int stackTop(Stack *stack)
     return stack->top->value;
 }
 
+/**
+ * @return true if stack is empty, otherwise false
+ */
 bool stackIsEmpty(const Stack *stack)
 {
     return stack == NULL || stack->top == NULL;
