@@ -65,16 +65,14 @@ void intermediateProgramDestroy(IntermediateProgram *program) {
     free(program);
 }
 
-CompilerStatus intermediateProgramAppend(IntermediateProgram *program,
-                                         const IntermediateInstruction *instruction) {
+CompilerStatus intermediateProgramAppend(IntermediateProgram *program, const IntermediateInstruction *instruction) {
     if (program == NULL || instruction == NULL || instruction->operandCount > 3) {
         return COMPILER_INTERNAL_ERROR;
     }
 
     if (program->count == program->capacity) {
         size_t newCapacity = program->capacity == 0 ? 16 : program->capacity * 2;
-        IntermediateInstruction *newInstructions =
-            memoryResizeArray(program->instructions, newCapacity, sizeof(IntermediateInstruction));
+        IntermediateInstruction *newInstructions = memoryResizeArray(program->instructions, newCapacity, sizeof(IntermediateInstruction));
         if (newInstructions == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
@@ -103,8 +101,7 @@ CompilerStatus intermediateProgramAppend(IntermediateProgram *program,
     return COMPILER_OK;
 }
 
-static IntermediateInstruction fillInstruction(IntermediateOpcode opcode, size_t operandCount,
-                                               SourceLocation origin) {
+static IntermediateInstruction fillInstruction(IntermediateOpcode opcode, size_t operandCount, SourceLocation origin) {
     IntermediateInstruction instruction = {0};
 
     instruction.opcode = opcode;
@@ -177,9 +174,7 @@ static char *generateStringName(const char *type, size_t number) {
     return name;
 }
 
-static CompilerStatus appendVariableDeclaration(IntermediateGenerator *generator,
-                                                const IntermediateOperand *operand,
-                                                SourceLocation origin) {
+static CompilerStatus appendVariableDeclaration(IntermediateGenerator *generator, const IntermediateOperand *operand, SourceLocation origin) {
     if (generator == NULL || operand == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -198,8 +193,7 @@ static CompilerStatus appendVariableDeclaration(IntermediateGenerator *generator
     return intermediateProgramAppend(generator->functionDeclarations, &instruction);
 }
 
-static CompilerStatus generateTemporary(IntermediateGenerator *generator,
-                                        IntermediateOperand *operand, SourceLocation origin) {
+static CompilerStatus generateTemporary(IntermediateGenerator *generator, IntermediateOperand *operand, SourceLocation origin) {
     if (generator == NULL || operand == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -224,8 +218,7 @@ static CompilerStatus generateTemporary(IntermediateGenerator *generator,
     return COMPILER_OK;
 }
 
-static CompilerStatus generateLabel(IntermediateGenerator *generator,
-                                    IntermediateOperand *operand) {
+static CompilerStatus generateLabel(IntermediateGenerator *generator, IntermediateOperand *operand) {
     if (generator == NULL || operand == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -244,8 +237,7 @@ static CompilerStatus generateLabel(IntermediateGenerator *generator,
     return COMPILER_OK;
 }
 
-static CompilerStatus generateVariable(IntermediateOperand *operand,
-                                       const AbstractSyntaxNode *node) {
+static CompilerStatus generateVariable(IntermediateOperand *operand, const AbstractSyntaxNode *node) {
     if (operand == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -270,8 +262,7 @@ static bool isNumericType(DataType dataType) {
     return dataType == DATA_TYPE_INT || dataType == DATA_TYPE_DOUBLE;
 }
 
-static CompilerStatus convertIntToDouble(IntermediateGenerator *generator,
-                                         IntermediateOperand *operand, SourceLocation origin) {
+static CompilerStatus convertIntToDouble(IntermediateGenerator *generator, IntermediateOperand *operand, SourceLocation origin) {
     if (generator == NULL || operand == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -282,8 +273,7 @@ static CompilerStatus convertIntToDouble(IntermediateGenerator *generator,
         return status;
     }
 
-    IntermediateInstruction instruction =
-        fillInstruction(INTERMEDIATE_CONVERT_INT_TO_DOUBLE, 2, origin);
+    IntermediateInstruction instruction = fillInstruction(INTERMEDIATE_CONVERT_INT_TO_DOUBLE, 2, origin);
     instruction.operands[0] = convertedOperand;
     instruction.operands[1] = *operand;
 
@@ -320,9 +310,7 @@ static void clearOperandPointers(IntermediateOperand *const *operands, size_t co
     }
 }
 
-static CompilerStatus appendInstructionArray(IntermediateGenerator *generator,
-                                             const IntermediateInstruction *instructions,
-                                             size_t count) {
+static CompilerStatus appendInstructionArray(IntermediateGenerator *generator, const IntermediateInstruction *instructions, size_t count) {
     if (generator == NULL || generator->program == NULL || (count > 0 && instructions == NULL)) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -330,8 +318,7 @@ static CompilerStatus appendInstructionArray(IntermediateGenerator *generator,
     size_t counter = 0;
 
     while (counter < count) {
-        CompilerStatus status =
-            intermediateProgramAppend(generator->program, &instructions[counter]);
+        CompilerStatus status = intermediateProgramAppend(generator->program, &instructions[counter]);
         if (status != COMPILER_OK) {
             return status;
         }
@@ -342,13 +329,8 @@ static CompilerStatus appendInstructionArray(IntermediateGenerator *generator,
     return COMPILER_OK;
 }
 
-static CompilerStatus generateOrdinal(IntermediateGenerator *generator,
-                                      const IntermediateOperand *resultOperand,
-                                      const IntermediateOperand *stringOperand,
-                                      const IntermediateOperand *indexOperand,
-                                      SourceLocation origin) {
-    if (generator == NULL || resultOperand == NULL || stringOperand == NULL ||
-        indexOperand == NULL) {
+static CompilerStatus generateOrdinal(IntermediateGenerator *generator, const IntermediateOperand *resultOperand, const IntermediateOperand *stringOperand, const IntermediateOperand *indexOperand, SourceLocation origin) {
+    if (generator == NULL || resultOperand == NULL || stringOperand == NULL || indexOperand == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
@@ -376,46 +358,38 @@ static CompilerStatus generateOrdinal(IntermediateGenerator *generator,
 
     IntermediateOperand negativeOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = -1};
     IntermediateOperand zeroOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
-    IntermediateOperand trueOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN,
-                                       .value.boolValue = true};
-    IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN,
-                                        .value.boolValue = false};
+    IntermediateOperand trueOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
+    IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
 
     IntermediateInstruction resultInstruction = fillInstruction(INTERMEDIATE_MOVE, 2, origin);
     resultInstruction.operands[0] = *resultOperand;
     resultInstruction.operands[1] = negativeOperand;
 
-    IntermediateInstruction lengthInstruction =
-        fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, origin);
+    IntermediateInstruction lengthInstruction = fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, origin);
     lengthInstruction.operands[0] = *lengthOperand;
     lengthInstruction.operands[1] = *stringOperand;
 
-    IntermediateInstruction negativeInstruction =
-        fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    IntermediateInstruction negativeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
     negativeInstruction.operands[0] = *conditionOperand;
     negativeInstruction.operands[1] = *indexOperand;
     negativeInstruction.operands[2] = zeroOperand;
 
-    IntermediateInstruction negativeJumpInstruction =
-        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction negativeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     negativeJumpInstruction.operands[0] = endLabelOperand;
     negativeJumpInstruction.operands[1] = *conditionOperand;
     negativeJumpInstruction.operands[2] = trueOperand;
 
-    IntermediateInstruction rangeInstruction =
-        fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    IntermediateInstruction rangeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
     rangeInstruction.operands[0] = *conditionOperand;
     rangeInstruction.operands[1] = *indexOperand;
     rangeInstruction.operands[2] = *lengthOperand;
 
-    IntermediateInstruction rangeJumpInstruction =
-        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction rangeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     rangeJumpInstruction.operands[0] = endLabelOperand;
     rangeJumpInstruction.operands[1] = *conditionOperand;
     rangeJumpInstruction.operands[2] = falseOperand;
 
-    IntermediateInstruction characterInstruction =
-        fillInstruction(INTERMEDIATE_STRING_CHARACTER_CODE, 3, origin);
+    IntermediateInstruction characterInstruction = fillInstruction(INTERMEDIATE_STRING_CHARACTER_CODE, 3, origin);
     characterInstruction.operands[0] = *resultOperand;
     characterInstruction.operands[1] = *stringOperand;
     characterInstruction.operands[2] = *indexOperand;
@@ -423,23 +397,16 @@ static CompilerStatus generateOrdinal(IntermediateGenerator *generator,
     IntermediateInstruction endInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, origin);
     endInstruction.operands[0] = endLabelOperand;
 
-    IntermediateInstruction instructions[] = {
-        resultInstruction, lengthInstruction,    negativeInstruction,  negativeJumpInstruction,
-        rangeInstruction,  rangeJumpInstruction, characterInstruction, endInstruction};
-    status = appendInstructionArray(generator, instructions,
-                                    sizeof(instructions) / sizeof(instructions[0]));
+    IntermediateInstruction instructions[] = {resultInstruction, lengthInstruction, negativeInstruction, negativeJumpInstruction, rangeInstruction, rangeJumpInstruction, characterInstruction, endInstruction};
+    status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
     intermediateOperandClear(&endLabelOperand);
     clearOperandArray(temporaryOperands, 2);
 
     return status;
 }
 
-static CompilerStatus
-generateSubstring(IntermediateGenerator *generator, const IntermediateOperand *resultOperand,
-                  const IntermediateOperand *stringOperand, const IntermediateOperand *startOperand,
-                  const IntermediateOperand *endOperand, SourceLocation origin) {
-    if (generator == NULL || resultOperand == NULL || stringOperand == NULL ||
-        startOperand == NULL || endOperand == NULL) {
+static CompilerStatus generateSubstring(IntermediateGenerator *generator, const IntermediateOperand *resultOperand, const IntermediateOperand *stringOperand, const IntermediateOperand *startOperand, const IntermediateOperand *endOperand, SourceLocation origin) {
+    if (generator == NULL || resultOperand == NULL || stringOperand == NULL || startOperand == NULL || endOperand == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
 
@@ -481,74 +448,61 @@ generateSubstring(IntermediateGenerator *generator, const IntermediateOperand *r
     IntermediateOperand zeroOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
     IntermediateOperand oneOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 1};
     IntermediateOperand errorOperand = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 40};
-    IntermediateOperand trueOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN,
-                                       .value.boolValue = true};
-    IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN,
-                                        .value.boolValue = false};
+    IntermediateOperand trueOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
+    IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
 
     IntermediateOperand emptyOperand = {.kind = INTERMEDIATE_OPERAND_STRING, .text = ""};
 
-    IntermediateInstruction lengthInstruction =
-        fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, origin);
+    IntermediateInstruction lengthInstruction = fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, origin);
     lengthInstruction.operands[0] = *lengthOperand;
     lengthInstruction.operands[1] = *stringOperand;
 
-    IntermediateInstruction startNegativeInstruction =
-        fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    IntermediateInstruction startNegativeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
     startNegativeInstruction.operands[0] = *conditionOperand;
     startNegativeInstruction.operands[1] = *startOperand;
     startNegativeInstruction.operands[2] = zeroOperand;
 
-    IntermediateInstruction startNegativeJumpInstruction =
-        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction startNegativeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     startNegativeJumpInstruction.operands[0] = *errorLabelOperand;
     startNegativeJumpInstruction.operands[1] = *conditionOperand;
     startNegativeJumpInstruction.operands[2] = trueOperand;
 
-    IntermediateInstruction endNegativeInstruction =
-        fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    IntermediateInstruction endNegativeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
     endNegativeInstruction.operands[0] = *conditionOperand;
     endNegativeInstruction.operands[1] = *endOperand;
     endNegativeInstruction.operands[2] = zeroOperand;
 
-    IntermediateInstruction endNegativeJumpInstruction =
-        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction endNegativeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     endNegativeJumpInstruction.operands[0] = *errorLabelOperand;
     endNegativeJumpInstruction.operands[1] = *conditionOperand;
     endNegativeJumpInstruction.operands[2] = trueOperand;
 
-    IntermediateInstruction orderInstruction =
-        fillInstruction(INTERMEDIATE_COMPARE_GREATER, 3, origin);
+    IntermediateInstruction orderInstruction = fillInstruction(INTERMEDIATE_COMPARE_GREATER, 3, origin);
     orderInstruction.operands[0] = *conditionOperand;
     orderInstruction.operands[1] = *startOperand;
     orderInstruction.operands[2] = *endOperand;
 
-    IntermediateInstruction orderJumpInstruction =
-        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction orderJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     orderJumpInstruction.operands[0] = *errorLabelOperand;
     orderJumpInstruction.operands[1] = *conditionOperand;
     orderJumpInstruction.operands[2] = trueOperand;
 
-    IntermediateInstruction startRangeInstruction =
-        fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    IntermediateInstruction startRangeInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
     startRangeInstruction.operands[0] = *conditionOperand;
     startRangeInstruction.operands[1] = *startOperand;
     startRangeInstruction.operands[2] = *lengthOperand;
 
-    IntermediateInstruction startRangeJumpInstruction =
-        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction startRangeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     startRangeJumpInstruction.operands[0] = *errorLabelOperand;
     startRangeJumpInstruction.operands[1] = *conditionOperand;
     startRangeJumpInstruction.operands[2] = falseOperand;
 
-    IntermediateInstruction endRangeInstruction =
-        fillInstruction(INTERMEDIATE_COMPARE_GREATER, 3, origin);
+    IntermediateInstruction endRangeInstruction = fillInstruction(INTERMEDIATE_COMPARE_GREATER, 3, origin);
     endRangeInstruction.operands[0] = *conditionOperand;
     endRangeInstruction.operands[1] = *endOperand;
     endRangeInstruction.operands[2] = *lengthOperand;
 
-    IntermediateInstruction endRangeJumpInstruction =
-        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction endRangeJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     endRangeJumpInstruction.operands[0] = *errorLabelOperand;
     endRangeJumpInstruction.operands[1] = *conditionOperand;
     endRangeJumpInstruction.operands[2] = trueOperand;
@@ -564,26 +518,22 @@ generateSubstring(IntermediateGenerator *generator, const IntermediateOperand *r
     IntermediateInstruction loopLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, origin);
     loopLabelInstruction.operands[0] = *loopLabelOperand;
 
-    IntermediateInstruction loopConditionInstruction =
-        fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
+    IntermediateInstruction loopConditionInstruction = fillInstruction(INTERMEDIATE_COMPARE_LESS, 3, origin);
     loopConditionInstruction.operands[0] = *conditionOperand;
     loopConditionInstruction.operands[1] = *indexOperand;
     loopConditionInstruction.operands[2] = *endOperand;
 
-    IntermediateInstruction loopEndJumpInstruction =
-        fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
+    IntermediateInstruction loopEndJumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, origin);
     loopEndJumpInstruction.operands[0] = *endLabelOperand;
     loopEndJumpInstruction.operands[1] = *conditionOperand;
     loopEndJumpInstruction.operands[2] = falseOperand;
 
-    IntermediateInstruction characterInstruction =
-        fillInstruction(INTERMEDIATE_STRING_GET_CHARACTER, 3, origin);
+    IntermediateInstruction characterInstruction = fillInstruction(INTERMEDIATE_STRING_GET_CHARACTER, 3, origin);
     characterInstruction.operands[0] = *characterOperand;
     characterInstruction.operands[1] = *stringOperand;
     characterInstruction.operands[2] = *indexOperand;
 
-    IntermediateInstruction concatenateInstruction =
-        fillInstruction(INTERMEDIATE_CONCATENATE, 3, origin);
+    IntermediateInstruction concatenateInstruction = fillInstruction(INTERMEDIATE_CONCATENATE, 3, origin);
     concatenateInstruction.operands[0] = *resultOperand;
     concatenateInstruction.operands[1] = *resultOperand;
     concatenateInstruction.operands[2] = *characterOperand;
@@ -605,17 +555,8 @@ generateSubstring(IntermediateGenerator *generator, const IntermediateOperand *r
     IntermediateInstruction endLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, origin);
     endLabelInstruction.operands[0] = *endLabelOperand;
 
-    IntermediateInstruction instructions[] = {
-        lengthInstruction,      startNegativeInstruction,   startNegativeJumpInstruction,
-        endNegativeInstruction, endNegativeJumpInstruction, orderInstruction,
-        orderJumpInstruction,   startRangeInstruction,      startRangeJumpInstruction,
-        endRangeInstruction,    endRangeJumpInstruction,    resultInstruction,
-        indexInstruction,       loopLabelInstruction,       loopConditionInstruction,
-        loopEndJumpInstruction, characterInstruction,       concatenateInstruction,
-        incrementInstruction,   loopJumpInstruction,        errorLabelInstruction,
-        exitInstruction,        endLabelInstruction};
-    CompilerStatus status = appendInstructionArray(generator, instructions,
-                                                   sizeof(instructions) / sizeof(instructions[0]));
+    IntermediateInstruction instructions[] = {lengthInstruction, startNegativeInstruction, startNegativeJumpInstruction, endNegativeInstruction, endNegativeJumpInstruction, orderInstruction, orderJumpInstruction, startRangeInstruction, startRangeJumpInstruction, endRangeInstruction, endRangeJumpInstruction, resultInstruction, indexInstruction, loopLabelInstruction, loopConditionInstruction, loopEndJumpInstruction, characterInstruction, concatenateInstruction, incrementInstruction, loopJumpInstruction, errorLabelInstruction, exitInstruction, endLabelInstruction};
+    CompilerStatus status = appendInstructionArray(generator, instructions, sizeof(instructions) / sizeof(instructions[0]));
     clearOperandArray(labelOperands, 3);
     clearOperandArray(temporaryOperands, 4);
 
@@ -642,8 +583,7 @@ static char *createFunctionLabel(const char *functionName) {
     return labelName;
 }
 
-static const AbstractSyntaxNode *findFunction(const SourceProgram *program,
-                                              const char *functionName) {
+static const AbstractSyntaxNode *findFunction(const SourceProgram *program, const char *functionName) {
     if (program == NULL || program->root == NULL || functionName == NULL) {
         return NULL;
     }
@@ -802,85 +742,73 @@ static CompilerStatus generateIntegerDivision(IntermediateGenerator *generator, 
     IntermediateOperand one = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 1};
     IntermediateOperand no = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
 
-    status = appendControlInstruction(generator, INTERMEDIATE_INTEGER_DIVIDE, origin, 3,
-                                      (IntermediateOperand[]){*resultOperand, *leftOperand, *rightOperand});
+    status = appendControlInstruction(generator, INTERMEDIATE_INTEGER_DIVIDE, origin, 3, (IntermediateOperand[]){*resultOperand, *leftOperand, *rightOperand});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){remainderNegative, *resultOperand, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){remainderNegative, *resultOperand, zero});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, remainderNegative, no});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, remainderNegative, no});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){remainder, *resultOperand, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){remainder, *resultOperand, one});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3,
-                                      (IntermediateOperand[]){remainder, remainder, *rightOperand});
+    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){remainder, remainder, *rightOperand});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){remainder, *leftOperand, remainder});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){remainder, *leftOperand, remainder});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){remainder, remainder, *rightOperand});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){remainder, remainder, *rightOperand});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, remainder, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, remainder, zero});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){remainderNegative, remainder, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){remainderNegative, remainder, zero});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){dividendNegative, *leftOperand, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){dividendNegative, *leftOperand, zero});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, remainderNegative, dividendNegative});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, remainderNegative, dividendNegative});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){*resultOperand, *resultOperand, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){*resultOperand, *resultOperand, one});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -922,22 +850,19 @@ static CompilerStatus generateClassJump(IntermediateGenerator *generator, const 
     IntermediateOperand arrayName = {.kind = INTERMEDIATE_OPERAND_STRING, .text = "array"};
     IntermediateOperand classTag = {.kind = INTERMEDIATE_OPERAND_STRING, .text = (char *)className};
     IntermediateOperand zero = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){skipLabel, *runtimeType, arrayName});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){skipLabel, *runtimeType, arrayName});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3,
-                                      (IntermediateOperand[]){tag, *subject, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){tag, *subject, zero});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){*matchedLabel, tag, classTag});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){*matchedLabel, tag, classTag});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -961,12 +886,7 @@ static const struct {
     DataType type;
     const char *name;
 } runtimeTypes[] = {
-    {DATA_TYPE_INT, "int"},
-    {DATA_TYPE_DOUBLE, "float"},
-    {DATA_TYPE_STRING, "string"},
-    {DATA_TYPE_BOOLEAN, "bool"},
-    {DATA_TYPE_UNIT, "nil"},
-    {DATA_TYPE_LIST, "array"},
+    {DATA_TYPE_INT, "int"}, {DATA_TYPE_DOUBLE, "float"}, {DATA_TYPE_STRING, "string"}, {DATA_TYPE_BOOLEAN, "bool"}, {DATA_TYPE_UNIT, "nil"}, {DATA_TYPE_LIST, "array"},
 };
 
 static CompilerStatus appendTypeJump(IntermediateGenerator *generator, IntermediateOpcode opcode, const IntermediateOperand *label, const IntermediateOperand *typeOperand, const char *typeName, SourceLocation origin) {
@@ -1031,29 +951,25 @@ static CompilerStatus convertValue(IntermediateGenerator *generator, Intermediat
     }
 
     IntermediateOperand intName = {.kind = INTERMEDIATE_OPERAND_STRING, .text = "int"};
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){result, *operand});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){result, *operand});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_GET_TYPE, origin, 2,
-                                      (IntermediateOperand[]){type, *operand});
+    status = appendControlInstruction(generator, INTERMEDIATE_GET_TYPE, origin, 2, (IntermediateOperand[]){type, *operand});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, type, intName});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){end, type, intName});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_CONVERT_INT_TO_DOUBLE, origin, 2,
-                                      (IntermediateOperand[]){result, *operand});
+    status = appendControlInstruction(generator, INTERMEDIATE_CONVERT_INT_TO_DOUBLE, origin, 2, (IntermediateOperand[]){result, *operand});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -1176,8 +1092,7 @@ static CompilerStatus generateUnionString(IntermediateGenerator *generator, Inte
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_GET_TYPE, origin, 2,
-                                      (IntermediateOperand[]){type, *value});
+    status = appendControlInstruction(generator, INTERMEDIATE_GET_TYPE, origin, 2, (IntermediateOperand[]){type, *value});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -1286,22 +1201,19 @@ static CompilerStatus generateUnionPrint(IntermediateGenerator *generator, const
         }
 
         IntermediateOperand arrayType = {.kind = INTERMEDIATE_OPERAND_STRING, .text = "array"};
-        status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                          (IntermediateOperand[]){translated, *value});
+        status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){translated, *value});
         if (status != COMPILER_OK) {
             clearOperandPointers(ownedOperands, ownedOperandCount);
             return status;
         }
 
-        status = appendControlInstruction(generator, INTERMEDIATE_GET_TYPE, origin, 2,
-                                          (IntermediateOperand[]){runtimeType, *value});
+        status = appendControlInstruction(generator, INTERMEDIATE_GET_TYPE, origin, 2, (IntermediateOperand[]){runtimeType, *value});
         if (status != COMPILER_OK) {
             clearOperandPointers(ownedOperands, ownedOperandCount);
             return status;
         }
 
-        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                          (IntermediateOperand[]){readyLabel, runtimeType, arrayType});
+        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){readyLabel, runtimeType, arrayType});
         if (status != COMPILER_OK) {
             clearOperandPointers(ownedOperands, ownedOperandCount);
             return status;
@@ -1351,8 +1263,7 @@ static CompilerStatus generateUnionPrint(IntermediateGenerator *generator, const
 
     IntermediateOperand unit = {.kind = INTERMEDIATE_OPERAND_STRING, .text = "()"};
     IntermediateOperand nil = {.kind = INTERMEDIATE_OPERAND_UNIT};
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){valueLabel, *value, nil});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){valueLabel, *value, nil});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -1429,36 +1340,31 @@ static CompilerStatus generateNumericReadDefault(IntermediateGenerator *generato
         IntermediateOperand maximum = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = INT32_MAX};
         IntermediateOperand yes = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
 
-        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                          (IntermediateOperand[]){useDefault, *result, nil});
+        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){useDefault, *result, nil});
         if (status != COMPILER_OK) {
             clearOperandPointers(ownedOperands, ownedOperandCount);
             return status;
         }
 
-        status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                          (IntermediateOperand[]){outside, *result, minimum});
+        status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){outside, *result, minimum});
         if (status != COMPILER_OK) {
             clearOperandPointers(ownedOperands, ownedOperandCount);
             return status;
         }
 
-        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                          (IntermediateOperand[]){useDefault, outside, yes});
+        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){useDefault, outside, yes});
         if (status != COMPILER_OK) {
             clearOperandPointers(ownedOperands, ownedOperandCount);
             return status;
         }
 
-        status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3,
-                                          (IntermediateOperand[]){outside, *result, maximum});
+        status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){outside, *result, maximum});
         if (status != COMPILER_OK) {
             clearOperandPointers(ownedOperands, ownedOperandCount);
             return status;
         }
 
-        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                          (IntermediateOperand[]){end, outside, yes});
+        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){end, outside, yes});
         if (status != COMPILER_OK) {
             clearOperandPointers(ownedOperands, ownedOperandCount);
             return status;
@@ -1470,16 +1376,14 @@ static CompilerStatus generateNumericReadDefault(IntermediateGenerator *generato
             return status;
         }
     } else {
-        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                          (IntermediateOperand[]){end, *result, nil});
+        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){end, *result, nil});
         if (status != COMPILER_OK) {
             clearOperandPointers(ownedOperands, ownedOperandCount);
             return status;
         }
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){*result, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){*result, zero});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -1519,38 +1423,31 @@ static CompilerStatus generateOptionalReadInput(IntermediateGenerator *generator
     IntermediateOperand plus = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = '+'};
     IntermediateOperand trueValue = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
 
-    CompilerStatus status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                                     (IntermediateOperand[]){*result, unit});
+    CompilerStatus status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){*result, unit});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_READ, origin, 2,
-                                      (IntermediateOperand[]){line, stringType});
+    status = appendControlInstruction(generator, INTERMEDIATE_READ, origin, 2, (IntermediateOperand[]){line, stringType});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_STRING_LENGTH, origin, 2,
-                                      (IntermediateOperand[]){length, line});
+    status = appendControlInstruction(generator, INTERMEDIATE_STRING_LENGTH, origin, 2, (IntermediateOperand[]){length, line});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, length, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, length, zero});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){index, length, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){index, length, one});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3,
-                                      (IntermediateOperand[]){character, line, index});
+    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){character, line, index});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){noNewline, character, newline});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){noNewline, character, newline});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -1558,8 +1455,7 @@ static CompilerStatus generateOptionalReadInput(IntermediateGenerator *generator
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, length, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, length, zero});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -1571,23 +1467,19 @@ static CompilerStatus generateOptionalReadInput(IntermediateGenerator *generator
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3,
-                                      (IntermediateOperand[]){character, line, index});
+    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){character, line, index});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){negative, character, minus});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_EQUAL, origin, 3, (IntermediateOperand[]){negative, character, minus});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){afterSign, negative, trueValue});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){afterSign, negative, trueValue});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){digitsStart, character, plus});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){digitsStart, character, plus});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -1599,8 +1491,7 @@ static CompilerStatus generateOptionalReadInput(IntermediateGenerator *generator
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, index, length});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, index, length});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -1638,8 +1529,7 @@ static CompilerStatus generateReadIntMaybeBody(IntermediateGenerator *generator,
     IntermediateOperand trueValue = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
     IntermediateOperand minValue = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = INT32_MIN};
 
-    CompilerStatus status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                                     (IntermediateOperand[]){number, zero});
+    CompilerStatus status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){number, zero});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -1647,63 +1537,51 @@ static CompilerStatus generateReadIntMaybeBody(IntermediateGenerator *generator,
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){finish, index, length});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){finish, index, length});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3,
-                                      (IntermediateOperand[]){digit, line, index});
+    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){digit, line, index});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, digit, firstDigit});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, digit, firstDigit});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, condition, trueValue});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, trueValue});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, lastDigit, digit});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, lastDigit, digit});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, condition, trueValue});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, trueValue});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){digit, digit, firstDigit});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){digit, digit, firstDigit});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3,
-                                      (IntermediateOperand[]){number, number, ten});
+    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){number, number, ten});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){number, number, digit});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){number, number, digit});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, number, minValue});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, number, minValue});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, condition, trueValue});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, trueValue});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){index, index, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){index, index, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -1715,18 +1593,15 @@ static CompilerStatus generateReadIntMaybeBody(IntermediateGenerator *generator,
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){store, negative, trueValue});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){store, negative, trueValue});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, number, minValue});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, number, minValue});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){number, zero, number});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){number, zero, number});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -1734,8 +1609,7 @@ static CompilerStatus generateReadIntMaybeBody(IntermediateGenerator *generator,
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){*result, number});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){*result, number});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -1863,43 +1737,35 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     IntermediateOperand carryLimit = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = INT64_C(9007199254740992)};
 
     // initialize the base and digit buffer
-    CompilerStatus status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                                     (IntermediateOperand[]){base, ten});
+    CompilerStatus status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){base, ten});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3,
-                                      (IntermediateOperand[]){ch, line, index});
+    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){ch, line, index});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){init, ch, d0});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){init, ch, d0});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){digit, index, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){digit, index, one});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){init, digit, length});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){init, digit, length});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3,
-                                      (IntermediateOperand[]){ch, line, digit});
+    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){ch, line, digit});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){hex, ch, x});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){hex, ch, x});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){init, ch, X});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){init, ch, X});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -1911,8 +1777,7 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){index, digit, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){index, digit, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -1932,18 +1797,15 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){digit, length, extraSpace});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){digit, length, extraSpace});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_CREATE, origin, 2,
-                                      (IntermediateOperand[]){digits, digit});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_CREATE, origin, 2, (IntermediateOperand[]){digits, digit});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){value, floatZero});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){value, floatZero});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -1959,13 +1821,11 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3,
-                                      (IntermediateOperand[]){exponentLimit, length, four});
+    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){exponentLimit, length, four});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){exponentLimit, exponentLimit, extraSpace});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){exponentLimit, exponentLimit, extraSpace});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -1975,23 +1835,19 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){combine, index, length});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){combine, index, length});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3,
-                                      (IntermediateOperand[]){ch, line, index});
+    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){ch, line, index});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){checkExponent, ch, dot});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){checkExponent, ch, dot});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, dotted, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, dotted, yes});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2007,18 +1863,15 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){hexExponent, base, sixteen});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){hexExponent, base, sixteen});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){exponentStart, ch, e});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){exponentStart, ch, e});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){exponentStart, ch, E});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){exponentStart, ch, E});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2030,13 +1883,11 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){exponentStart, ch, p});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){exponentStart, ch, p});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){exponentStart, ch, P});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){exponentStart, ch, P});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2044,28 +1895,23 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, ch, d0});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, ch, d0});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3,
-                                      (IntermediateOperand[]){condition, ch, d9});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){condition, ch, d9});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){letter, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){letter, condition, yes});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){digit, ch, d0});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){digit, ch, d0});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2077,23 +1923,19 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, base, sixteen});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){end, base, sixteen});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, ch, a});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, ch, a});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){upperLetter, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){upperLetter, condition, yes});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){digit, ch, a});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){digit, ch, a});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2105,8 +1947,7 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){digit, ch, A});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){digit, ch, A});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2114,28 +1955,23 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, digit, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, digit, zero});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3,
-                                      (IntermediateOperand[]){condition, digit, five});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){condition, digit, five});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){digit, digit, ten});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){digit, digit, ten});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2147,13 +1983,11 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){keepDigit, dotted, no});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){keepDigit, dotted, no});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){point, point, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){point, point, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2161,13 +1995,11 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){saveDigit, tail, head});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){saveDigit, tail, head});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){consume, digit, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){consume, digit, zero});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2175,8 +2007,7 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3,
-                                      (IntermediateOperand[]){digits, tail, digit});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){digits, tail, digit});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2188,8 +2019,7 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){index, index, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){index, index, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2203,38 +2033,31 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, seen, no});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, seen, no});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){index, index, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){index, index, one});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, index, length});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, index, length});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3,
-                                      (IntermediateOperand[]){ch, line, index});
+    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){ch, line, index});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){exponentNegative, ch, minus});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_EQUAL, origin, 3, (IntermediateOperand[]){exponentNegative, ch, minus});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){exponentSigned, exponentNegative, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){exponentSigned, exponentNegative, yes});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){exponentLoop, ch, plus});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){exponentLoop, ch, plus});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2242,13 +2065,11 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){index, index, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){index, index, one});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, index, length});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, index, length});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2256,58 +2077,47 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){exponentDigits, index, length});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){exponentDigits, index, length});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3,
-                                      (IntermediateOperand[]){digit, line, index});
+    status = appendControlInstruction(generator, INTERMEDIATE_STRING_CHARACTER_CODE, origin, 3, (IntermediateOperand[]){digit, line, index});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){digit, digit, d0});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){digit, digit, d0});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, digit, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, digit, zero});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3,
-                                      (IntermediateOperand[]){condition, digit, nine});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){condition, digit, nine});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3,
-                                      (IntermediateOperand[]){condition, exponent, exponentLimit});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){condition, exponent, exponentLimit});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){exponentAdvance, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){exponentAdvance, condition, yes});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3,
-                                      (IntermediateOperand[]){exponent, exponent, ten});
+    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){exponent, exponent, ten});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){exponent, exponent, digit});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){exponent, exponent, digit});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2315,8 +2125,7 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){index, index, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){index, index, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2328,13 +2137,11 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){combine, exponentNegative, no});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){combine, exponentNegative, no});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){exponent, zero, exponent});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){exponent, zero, exponent});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2344,58 +2151,47 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, seen, no});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, seen, no});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){signedResult, tail, head});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){signedResult, tail, head});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){digit, tail, head});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){digit, tail, head});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){point, point, digit});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){point, point, digit});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){binaryExponent, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){binaryExponent, zero});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){hexOffset, base, sixteen});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){hexOffset, base, sixteen});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){point, point, exponent});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){point, point, exponent});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3,
-                                      (IntermediateOperand[]){condition, point, maxDecimalPoint});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){condition, point, maxDecimalPoint});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, point, minDecimalPoint});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, point, minDecimalPoint});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2407,18 +2203,15 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){binaryExponent, point, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){binaryExponent, point, one});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3,
-                                      (IntermediateOperand[]){binaryExponent, binaryExponent, four});
+    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){binaryExponent, binaryExponent, four});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){binaryExponent, binaryExponent, exponent});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){binaryExponent, binaryExponent, exponent});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2430,28 +2223,23 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3,
-                                      (IntermediateOperand[]){digit, digits, head});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){digit, digits, head});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){normalizeDown, point, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){normalizeDown, point, one});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3,
-                                      (IntermediateOperand[]){condition, point, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){condition, point, one});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){divideStart, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){divideStart, condition, yes});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){binaryExponent, binaryExponent, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){binaryExponent, binaryExponent, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2467,23 +2255,19 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){normalize, carry, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){normalize, carry, zero});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){head, head, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){head, head, one});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3,
-                                      (IntermediateOperand[]){digits, head, carry});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){digits, head, carry});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){point, point, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){point, point, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2495,8 +2279,7 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){normalized, digit, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){normalized, digit, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2516,48 +2299,39 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){divideDone, cursor, tail});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){divideDone, cursor, tail});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3,
-                                      (IntermediateOperand[]){digit, digits, cursor});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){digit, digits, cursor});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3,
-                                      (IntermediateOperand[]){carry, carry, base});
+    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){carry, carry, base});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){digit, digit, carry});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){digit, digit, carry});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_INTEGER_DIVIDE, origin, 3,
-                                      (IntermediateOperand[]){quotient, digit, two});
+    status = appendControlInstruction(generator, INTERMEDIATE_INTEGER_DIVIDE, origin, 3, (IntermediateOperand[]){quotient, digit, two});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3,
-                                      (IntermediateOperand[]){digits, cursor, quotient});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){digits, cursor, quotient});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3,
-                                      (IntermediateOperand[]){carry, quotient, two});
+    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){carry, quotient, two});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){carry, digit, carry});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){carry, digit, carry});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){cursor, cursor, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){cursor, cursor, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2569,18 +2343,15 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){divideTrim, carry, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){divideTrim, carry, zero});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_INTEGER_DIVIDE, origin, 3,
-                                      (IntermediateOperand[]){quotient, base, two});
+    status = appendControlInstruction(generator, INTERMEDIATE_INTEGER_DIVIDE, origin, 3, (IntermediateOperand[]){quotient, base, two});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3,
-                                      (IntermediateOperand[]){digits, tail, quotient});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){digits, tail, quotient});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2592,13 +2363,11 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3,
-                                      (IntermediateOperand[]){digit, digits, head});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){digit, digits, head});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){divideNext, digit, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){divideNext, digit, zero});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2606,8 +2375,7 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){point, point, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){point, point, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2615,8 +2383,7 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){binaryExponent, binaryExponent, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){binaryExponent, binaryExponent, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2628,73 +2395,59 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3,
-                                      (IntermediateOperand[]){condition, binaryExponent, maximumExponent});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_GREATER, origin, 3, (IntermediateOperand[]){condition, binaryExponent, maximumExponent});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, binaryExponent, halfMinimumExponent});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, binaryExponent, halfMinimumExponent});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, yes});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){significand, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){significand, one});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){bitCount, fractionBits});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){bitCount, fractionBits});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){weight, binaryExponent});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){weight, binaryExponent});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, binaryExponent, minimumNormalExponent});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, binaryExponent, minimumNormalExponent});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){removeLeadingBit, condition, no});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){removeLeadingBit, condition, no});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){bitCount, binaryExponent, subnormalOffset});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){bitCount, binaryExponent, subnormalOffset});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){weight, minimumNormalExponent});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){weight, minimumNormalExponent});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){removeLeadingBit, binaryExponent, halfMinimumExponent});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){removeLeadingBit, binaryExponent, halfMinimumExponent});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){significand, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){significand, zero});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3,
-                                      (IntermediateOperand[]){digits, head, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){digits, head, zero});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2710,8 +2463,7 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3,
-                                      (IntermediateOperand[]){digits, head, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){digits, head, zero});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2723,8 +2475,7 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){extracting, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){extracting, yes});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2736,23 +2487,19 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){roundGuard, bitCount, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){roundGuard, bitCount, zero});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3,
-                                      (IntermediateOperand[]){significand, significand, two});
+    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){significand, significand, two});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){significand, significand, carry});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){significand, significand, carry});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){bitCount, bitCount, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){bitCount, bitCount, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2764,23 +2511,19 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){buildValue, carry, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){buildValue, carry, zero});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_INTEGER_DIVIDE, origin, 3,
-                                      (IntermediateOperand[]){quotient, significand, two});
+    status = appendControlInstruction(generator, INTERMEDIATE_INTEGER_DIVIDE, origin, 3, (IntermediateOperand[]){quotient, significand, two});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3,
-                                      (IntermediateOperand[]){quotient, quotient, two});
+    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){quotient, quotient, two});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){roundUp, quotient, significand});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){roundUp, quotient, significand});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2792,23 +2535,19 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){buildValue, cursor, tail});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){buildValue, cursor, tail});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3,
-                                      (IntermediateOperand[]){digit, digits, cursor});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){digit, digits, cursor});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){roundUp, digit, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){roundUp, digit, zero});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){cursor, cursor, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){cursor, cursor, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2820,8 +2559,7 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){significand, significand, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){significand, significand, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2829,18 +2567,15 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, significand, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, significand, zero});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){convert, binaryExponent, maximumExponent});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){convert, binaryExponent, maximumExponent});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, significand, carryLimit});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, significand, carryLimit});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2848,13 +2583,11 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_CONVERT_INT_TO_DOUBLE, origin, 2,
-                                      (IntermediateOperand[]){value, significand});
+    status = appendControlInstruction(generator, INTERMEDIATE_CONVERT_INT_TO_DOUBLE, origin, 2, (IntermediateOperand[]){value, significand});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){weight, weight, fractionBits});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){weight, weight, fractionBits});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2862,28 +2595,23 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){signedResult, weight, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){signedResult, weight, zero});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, weight, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, weight, zero});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){scaleDown, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){scaleDown, condition, yes});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3,
-                                      (IntermediateOperand[]){value, value, twoFloat});
+    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){value, value, twoFloat});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){weight, weight, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){weight, weight, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2895,13 +2623,11 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_DIVIDE, origin, 3,
-                                      (IntermediateOperand[]){value, value, twoFloat});
+    status = appendControlInstruction(generator, INTERMEDIATE_DIVIDE, origin, 3, (IntermediateOperand[]){value, value, twoFloat});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){weight, weight, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){weight, weight, one});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2913,13 +2639,11 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){store, negative, no});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){store, negative, no});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3,
-                                      (IntermediateOperand[]){value, value, negativeOne});
+    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){value, value, negativeOne});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -2951,48 +2675,39 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){multiplyDone, cursor, head});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){multiplyDone, cursor, head});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){cursor, cursor, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){cursor, cursor, one});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3,
-                                      (IntermediateOperand[]){digit, digits, cursor});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){digit, digits, cursor});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3,
-                                      (IntermediateOperand[]){digit, digit, two});
+    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){digit, digit, two});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){digit, digit, carry});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){digit, digit, carry});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_INTEGER_DIVIDE, origin, 3,
-                                      (IntermediateOperand[]){carry, digit, base});
+    status = appendControlInstruction(generator, INTERMEDIATE_INTEGER_DIVIDE, origin, 3, (IntermediateOperand[]){carry, digit, base});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3,
-                                      (IntermediateOperand[]){quotient, carry, base});
+    status = appendControlInstruction(generator, INTERMEDIATE_MULTIPLY, origin, 3, (IntermediateOperand[]){quotient, carry, base});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){digit, digit, quotient});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){digit, digit, quotient});
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3,
-                                      (IntermediateOperand[]){digits, cursor, digit});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){digits, cursor, digit});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -3004,8 +2719,7 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     if (status != COMPILER_OK) {
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){bitReady, extracting, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){bitReady, extracting, yes});
     if (status != COMPILER_OK) {
         return status;
     }
@@ -3055,8 +2769,7 @@ static CompilerStatus generateOptionalRead(IntermediateGenerator *generator, Int
 
     status = generateOptionalReadInput(generator, &result, origin, variables, labels);
     if (status == COMPILER_OK) {
-        status = isDouble ? generateReadDoubleMaybeBody(generator, &result, origin, variables, labels) :
-                            generateReadIntMaybeBody(generator, &result, origin, variables, labels);
+        status = isDouble ? generateReadDoubleMaybeBody(generator, &result, origin, variables, labels) : generateReadIntMaybeBody(generator, &result, origin, variables, labels);
     }
     clearOperandArray(variables, variableCount);
     clearOperandArray(labels, labelCount);
@@ -3152,8 +2865,7 @@ static CompilerStatus generateMatchPattern(IntermediateGenerator *generator, con
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){*nextLabel, *subject, literal});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){*nextLabel, *subject, literal});
     if (status != COMPILER_OK) {
         intermediateOperandClear(&literal);
         return status;
@@ -3196,8 +2908,7 @@ static CompilerStatus generateBlockValue(IntermediateGenerator *generator, Inter
         }
         return generateExpression(generator, operand, last->children[0]);
     }
-    if (last->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION || last->kind == ABSTRACT_SYNTAX_IF_EXPRESSION ||
-        (last->kind == ABSTRACT_SYNTAX_IF && isValueType(valueTypes(generator, &last->type)))) {
+    if (last->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION || last->kind == ABSTRACT_SYNTAX_IF_EXPRESSION || (last->kind == ABSTRACT_SYNTAX_IF && isValueType(valueTypes(generator, &last->type)))) {
         return generateExpression(generator, operand, last);
     }
 
@@ -3213,8 +2924,7 @@ static CompilerStatus generateBlockValue(IntermediateGenerator *generator, Inter
  * ok could you please generate one match case, if pattern matches then jump, if not false, in other cases create the body value and convert it to match and jump
  */
 static CompilerStatus generateMatchCase(IntermediateGenerator *generator, const AbstractSyntaxNode *branch, const IntermediateOperand *subject, const IntermediateOperand *runtimeType, const IntermediateOperand *result, DataType resultType, const IntermediateOperand *endLabel) {
-    if (branch == NULL || branch->kind != ABSTRACT_SYNTAX_MATCH_CASE || (branch->childCount != 2 && branch->childCount != 3) ||
-        branch->children == NULL || branch->children[0] == NULL || branch->children[branch->childCount - 1] == NULL) {
+    if (branch == NULL || branch->kind != ABSTRACT_SYNTAX_MATCH_CASE || (branch->childCount != 2 && branch->childCount != 3) || branch->children == NULL || branch->children[0] == NULL || branch->children[branch->childCount - 1] == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
     IntermediateOperand nextLabel = {0};
@@ -3230,8 +2940,7 @@ static CompilerStatus generateMatchCase(IntermediateGenerator *generator, const 
 
     if (branch->childCount == 3) {
         const AbstractSyntaxNode *guard = branch->children[1];
-        if (guard == NULL || guard->kind != ABSTRACT_SYNTAX_MATCH_GUARD || guard->childCount != 1 ||
-            guard->children == NULL || guard->children[0] == NULL || descriptorDataType(&guard->children[0]->type) != DATA_TYPE_BOOLEAN) {
+        if (guard == NULL || guard->kind != ABSTRACT_SYNTAX_MATCH_GUARD || guard->childCount != 1 || guard->children == NULL || guard->children[0] == NULL || descriptorDataType(&guard->children[0]->type) != DATA_TYPE_BOOLEAN) {
             intermediateOperandClear(&nextLabel);
             return COMPILER_INTERNAL_ERROR;
         }
@@ -3245,8 +2954,7 @@ static CompilerStatus generateMatchCase(IntermediateGenerator *generator, const 
         }
 
         IntermediateOperand falseOperand = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
-        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, guard->location, 3,
-                                          (IntermediateOperand[]){nextLabel, condition, falseOperand});
+        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, guard->location, 3, (IntermediateOperand[]){nextLabel, condition, falseOperand});
         if (status != COMPILER_OK) {
             intermediateOperandClear(&condition);
             intermediateOperandClear(&nextLabel);
@@ -3335,8 +3043,7 @@ static CompilerStatus generateMatch(IntermediateGenerator *generator, Intermedia
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
-    status = appendControlInstruction(generator, INTERMEDIATE_GET_TYPE, node->location, 2,
-                                      (IntermediateOperand[]){runtimeType, subject});
+    status = appendControlInstruction(generator, INTERMEDIATE_GET_TYPE, node->location, 2, (IntermediateOperand[]){runtimeType, subject});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -3378,8 +3085,7 @@ static CompilerStatus generateMatch(IntermediateGenerator *generator, Intermedia
  * make me a scaffolding for a function that generates the constructor for a given class please
  */
 static CompilerStatus generateClassConstructor(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node, const AbstractSyntaxNode *declaration) {
-    if (declaration->childCount != node->childCount - 1 || declaration->childCount > INT64_MAX - 1 ||
-        (declaration->childCount != 0 && declaration->children == NULL)) {
+    if (declaration->childCount != node->childCount - 1 || declaration->childCount > INT64_MAX - 1 || (declaration->childCount != 0 && declaration->children == NULL)) {
         return COMPILER_INTERNAL_ERROR;
     }
 
@@ -3392,15 +3098,13 @@ static CompilerStatus generateClassConstructor(IntermediateGenerator *generator,
     IntermediateOperand size = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = (int64_t)node->childCount};
     IntermediateOperand zero = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = 0};
     IntermediateOperand tag = {.kind = INTERMEDIATE_OPERAND_STRING, .text = declaration->text};
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_CREATE, node->location, 2,
-                                      (IntermediateOperand[]){result, size});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_CREATE, node->location, 2, (IntermediateOperand[]){result, size});
     if (status != COMPILER_OK) {
         intermediateOperandClear(&result);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, node->location, 3,
-                                      (IntermediateOperand[]){result, zero, tag});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, node->location, 3, (IntermediateOperand[]){result, zero, tag});
     if (status != COMPILER_OK) {
         intermediateOperandClear(&result);
         return status;
@@ -3431,8 +3135,7 @@ static CompilerStatus generateClassConstructor(IntermediateGenerator *generator,
         }
 
         IntermediateOperand index = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = (int64_t)(counter + 1)};
-        status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, argument->location, 3,
-                                          (IntermediateOperand[]){result, index, value});
+        status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, argument->location, 3, (IntermediateOperand[]){result, index, value});
         if (status != COMPILER_OK) {
             intermediateOperandClear(&value);
             intermediateOperandClear(&result);
@@ -3480,29 +3183,25 @@ static CompilerStatus generateListArray(IntermediateGenerator *generator, const 
     }
 
     // Slot 0 identifies the array as a list. Slot 1 holds its length.
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){size, *length, integerOperand(2)});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){size, *length, integerOperand(2)});
     if (status != COMPILER_OK) {
         intermediateOperandClear(&size);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_CREATE, origin, 2,
-                                      (IntermediateOperand[]){*result, size});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_CREATE, origin, 2, (IntermediateOperand[]){*result, size});
     if (status != COMPILER_OK) {
         intermediateOperandClear(&size);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3,
-                                      (IntermediateOperand[]){*result, integerOperand(0), stringOperand("$List")});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){*result, integerOperand(0), stringOperand("$List")});
     if (status != COMPILER_OK) {
         intermediateOperandClear(&size);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3,
-                                      (IntermediateOperand[]){*result, integerOperand(1), *length});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){*result, integerOperand(1), *length});
     if (status != COMPILER_OK) {
         intermediateOperandClear(&size);
         return status;
@@ -3535,8 +3234,7 @@ static CompilerStatus generateListConstructor(IntermediateGenerator *generator, 
             status = convertValue(generator, &value, valueTypes(generator, &element->type), target, element->location);
         }
         if (status == COMPILER_OK) {
-            status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, element->location, 3,
-                                              (IntermediateOperand[]){result, integerOperand((int64_t)counter + 1), value});
+            status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, element->location, 3, (IntermediateOperand[]){result, integerOperand((int64_t)counter + 1), value});
         }
         intermediateOperandClear(&value);
         counter++;
@@ -3616,29 +3314,25 @@ static CompilerStatus generateListIndex(IntermediateGenerator *generator, Interm
 
     IntermediateOperand yes = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = true};
     IntermediateOperand error = integerOperand(40);
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, index, integerOperand(0)});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, index, integerOperand(0)});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){invalid, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){invalid, condition, yes});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, index, length});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, index, length});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){valid, condition, yes});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){valid, condition, yes});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -3662,15 +3356,13 @@ static CompilerStatus generateListIndex(IntermediateGenerator *generator, Interm
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){length, index, integerOperand(2)});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){length, index, integerOperand(2)});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3,
-                                      (IntermediateOperand[]){result, list, length});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){result, list, length});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -3692,11 +3384,32 @@ static CompilerStatus generateListIndex(IntermediateGenerator *generator, Interm
     return COMPILER_OK;
 }
 
-/*
- * AI-generated code
- * ok could you please emit a loop that copies [start, end) into the existing result at destinationStart? add 2 to both array indices for the list header.
- */
-static CompilerStatus generateListCopy(IntermediateGenerator *generator, const IntermediateOperand *result, const IntermediateOperand *destinationStart, const IntermediateOperand *source, const IntermediateOperand *start, const IntermediateOperand *end, SourceLocation origin) {
+static size_t listWideningDepth(IntermediateGenerator *generator, const TypeDescriptor *source, const TypeDescriptor *destination) {
+    size_t depth = 0;
+
+    while (valueTypes(generator, source) == DATA_TYPE_LIST && (valueTypes(generator, destination) & DATA_TYPE_LIST) != 0) {
+        const TypeDescriptorRecursiveNode *sourceElement = source->recursiveTypes;
+        const TypeDescriptorRecursiveNode *destinationElement = destination->recursiveTypes;
+        if (sourceElement == NULL || sourceElement->next != NULL || destinationElement == NULL || destinationElement->next != NULL) {
+            return 0;
+        }
+
+        source = &sourceElement->elementType;
+        destination = &destinationElement->elementType;
+        depth++;
+    }
+
+    DataType destinationType = valueTypes(generator, destination);
+    if (valueTypes(generator, source) == DATA_TYPE_INT && (destinationType & (DATA_TYPE_INT | DATA_TYPE_DOUBLE)) == DATA_TYPE_DOUBLE) {
+        return depth;
+    }
+
+    return 0;
+}
+
+static CompilerStatus generateWidenedList(IntermediateGenerator *generator, IntermediateOperand *operand, size_t wideningDepth, SourceLocation origin);
+
+static CompilerStatus generateListCopy(IntermediateGenerator *generator, const IntermediateOperand *result, const IntermediateOperand *destinationStart, const IntermediateOperand *source, const IntermediateOperand *start, const IntermediateOperand *end, size_t wideningDepth, SourceLocation origin) {
     IntermediateOperand position = {0};
     IntermediateOperand destination = {0};
     IntermediateOperand sourceIndex = {0};
@@ -3752,15 +3465,13 @@ static CompilerStatus generateListCopy(IntermediateGenerator *generator, const I
     IntermediateOperand one = integerOperand(1);
     IntermediateOperand two = integerOperand(2);
     IntermediateOperand no = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){position, *start});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){position, *start});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){destination, *destinationStart, two});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){destination, *destinationStart, two});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -3772,50 +3483,54 @@ static CompilerStatus generateListCopy(IntermediateGenerator *generator, const I
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, position, *end});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, position, *end});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){done, condition, no});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){done, condition, no});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){sourceIndex, position, two});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){sourceIndex, position, two});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3,
-                                      (IntermediateOperand[]){element, *source, sourceIndex});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){element, *source, sourceIndex});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3,
-                                      (IntermediateOperand[]){*result, destination, element});
+    if (wideningDepth == 1) {
+        status = convertIntToDouble(generator, &element, origin);
+    } else if (wideningDepth > 1) {
+        status = generateWidenedList(generator, &element, wideningDepth - 1, origin);
+    }
+
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){position, position, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){*result, destination, element});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){destination, destination, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){position, position, one});
+    if (status != COMPILER_OK) {
+        clearOperandPointers(ownedOperands, ownedOperandCount);
+        return status;
+    }
+
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){destination, destination, one});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -3835,6 +3550,62 @@ static CompilerStatus generateListCopy(IntermediateGenerator *generator, const I
 
     clearOperandPointers(ownedOperands, ownedOperandCount);
     return COMPILER_OK;
+}
+
+static CompilerStatus generateWidenedList(IntermediateGenerator *generator, IntermediateOperand *operand, size_t wideningDepth, SourceLocation origin) {
+    IntermediateOperand result = {0};
+    IntermediateOperand length = {0};
+    IntermediateOperand *ownedOperands[] = {&result, &length};
+    size_t ownedOperandCount = sizeof(ownedOperands) / sizeof(ownedOperands[0]);
+
+    CompilerStatus status = generateTemporary(generator, &result, origin);
+    if (status != COMPILER_OK) {
+        clearOperandPointers(ownedOperands, ownedOperandCount);
+        return status;
+    }
+
+    status = generateTemporary(generator, &length, origin);
+    if (status != COMPILER_OK) {
+        clearOperandPointers(ownedOperands, ownedOperandCount);
+        return status;
+    }
+
+    status = generateListLength(generator, &length, operand, origin);
+    if (status != COMPILER_OK) {
+        clearOperandPointers(ownedOperands, ownedOperandCount);
+        return status;
+    }
+
+    status = generateListArray(generator, &result, &length, origin);
+    if (status != COMPILER_OK) {
+        clearOperandPointers(ownedOperands, ownedOperandCount);
+        return status;
+    }
+
+    IntermediateOperand zero = integerOperand(0);
+    status = generateListCopy(generator, &result, &zero, operand, &zero, &length, wideningDepth, origin);
+    intermediateOperandClear(&length);
+    if (status != COMPILER_OK) {
+        intermediateOperandClear(&result);
+        return status;
+    }
+
+    intermediateOperandClear(operand);
+    *operand = result;
+    return COMPILER_OK;
+}
+
+static CompilerStatus convertAssignedValue(IntermediateGenerator *generator, IntermediateOperand *operand, const TypeDescriptor *source, const TypeDescriptor *destination, SourceLocation origin) {
+    DataType destinationType = valueTypes(generator, destination);
+    if (destinationType == DATA_TYPE_UNKNOWN) {
+        return COMPILER_OK;
+    }
+
+    size_t wideningDepth = listWideningDepth(generator, source, destination);
+    if (wideningDepth != 0) {
+        return generateWidenedList(generator, operand, wideningDepth, origin);
+    }
+    return convertValue(generator, operand, valueTypes(generator, source), destinationType, origin);
 }
 
 /*
@@ -3900,8 +3671,7 @@ static CompilerStatus generateListConcat(IntermediateGenerator *generator, Inter
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){total, leftLength, rightLength});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){total, leftLength, rightLength});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -3914,13 +3684,15 @@ static CompilerStatus generateListConcat(IntermediateGenerator *generator, Inter
     }
 
     IntermediateOperand zero = integerOperand(0);
-    status = generateListCopy(generator, &result, &zero, &left, &zero, &leftLength, origin);
+    size_t leftWideningDepth = listWideningDepth(generator, &node->children[0]->type, &node->type);
+    status = generateListCopy(generator, &result, &zero, &left, &zero, &leftLength, leftWideningDepth, origin);
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = generateListCopy(generator, &result, &leftLength, &right, &zero, &rightLength, origin);
+    size_t rightWideningDepth = listWideningDepth(generator, &node->children[1]->type, &node->type);
+    status = generateListCopy(generator, &result, &leftLength, &right, &zero, &rightLength, rightWideningDepth, origin);
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -3957,22 +3729,19 @@ static CompilerStatus capListIndex(IntermediateGenerator *generator, const Inter
 
     IntermediateOperand no = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
     IntermediateOpcode comparison = upperLimit ? INTERMEDIATE_COMPARE_GREATER : INTERMEDIATE_COMPARE_LESS;
-    status = appendControlInstruction(generator, comparison, origin, 3,
-                                      (IntermediateOperand[]){condition, *index, *limit});
+    status = appendControlInstruction(generator, comparison, origin, 3, (IntermediateOperand[]){condition, *index, *limit});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){done, condition, no});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){done, condition, no});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){*index, *limit});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){*index, *limit});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4056,8 +3825,7 @@ static CompilerStatus generateListSlice(IntermediateGenerator *generator, Interm
     IntermediateOperand zero = integerOperand(0);
     if (isTail) {
         IntermediateOperand error = integerOperand(40);
-        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                          (IntermediateOperand[]){nonempty, length, zero});
+        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){nonempty, length, zero});
         if (status != COMPILER_OK) {
             clearOperandPointers(ownedOperands, ownedOperandCount);
             return status;
@@ -4118,8 +3886,7 @@ static CompilerStatus generateListSlice(IntermediateGenerator *generator, Interm
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){count, end, start});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){count, end, start});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4131,7 +3898,7 @@ static CompilerStatus generateListSlice(IntermediateGenerator *generator, Interm
         return status;
     }
 
-    status = generateListCopy(generator, &result, &zero, &list, &start, &end, origin);
+    status = generateListCopy(generator, &result, &zero, &list, &start, &end, 0, origin);
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4165,8 +3932,7 @@ static CompilerStatus generateListRange(IntermediateGenerator *generator, Interm
     IntermediateOperand loop = {0};
     IntermediateOperand done = {0};
     IntermediateOperand *ownedOperands[] = {
-        &result, &value, &end, &step, &distance, &stride,
-        &length, &nonzero, &positive, &allocate, &loop, &done,
+        &result, &value, &end, &step, &distance, &stride, &length, &nonzero, &positive, &allocate, &loop, &done,
     };
     size_t ownedOperandCount = sizeof(ownedOperands) / sizeof(ownedOperands[0]);
 
@@ -4254,8 +4020,7 @@ static CompilerStatus generateListRange(IntermediateGenerator *generator, Interm
         return status;
     }
 
-    status = count == 3 ? generateRangeValue(generator, &step, parts[2]) :
-                         appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){step, integerOperand(1)});
+    status = count == 3 ? generateRangeValue(generator, &step, parts[2]) : appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){step, integerOperand(1)});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4267,8 +4032,7 @@ static CompilerStatus generateListRange(IntermediateGenerator *generator, Interm
     IntermediateOperand error = integerOperand(40);
     IntermediateOperand no = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){nonzero, step, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){nonzero, step, zero});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4286,8 +4050,7 @@ static CompilerStatus generateListRange(IntermediateGenerator *generator, Interm
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){distance, end, value});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){distance, end, value});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4299,29 +4062,25 @@ static CompilerStatus generateListRange(IntermediateGenerator *generator, Interm
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){end, step, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){end, step, zero});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){positive, end, no});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){positive, end, no});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){distance, zero, distance});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){distance, zero, distance});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){stride, zero, step});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){stride, zero, step});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4339,36 +4098,31 @@ static CompilerStatus generateListRange(IntermediateGenerator *generator, Interm
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3,
-                                      (IntermediateOperand[]){distance, distance, integerOperand(inclusive ? 0 : 1)});
+    status = appendControlInstruction(generator, INTERMEDIATE_SUBTRACT, origin, 3, (IntermediateOperand[]){distance, distance, integerOperand(inclusive ? 0 : 1)});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){end, distance, zero});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){end, distance, zero});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){allocate, end, no});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){allocate, end, no});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_INTEGER_DIVIDE, origin, 3,
-                                      (IntermediateOperand[]){length, distance, stride});
+    status = appendControlInstruction(generator, INTERMEDIATE_INTEGER_DIVIDE, origin, 3, (IntermediateOperand[]){length, distance, stride});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){length, length, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){length, length, one});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4386,15 +4140,13 @@ static CompilerStatus generateListRange(IntermediateGenerator *generator, Interm
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){length, length, two});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){length, length, two});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){distance, two});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){distance, two});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4406,29 +4158,25 @@ static CompilerStatus generateListRange(IntermediateGenerator *generator, Interm
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){done, distance, length});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){done, distance, length});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3,
-                                      (IntermediateOperand[]){result, distance, value});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_SET, origin, 3, (IntermediateOperand[]){result, distance, value});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){distance, distance, one});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){distance, distance, one});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){value, value, step});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){value, value, step});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4480,8 +4228,7 @@ static CompilerStatus generateListString(IntermediateGenerator *generator, const
     return COMPILER_OK;
 }
 
-static CompilerStatus appendProgramInstructions(IntermediateProgram *destination,
-                                                const IntermediateProgram *source) {
+static CompilerStatus appendProgramInstructions(IntermediateProgram *destination, const IntermediateProgram *source) {
     if (destination == NULL || source == NULL || destination == source) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -4587,22 +4334,19 @@ static CompilerStatus appendListStringFunction(IntermediateGenerator *generator,
     }
 
     IntermediateOperand no = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
-    status = appendControlInstruction(function, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){length, length, integerOperand(2)});
+    status = appendControlInstruction(function, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){length, length, integerOperand(2)});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(function, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){position, integerOperand(2)});
+    status = appendControlInstruction(function, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){position, integerOperand(2)});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(function, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){result, stringOperand("List(")});
+    status = appendControlInstruction(function, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){result, stringOperand("List(")});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4614,22 +4358,19 @@ static CompilerStatus appendListStringFunction(IntermediateGenerator *generator,
         return status;
     }
 
-    status = appendControlInstruction(function, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, position, length});
+    status = appendControlInstruction(function, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, position, length});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(function, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){done, condition, no});
+    status = appendControlInstruction(function, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){done, condition, no});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(function, INTERMEDIATE_ARRAY_GET, origin, 3,
-                                      (IntermediateOperand[]){item, list, position});
+    status = appendControlInstruction(function, INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){item, list, position});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4642,29 +4383,25 @@ static CompilerStatus appendListStringFunction(IntermediateGenerator *generator,
         return status;
     }
 
-    status = appendControlInstruction(function, INTERMEDIATE_CONCATENATE, origin, 3,
-                                      (IntermediateOperand[]){result, result, text});
+    status = appendControlInstruction(function, INTERMEDIATE_CONCATENATE, origin, 3, (IntermediateOperand[]){result, result, text});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(function, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){position, position, integerOperand(1)});
+    status = appendControlInstruction(function, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){position, position, integerOperand(1)});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(function, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){done, position, length});
+    status = appendControlInstruction(function, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){done, position, length});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(function, INTERMEDIATE_CONCATENATE, origin, 3,
-                                      (IntermediateOperand[]){result, result, stringOperand(", ")});
+    status = appendControlInstruction(function, INTERMEDIATE_CONCATENATE, origin, 3, (IntermediateOperand[]){result, result, stringOperand(", ")});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4682,8 +4419,7 @@ static CompilerStatus appendListStringFunction(IntermediateGenerator *generator,
         return status;
     }
 
-    status = appendControlInstruction(function, INTERMEDIATE_CONCATENATE, origin, 3,
-                                      (IntermediateOperand[]){result, result, stringOperand(")")});
+    status = appendControlInstruction(function, INTERMEDIATE_CONCATENATE, origin, 3, (IntermediateOperand[]){result, result, stringOperand(")")});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4801,13 +4537,11 @@ static CompilerStatus generateListCall(IntermediateGenerator *generator, Interme
         return generateListIndex(generator, operand, callee, node->children[1], &node->type, node->location);
     }
 
-    if (callee->kind != ABSTRACT_SYNTAX_MEMBER_ACCESS || callee->text == NULL ||
-        callee->childCount != 1 || callee->children == NULL || callee->children[0] == NULL) {
+    if (callee->kind != ABSTRACT_SYNTAX_MEMBER_ACCESS || callee->text == NULL || callee->childCount != 1 || callee->children == NULL || callee->children[0] == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
     const AbstractSyntaxNode *receiver = callee->children[0];
-    if (receiver->kind == ABSTRACT_SYNTAX_IDENTIFIER && receiver->text != NULL &&
-        strcmp(receiver->text, "List") == 0 && strcmp(callee->text, "range") == 0) {
+    if (receiver->kind == ABSTRACT_SYNTAX_IDENTIFIER && receiver->text != NULL && strcmp(receiver->text, "List") == 0 && strcmp(callee->text, "range") == 0) {
         if (node->childCount != 3 && node->childCount != 4) {
             return COMPILER_INTERNAL_ERROR;
         }
@@ -4834,8 +4568,7 @@ static CompilerStatus generateMemberAccess(IntermediateGenerator *generator, Int
         return COMPILER_INTERNAL_ERROR;
     }
     const AbstractSyntaxNode *object = node->children[0];
-    if (object->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION && strcmp(node->text, "toList") == 0 &&
-        object->text != NULL && (object->childCount == 2 || object->childCount == 3)) {
+    if (object->kind == ABSTRACT_SYNTAX_RANGE_EXPRESSION && strcmp(node->text, "toList") == 0 && object->text != NULL && (object->childCount == 2 || object->childCount == 3)) {
         return generateListRange(generator, operand, object->children, object->childCount, strcmp(object->text, "to") == 0, node->location);
     }
     DataType receiverType = valueTypes(generator, &object->type);
@@ -4879,8 +4612,7 @@ static CompilerStatus generateMemberAccess(IntermediateGenerator *generator, Int
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3,
-                                      (IntermediateOperand[]){tag, receiver, integerOperand(0)});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){tag, receiver, integerOperand(0)});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -4910,14 +4642,12 @@ static CompilerStatus generateMemberAccess(IntermediateGenerator *generator, Int
         }
         IntermediateOperand className = {.kind = INTERMEDIATE_OPERAND_STRING, .text = declaration->text};
         IntermediateOperand index = {.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = (int64_t)(fieldIndex + 1)};
-        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3,
-                                          (IntermediateOperand[]){nextLabel, tag, className});
+        status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_NOT_EQUAL, origin, 3, (IntermediateOperand[]){nextLabel, tag, className});
         if (status != COMPILER_OK) {
             clearOperandPointers(ownedOperands, ownedOperandCount);
             return status;
         }
-        status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3,
-                                          (IntermediateOperand[]){result, receiver, index});
+        status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){result, receiver, index});
         if (status != COMPILER_OK) {
             clearOperandPointers(ownedOperands, ownedOperandCount);
             return status;
@@ -4959,9 +4689,7 @@ static CompilerStatus generateMemberAccess(IntermediateGenerator *generator, Int
     return COMPILER_OK;
 }
 
-static CompilerStatus generateExpression(IntermediateGenerator *generator,
-                                         IntermediateOperand *operand,
-                                         const AbstractSyntaxNode *node) {
+static CompilerStatus generateExpression(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
     if (generator == NULL || operand == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -5006,9 +4734,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         return generateMemberAccess(generator, operand, node);
     case ABSTRACT_SYNTAX_IF:
     case ABSTRACT_SYNTAX_IF_EXPRESSION: {
-        if (node->childCount != 3 || node->children == NULL || node->children[0] == NULL ||
-            node->children[1] == NULL || node->children[2] == NULL ||
-            descriptorDataType(&node->children[0]->type) != DATA_TYPE_BOOLEAN) {
+        if (node->childCount != 3 || node->children == NULL || node->children[0] == NULL || node->children[1] == NULL || node->children[2] == NULL || descriptorDataType(&node->children[0]->type) != DATA_TYPE_BOOLEAN) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -5134,8 +4860,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         if (isAnd || isOr) {
             const AbstractSyntaxNode *left = node->children[0];
             const AbstractSyntaxNode *right = node->children[1];
-            if (descriptorDataType(&left->type) != DATA_TYPE_BOOLEAN ||
-                descriptorDataType(&right->type) != DATA_TYPE_BOOLEAN) {
+            if (descriptorDataType(&left->type) != DATA_TYPE_BOOLEAN || descriptorDataType(&right->type) != DATA_TYPE_BOOLEAN) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -5220,8 +4945,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         } else if (strcmp(node->text, "*") == 0) {
             operationCode = INTERMEDIATE_MULTIPLY;
         } else if (strcmp(node->text, "/") == 0) {
-            if (descriptorDataType(&node->children[0]->type) == DATA_TYPE_INT &&
-                descriptorDataType(&node->children[1]->type) == DATA_TYPE_INT) {
+            if (descriptorDataType(&node->children[0]->type) == DATA_TYPE_INT && descriptorDataType(&node->children[1]->type) == DATA_TYPE_INT) {
                 operationCode = INTERMEDIATE_INTEGER_DIVIDE;
             } else {
                 operationCode = INTERMEDIATE_DIVIDE;
@@ -5260,12 +4984,9 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         }
         DataType rightType = descriptorDataType(&node->children[1]->type);
 
-        bool isComparison = operationCode == INTERMEDIATE_COMPARE_EQUAL ||
-                            operationCode == INTERMEDIATE_COMPARE_LESS ||
-                            operationCode == INTERMEDIATE_COMPARE_GREATER;
+        bool isComparison = operationCode == INTERMEDIATE_COMPARE_EQUAL || operationCode == INTERMEDIATE_COMPARE_LESS || operationCode == INTERMEDIATE_COMPARE_GREATER;
 
-        if (leftType == DATA_TYPE_UNIT || rightType == DATA_TYPE_UNIT ||
-            leftType == DATA_TYPE_BOOLEAN || rightType == DATA_TYPE_BOOLEAN) {
+        if (leftType == DATA_TYPE_UNIT || rightType == DATA_TYPE_UNIT || leftType == DATA_TYPE_BOOLEAN || rightType == DATA_TYPE_BOOLEAN) {
             if (leftType != rightType || operationCode != INTERMEDIATE_COMPARE_EQUAL) {
                 intermediateOperandClear(&leftOperand);
                 intermediateOperandClear(&rightOperand);
@@ -5286,8 +5007,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         }
 
         if (leftType != rightType) {
-            IntermediateOperand *integerOperand =
-                leftType == DATA_TYPE_INT ? &leftOperand : &rightOperand;
+            IntermediateOperand *integerOperand = leftType == DATA_TYPE_INT ? &leftOperand : &rightOperand;
             status = convertIntToDouble(generator, integerOperand, node->location);
             if (status != COMPILER_OK) {
                 intermediateOperandClear(&leftOperand);
@@ -5308,8 +5028,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         }
 
         if (operationCode == INTERMEDIATE_INTEGER_DIVIDE) {
-            status = generateIntegerDivision(generator, &resultOperand, &leftOperand, &rightOperand,
-                                             node->location);
+            status = generateIntegerDivision(generator, &resultOperand, &leftOperand, &rightOperand, node->location);
             if (status != COMPILER_OK) {
                 intermediateOperandClear(&leftOperand);
                 intermediateOperandClear(&rightOperand);
@@ -5335,8 +5054,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             }
 
             if (negateResult) {
-                IntermediateInstruction negateInstruction =
-                    fillInstruction(INTERMEDIATE_NOT, 2, node->location);
+                IntermediateInstruction negateInstruction = fillInstruction(INTERMEDIATE_NOT, 2, node->location);
                 negateInstruction.operands[0] = resultOperand;
                 negateInstruction.operands[1] = resultOperand;
 
@@ -5360,8 +5078,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                     return status;
                 }
 
-                IntermediateInstruction equalityInstruction =
-                    fillInstruction(INTERMEDIATE_COMPARE_EQUAL, 3, node->location);
+                IntermediateInstruction equalityInstruction = fillInstruction(INTERMEDIATE_COMPARE_EQUAL, 3, node->location);
                 equalityInstruction.operands[0] = equalityOperand;
                 equalityInstruction.operands[1] = leftOperand;
                 equalityInstruction.operands[2] = rightOperand;
@@ -5375,8 +5092,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                     return status;
                 }
 
-                IntermediateInstruction orInstruction =
-                    fillInstruction(INTERMEDIATE_OR, 3, node->location);
+                IntermediateInstruction orInstruction = fillInstruction(INTERMEDIATE_OR, 3, node->location);
                 orInstruction.operands[0] = resultOperand;
                 orInstruction.operands[1] = resultOperand;
                 orInstruction.operands[2] = equalityOperand;
@@ -5409,8 +5125,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
         break;
     }
     case ABSTRACT_SYNTAX_UNARY_EXPRESSION: {
-        if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL ||
-            node->text == NULL) {
+        if (node->childCount != 1 || node->children == NULL || node->children[0] == NULL || node->text == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -5505,8 +5220,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
 
             const AbstractSyntaxNode *argument = arguments[0];
             DataType argumentType = valueTypes(generator, &argument->type);
-            if (!isValueType(argumentType) || (argumentType & DATA_TYPE_CASE_CLASS) ||
-                ((argumentType & DATA_TYPE_LIST) && argument->type.recursiveTypes == NULL)) {
+            if (!isValueType(argumentType) || (argumentType & DATA_TYPE_CASE_CLASS) || ((argumentType & DATA_TYPE_LIST) && argument->type.recursiveTypes == NULL)) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -5517,8 +5231,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 return status;
             }
 
-            IntermediateInstruction printInstruction =
-                fillInstruction(INTERMEDIATE_WRITE, 1, node->location);
+            IntermediateInstruction printInstruction = fillInstruction(INTERMEDIATE_WRITE, 1, node->location);
             printInstruction.operands[0] = argumentOperand;
 
             if (argumentType == DATA_TYPE_UNIT) {
@@ -5541,8 +5254,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             intermediateOperandClear(&argumentOperand);
 
             return status;
-        } else if (strcmp(functionName, "readLine") == 0 || strcmp(functionName, "readInt") == 0 ||
-                   strcmp(functionName, "readDouble") == 0 || strcmp(functionName, "readBoolean") == 0) {
+        } else if (strcmp(functionName, "readLine") == 0 || strcmp(functionName, "readInt") == 0 || strcmp(functionName, "readDouble") == 0 || strcmp(functionName, "readBoolean") == 0) {
             if (argumentCount != 0) {
                 return COMPILER_INTERNAL_ERROR;
             }
@@ -5575,8 +5287,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             typeOperand.kind = INTERMEDIATE_OPERAND_TYPE;
             typeOperand.value.dataType = readType;
 
-            IntermediateInstruction readInstruction =
-                fillInstruction(INTERMEDIATE_READ, 2, node->location);
+            IntermediateInstruction readInstruction = fillInstruction(INTERMEDIATE_READ, 2, node->location);
             readInstruction.operands[0] = resultOperand;
             readInstruction.operands[1] = typeOperand;
 
@@ -5622,8 +5333,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 return status;
             }
 
-            IntermediateInstruction conversionInstruction =
-                fillInstruction(INTERMEDIATE_CONVERT_DOUBLE_TO_INT, 2, node->location);
+            IntermediateInstruction conversionInstruction = fillInstruction(INTERMEDIATE_CONVERT_DOUBLE_TO_INT, 2, node->location);
             conversionInstruction.operands[0] = resultOperand;
             conversionInstruction.operands[1] = argumentOperand;
 
@@ -5644,8 +5354,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
 
             const AbstractSyntaxNode *argument = arguments[0];
             DataType argumentType = valueTypes(generator, &argument->type);
-            if (!isValueType(argumentType) || (argumentType & DATA_TYPE_CASE_CLASS) ||
-                ((argumentType & DATA_TYPE_LIST) && argument->type.recursiveTypes == NULL)) {
+            if (!isValueType(argumentType) || (argumentType & DATA_TYPE_CASE_CLASS) || ((argumentType & DATA_TYPE_LIST) && argument->type.recursiveTypes == NULL)) {
                 return COMPILER_INTERNAL_ERROR;
             }
 
@@ -5737,8 +5446,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 return status;
             }
 
-            IntermediateInstruction characterInstruction =
-                fillInstruction(INTERMEDIATE_CONVERT_INT_TO_CHARACTER, 2, node->location);
+            IntermediateInstruction characterInstruction = fillInstruction(INTERMEDIATE_CONVERT_INT_TO_CHARACTER, 2, node->location);
             characterInstruction.operands[0] = resultOperand;
             characterInstruction.operands[1] = argumentOperand;
 
@@ -5775,8 +5483,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 return status;
             }
 
-            IntermediateInstruction lengthInstruction =
-                fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, node->location);
+            IntermediateInstruction lengthInstruction = fillInstruction(INTERMEDIATE_STRING_LENGTH, 2, node->location);
             lengthInstruction.operands[0] = resultOperand;
             lengthInstruction.operands[1] = argumentOperand;
 
@@ -5812,8 +5519,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             IntermediateOperand argumentOperands[3] = {0};
             counter = 0;
             while (counter < argumentCount) {
-                CompilerStatus status = generateExpression(generator, &argumentOperands[counter],
-                                                           arguments[counter]);
+                CompilerStatus status = generateExpression(generator, &argumentOperands[counter], arguments[counter]);
                 if (status != COMPILER_OK) {
                     clearOperandArray(argumentOperands, 3);
                     return status;
@@ -5830,12 +5536,9 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             }
 
             if (isOrdinal) {
-                status = generateOrdinal(generator, &resultOperand, &argumentOperands[0],
-                                         &argumentOperands[1], node->location);
+                status = generateOrdinal(generator, &resultOperand, &argumentOperands[0], &argumentOperands[1], node->location);
             } else {
-                status =
-                    generateSubstring(generator, &resultOperand, &argumentOperands[0],
-                                      &argumentOperands[1], &argumentOperands[2], node->location);
+                status = generateSubstring(generator, &resultOperand, &argumentOperands[0], &argumentOperands[1], &argumentOperands[2], node->location);
             }
             clearOperandArray(argumentOperands, 3);
             if (status != COMPILER_OK) {
@@ -5862,8 +5565,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             return COMPILER_INTERNAL_ERROR;
         }
 
-        if (function->children[function->childCount - 1] == NULL ||
-            function->children[function->childCount - 1]->kind != ABSTRACT_SYNTAX_BLOCK) {
+        if (function->children[function->childCount - 1] == NULL || function->children[function->childCount - 1]->kind != ABSTRACT_SYNTAX_BLOCK) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -5912,8 +5614,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
                 return status;
             }
 
-            IntermediateInstruction argumentInstruction =
-                fillInstruction(INTERMEDIATE_PUSH, 1, argument->location);
+            IntermediateInstruction argumentInstruction = fillInstruction(INTERMEDIATE_PUSH, 1, argument->location);
             argumentInstruction.operands[0] = argumentOperand;
 
             status = intermediateProgramAppend(generator->program, &argumentInstruction);
@@ -5925,10 +5626,8 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             counter++;
         }
 
-        IntermediateInstruction createFrameInstruction =
-            fillInstruction(INTERMEDIATE_CREATE_FRAME, 0, node->location);
-        CompilerStatus status =
-            intermediateProgramAppend(generator->program, &createFrameInstruction);
+        IntermediateInstruction createFrameInstruction = fillInstruction(INTERMEDIATE_CREATE_FRAME, 0, node->location);
+        CompilerStatus status = intermediateProgramAppend(generator->program, &createFrameInstruction);
         if (status != COMPILER_OK) {
             return status;
         }
@@ -5940,8 +5639,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             return COMPILER_INTERNAL_ERROR;
         }
 
-        IntermediateInstruction callInstruction =
-            fillInstruction(INTERMEDIATE_CALL, 1, node->location);
+        IntermediateInstruction callInstruction = fillInstruction(INTERMEDIATE_CALL, 1, node->location);
         callInstruction.operands[0] = functionLabelOperand;
 
         status = intermediateProgramAppend(generator->program, &callInstruction);
@@ -5956,8 +5654,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
             return status;
         }
 
-        IntermediateInstruction resultInstruction =
-            fillInstruction(INTERMEDIATE_POP, 1, node->location);
+        IntermediateInstruction resultInstruction = fillInstruction(INTERMEDIATE_POP, 1, node->location);
         resultInstruction.operands[0] = resultOperand;
         status = intermediateProgramAppend(generator->program, &resultInstruction);
         if (status != COMPILER_OK) {
@@ -5976,8 +5673,7 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator,
     return COMPILER_OK;
 }
 
-static CompilerStatus generateExpressionStatement(IntermediateGenerator *generator,
-                                                  const AbstractSyntaxNode *node) {
+static CompilerStatus generateExpressionStatement(IntermediateGenerator *generator, const AbstractSyntaxNode *node) {
     if (generator == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -6004,9 +5700,7 @@ static CompilerStatus generateForGuards(IntermediateGenerator *generator, const 
     size_t counter = 1;
     while (counter < clauses->childCount) {
         const AbstractSyntaxNode *guard = clauses->children[counter];
-        if (guard == NULL || guard->kind != ABSTRACT_SYNTAX_FOR_GUARD || guard->childCount != 1 ||
-            guard->children == NULL || guard->children[0] == NULL ||
-            descriptorDataType(&guard->children[0]->type) != DATA_TYPE_BOOLEAN) {
+        if (guard == NULL || guard->kind != ABSTRACT_SYNTAX_FOR_GUARD || guard->childCount != 1 || guard->children == NULL || guard->children[0] == NULL || descriptorDataType(&guard->children[0]->type) != DATA_TYPE_BOOLEAN) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -6113,15 +5807,13 @@ static CompilerStatus generateListFor(IntermediateGenerator *generator, const Ab
     }
 
     IntermediateOperand no = {.kind = INTERMEDIATE_OPERAND_BOOLEAN, .value.boolValue = false};
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){length, length, integerOperand(2)});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){length, length, integerOperand(2)});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                      (IntermediateOperand[]){position, integerOperand(2)});
+    status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){position, integerOperand(2)});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -6133,22 +5825,19 @@ static CompilerStatus generateListFor(IntermediateGenerator *generator, const Ab
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3,
-                                      (IntermediateOperand[]){condition, position, length});
+    status = appendControlInstruction(generator, INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){condition, position, length});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3,
-                                      (IntermediateOperand[]){end, condition, no});
+    status = appendControlInstruction(generator, INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){end, condition, no});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3,
-                                      (IntermediateOperand[]){iterator, list, position});
+    status = appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){iterator, list, position});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -6169,8 +5858,7 @@ static CompilerStatus generateListFor(IntermediateGenerator *generator, const Ab
             return status;
         }
 
-        status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2,
-                                          (IntermediateOperand[]){iterator, runtimeValue});
+        status = appendControlInstruction(generator, INTERMEDIATE_MOVE, origin, 2, (IntermediateOperand[]){iterator, runtimeValue});
         if (status != COMPILER_OK) {
             intermediateOperandClear(&runtimeValue);
             clearOperandPointers(ownedOperands, ownedOperandCount);
@@ -6197,8 +5885,7 @@ static CompilerStatus generateListFor(IntermediateGenerator *generator, const Ab
         return status;
     }
 
-    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3,
-                                      (IntermediateOperand[]){position, position, integerOperand(1)});
+    status = appendControlInstruction(generator, INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){position, position, integerOperand(1)});
     if (status != COMPILER_OK) {
         clearOperandPointers(ownedOperands, ownedOperandCount);
         return status;
@@ -6221,8 +5908,7 @@ static CompilerStatus generateListFor(IntermediateGenerator *generator, const Ab
     return COMPILER_OK;
 }
 
-static CompilerStatus generateStatement(IntermediateGenerator *generator,
-                                        const AbstractSyntaxNode *node) {
+static CompilerStatus generateStatement(IntermediateGenerator *generator, const AbstractSyntaxNode *node) {
     if (generator == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -6268,14 +5954,10 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
             return status;
         }
 
-        DataType destinationType = valueTypes(generator, &node->type);
-        DataType sourceType = valueTypes(generator, &node->children[0]->type);
-        if (destinationType != DATA_TYPE_UNKNOWN) {
-            status = convertValue(generator, &initializerOperand, sourceType, destinationType, node->location);
-            if (status != COMPILER_OK) {
-                intermediateOperandClear(&initializerOperand);
-                return status;
-            }
+        status = convertAssignedValue(generator, &initializerOperand, &node->children[0]->type, &node->type, node->location);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&initializerOperand);
+            return status;
         }
 
         IntermediateOperand variableOperand = {0};
@@ -6319,14 +6001,10 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
             return status;
         }
 
-        DataType destinationType = valueTypes(generator, &node->type);
-        DataType sourceType = valueTypes(generator, &node->children[0]->type);
-        if (destinationType != DATA_TYPE_UNKNOWN) {
-            status = convertValue(generator, &valueOperand, sourceType, destinationType, node->location);
-            if (status != COMPILER_OK) {
-                intermediateOperandClear(&valueOperand);
-                return status;
-            }
+        status = convertAssignedValue(generator, &valueOperand, &node->children[0]->type, &node->type, node->location);
+        if (status != COMPILER_OK) {
+            intermediateOperandClear(&valueOperand);
+            return status;
         }
 
         IntermediateOperand variableOperand = {0};
@@ -6384,8 +6062,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
         falseOperand.kind = INTERMEDIATE_OPERAND_BOOLEAN;
         falseOperand.value.boolValue = false;
 
-        IntermediateInstruction jumpInstruction =
-            fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, node->location);
+        IntermediateInstruction jumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, node->location);
         jumpInstruction.operands[0] = elseLabelOperand;
         jumpInstruction.operands[1] = conditionOperand;
         jumpInstruction.operands[2] = falseOperand;
@@ -6406,8 +6083,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
             return status;
         }
 
-        IntermediateInstruction endJumpInstruction =
-            fillInstruction(INTERMEDIATE_JUMP, 1, node->location);
+        IntermediateInstruction endJumpInstruction = fillInstruction(INTERMEDIATE_JUMP, 1, node->location);
         endJumpInstruction.operands[0] = endLabelOperand;
 
         status = intermediateProgramAppend(generator->program, &endJumpInstruction);
@@ -6418,8 +6094,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
             return status;
         }
 
-        IntermediateInstruction elseLabelInstruction =
-            fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+        IntermediateInstruction elseLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
         elseLabelInstruction.operands[0] = elseLabelOperand;
 
         status = intermediateProgramAppend(generator->program, &elseLabelInstruction);
@@ -6438,8 +6113,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
             return status;
         }
 
-        IntermediateInstruction endLabelInstruction =
-            fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+        IntermediateInstruction endLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
         endLabelInstruction.operands[0] = endLabelOperand;
         status = intermediateProgramAppend(generator->program, &endLabelInstruction);
 
@@ -6455,15 +6129,12 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
         }
 
         const AbstractSyntaxNode *clauses = node->children[0];
-        if (clauses->kind != ABSTRACT_SYNTAX_FOR_CLAUSES || clauses->childCount == 0 ||
-            clauses->children == NULL || clauses->children[0] == NULL) {
+        if (clauses->kind != ABSTRACT_SYNTAX_FOR_CLAUSES || clauses->childCount == 0 || clauses->children == NULL || clauses->children[0] == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
 
         const AbstractSyntaxNode *binding = clauses->children[0];
-        if (binding->kind != ABSTRACT_SYNTAX_FOR_GENERATOR || binding->childCount != 1 ||
-            binding->children == NULL || binding->children[0] == NULL ||
-            binding->variableId == 0) {
+        if (binding->kind != ABSTRACT_SYNTAX_FOR_GENERATOR || binding->childCount != 1 || binding->children == NULL || binding->children[0] == NULL || binding->variableId == 0) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -6471,8 +6142,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
         if (valueTypes(generator, &range->type) == DATA_TYPE_LIST) {
             return generateListFor(generator, binding, clauses, node->children[1]);
         }
-        if (descriptorDataType(&binding->type) != DATA_TYPE_INT || range->kind != ABSTRACT_SYNTAX_RANGE_EXPRESSION || range->text == NULL ||
-            (range->childCount != 2 && range->childCount != 3) || range->children == NULL) {
+        if (descriptorDataType(&binding->type) != DATA_TYPE_INT || range->kind != ABSTRACT_SYNTAX_RANGE_EXPRESSION || range->text == NULL || (range->childCount != 2 && range->childCount != 3) || range->children == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -6594,16 +6264,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
         }
 
         IntermediateInstruction loopInstructions[] = {
-            controlInstruction(INTERMEDIATE_LABEL, origin, 1, stepLabel),
-            controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){*positiveOperand, zeroOperand, *stepOperand}),
-            controlInstruction(INTERMEDIATE_LABEL, origin, 1, loopLabel),
-            controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){*positiveLabel, *positiveOperand, trueOperand}),
-            controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){*conditionOperand, *iteratorOperand, *endOperand}),
-            controlInstruction(INTERMEDIATE_JUMP, origin, 1, bodyLabel),
-            controlInstruction(INTERMEDIATE_LABEL, origin, 1, positiveLabel),
-            controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){*conditionOperand, *endOperand, *iteratorOperand}),
-            controlInstruction(INTERMEDIATE_LABEL, origin, 1, bodyLabel),
-            controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){*endLabel, *conditionOperand, trueOperand}),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, stepLabel), controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){*positiveOperand, zeroOperand, *stepOperand}), controlInstruction(INTERMEDIATE_LABEL, origin, 1, loopLabel), controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){*positiveLabel, *positiveOperand, trueOperand}), controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){*conditionOperand, *iteratorOperand, *endOperand}), controlInstruction(INTERMEDIATE_JUMP, origin, 1, bodyLabel), controlInstruction(INTERMEDIATE_LABEL, origin, 1, positiveLabel), controlInstruction(INTERMEDIATE_COMPARE_LESS, origin, 3, (IntermediateOperand[]){*conditionOperand, *endOperand, *iteratorOperand}), controlInstruction(INTERMEDIATE_LABEL, origin, 1, bodyLabel), controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){*endLabel, *conditionOperand, trueOperand}),
         };
         status = appendInstructionArray(generator, loopInstructions, sizeof(loopInstructions) / sizeof(loopInstructions[0]));
         if (status != COMPILER_OK) {
@@ -6632,11 +6293,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
         }
 
         IntermediateInstruction advanceInstructions[] = {
-            controlInstruction(INTERMEDIATE_LABEL, origin, 1, advanceLabel),
-            controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){*endLabel, *iteratorOperand, *endOperand}),
-            controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){*iteratorOperand, *iteratorOperand, *stepOperand}),
-            controlInstruction(INTERMEDIATE_JUMP, origin, 1, loopLabel),
-            controlInstruction(INTERMEDIATE_LABEL, origin, 1, endLabel),
+            controlInstruction(INTERMEDIATE_LABEL, origin, 1, advanceLabel), controlInstruction(INTERMEDIATE_JUMP_IF_EQUAL, origin, 3, (IntermediateOperand[]){*endLabel, *iteratorOperand, *endOperand}), controlInstruction(INTERMEDIATE_ADD, origin, 3, (IntermediateOperand[]){*iteratorOperand, *iteratorOperand, *stepOperand}), controlInstruction(INTERMEDIATE_JUMP, origin, 1, loopLabel), controlInstruction(INTERMEDIATE_LABEL, origin, 1, endLabel),
         };
         status = appendInstructionArray(generator, advanceInstructions, sizeof(advanceInstructions) / sizeof(advanceInstructions[0]));
 
@@ -6645,8 +6302,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
         return status;
     }
     case ABSTRACT_SYNTAX_WHILE: {
-        if (node->childCount != 2 || node->children == NULL || node->children[0] == NULL ||
-            node->children[1] == NULL) {
+        if (node->childCount != 2 || node->children == NULL || node->children[0] == NULL || node->children[1] == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -6667,8 +6323,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
             return status;
         }
 
-        IntermediateInstruction startLabelInstruction =
-            fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+        IntermediateInstruction startLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
         startLabelInstruction.operands[0] = startLabelOperand;
 
         status = intermediateProgramAppend(generator->program, &startLabelInstruction);
@@ -6690,8 +6345,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
         falseOperand.kind = INTERMEDIATE_OPERAND_BOOLEAN;
         falseOperand.value.boolValue = false;
 
-        IntermediateInstruction jumpInstruction =
-            fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, node->location);
+        IntermediateInstruction jumpInstruction = fillInstruction(INTERMEDIATE_JUMP_IF_EQUAL, 3, node->location);
         jumpInstruction.operands[0] = endLabelOperand;
         jumpInstruction.operands[1] = conditionOperand;
         jumpInstruction.operands[2] = falseOperand;
@@ -6712,8 +6366,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
             return status;
         }
 
-        IntermediateInstruction startJumpInstruction =
-            fillInstruction(INTERMEDIATE_JUMP, 1, node->location);
+        IntermediateInstruction startJumpInstruction = fillInstruction(INTERMEDIATE_JUMP, 1, node->location);
         startJumpInstruction.operands[0] = startLabelOperand;
 
         status = intermediateProgramAppend(generator->program, &startJumpInstruction);
@@ -6724,8 +6377,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
             return status;
         }
 
-        IntermediateInstruction endLabelInstruction =
-            fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+        IntermediateInstruction endLabelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
         endLabelInstruction.operands[0] = endLabelOperand;
         status = intermediateProgramAppend(generator->program, &endLabelInstruction);
 
@@ -6780,8 +6432,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
             }
         }
 
-        IntermediateInstruction returnValueInstruction =
-            fillInstruction(INTERMEDIATE_PUSH, 1, node->location);
+        IntermediateInstruction returnValueInstruction = fillInstruction(INTERMEDIATE_PUSH, 1, node->location);
         returnValueInstruction.operands[0] = returnOperand;
 
         status = intermediateProgramAppend(generator->program, &returnValueInstruction);
@@ -6790,16 +6441,14 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
             return status;
         }
 
-        IntermediateInstruction popFrameInstruction =
-            fillInstruction(INTERMEDIATE_POP_FRAME, 0, node->location);
+        IntermediateInstruction popFrameInstruction = fillInstruction(INTERMEDIATE_POP_FRAME, 0, node->location);
 
         status = intermediateProgramAppend(generator->program, &popFrameInstruction);
         if (status != COMPILER_OK) {
             return status;
         }
 
-        IntermediateInstruction returnInstruction =
-            fillInstruction(INTERMEDIATE_RETURN, 0, node->location);
+        IntermediateInstruction returnInstruction = fillInstruction(INTERMEDIATE_RETURN, 0, node->location);
         status = intermediateProgramAppend(generator->program, &returnInstruction);
 
         return status;
@@ -6815,9 +6464,7 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator,
     }
 }
 
-
-static CompilerStatus generateParameters(IntermediateGenerator *generator,
-                                         const AbstractSyntaxNode *function) {
+static CompilerStatus generateParameters(IntermediateGenerator *generator, const AbstractSyntaxNode *function) {
     if (generator == NULL || function == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -6835,8 +6482,7 @@ static CompilerStatus generateParameters(IntermediateGenerator *generator,
     while (counter > 0) {
         counter--;
         const AbstractSyntaxNode *parameter = function->children[counter];
-        if (parameter == NULL || parameter->kind != ABSTRACT_SYNTAX_PARAMETER ||
-            parameter->variableId == 0) {
+        if (parameter == NULL || parameter->kind != ABSTRACT_SYNTAX_PARAMETER || parameter->variableId == 0) {
             return COMPILER_INTERNAL_ERROR;
         }
 
@@ -6856,8 +6502,7 @@ static CompilerStatus generateParameters(IntermediateGenerator *generator,
             return status;
         }
 
-        IntermediateInstruction parameterInstruction =
-            fillInstruction(INTERMEDIATE_POP, 1, parameter->location);
+        IntermediateInstruction parameterInstruction = fillInstruction(INTERMEDIATE_POP, 1, parameter->location);
         parameterInstruction.operands[0] = parameterOperand;
 
         status = intermediateProgramAppend(generator->program, &parameterInstruction);
@@ -6870,8 +6515,7 @@ static CompilerStatus generateParameters(IntermediateGenerator *generator,
     return COMPILER_OK;
 }
 
-static CompilerStatus generateFunctionBody(IntermediateGenerator *generator,
-                                           const AbstractSyntaxNode *body) {
+static CompilerStatus generateFunctionBody(IntermediateGenerator *generator, const AbstractSyntaxNode *body) {
     if (generator == NULL || body == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -6900,17 +6544,12 @@ static CompilerStatus generateFunctionBody(IntermediateGenerator *generator,
     const AbstractSyntaxNode *expressionNode = NULL;
 
     if (lastStatement->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT) {
-        if (lastStatement->childCount != 1 || lastStatement->children == NULL ||
-            lastStatement->children[0] == NULL) {
+        if (lastStatement->childCount != 1 || lastStatement->children == NULL || lastStatement->children[0] == NULL) {
             return COMPILER_INTERNAL_ERROR;
         }
 
         expressionNode = lastStatement->children[0];
-    } else if (lastStatement->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION ||
-               lastStatement->kind == ABSTRACT_SYNTAX_IF_EXPRESSION ||
-               (lastStatement->kind == ABSTRACT_SYNTAX_IF &&
-                isValueType(valueTypes(generator, &lastStatement->type)) &&
-                valueTypes(generator, &lastStatement->type) != DATA_TYPE_UNIT)) {
+    } else if (lastStatement->kind == ABSTRACT_SYNTAX_CALL_EXPRESSION || lastStatement->kind == ABSTRACT_SYNTAX_IF_EXPRESSION || (lastStatement->kind == ABSTRACT_SYNTAX_IF && isValueType(valueTypes(generator, &lastStatement->type)) && valueTypes(generator, &lastStatement->type) != DATA_TYPE_UNIT)) {
         expressionNode = lastStatement;
     } else {
         return generateStatement(generator, body);
@@ -6940,8 +6579,7 @@ static CompilerStatus generateFunctionBody(IntermediateGenerator *generator,
         return status;
     }
 
-    IntermediateInstruction returnValueInstruction =
-        fillInstruction(INTERMEDIATE_PUSH, 1, expressionNode->location);
+    IntermediateInstruction returnValueInstruction = fillInstruction(INTERMEDIATE_PUSH, 1, expressionNode->location);
     returnValueInstruction.operands[0] = returnOperand;
 
     status = intermediateProgramAppend(generator->program, &returnValueInstruction);
@@ -6950,8 +6588,7 @@ static CompilerStatus generateFunctionBody(IntermediateGenerator *generator,
     return status;
 }
 
-static CompilerStatus generateFunction(IntermediateGenerator *generator,
-                                       const AbstractSyntaxNode *node) {
+static CompilerStatus generateFunction(IntermediateGenerator *generator, const AbstractSyntaxNode *node) {
     if (generator == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -7013,8 +6650,7 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator,
         return COMPILER_INTERNAL_ERROR;
     }
 
-    IntermediateInstruction labelInstruction =
-        fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
+    IntermediateInstruction labelInstruction = fillInstruction(INTERMEDIATE_LABEL, 1, node->location);
     labelInstruction.operands[0] = functionLabel;
 
     status = intermediateProgramAppend(generator->program, &labelInstruction);
@@ -7025,8 +6661,7 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator,
         return status;
     }
 
-    IntermediateInstruction pushFrameInstruction =
-        fillInstruction(INTERMEDIATE_PUSH_FRAME, 0, node->location);
+    IntermediateInstruction pushFrameInstruction = fillInstruction(INTERMEDIATE_PUSH_FRAME, 0, node->location);
 
     status = intermediateProgramAppend(generator->program, &pushFrameInstruction);
     if (status != COMPILER_OK) {
@@ -7052,8 +6687,7 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator,
         IntermediateOperand returnOperand = {0};
         returnOperand.kind = INTERMEDIATE_OPERAND_UNIT;
 
-        IntermediateInstruction returnValueInstruction =
-            fillInstruction(INTERMEDIATE_PUSH, 1, node->location);
+        IntermediateInstruction returnValueInstruction = fillInstruction(INTERMEDIATE_PUSH, 1, node->location);
         returnValueInstruction.operands[0] = returnOperand;
 
         status = intermediateProgramAppend(generator->program, &returnValueInstruction);
@@ -7062,16 +6696,14 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator,
         }
     }
 
-    IntermediateInstruction popFrameInstruction =
-        fillInstruction(INTERMEDIATE_POP_FRAME, 0, node->location);
+    IntermediateInstruction popFrameInstruction = fillInstruction(INTERMEDIATE_POP_FRAME, 0, node->location);
 
     status = intermediateProgramAppend(generator->program, &popFrameInstruction);
     if (status != COMPILER_OK) {
         return status;
     }
 
-    IntermediateInstruction returnInstruction =
-        fillInstruction(INTERMEDIATE_RETURN, 0, node->location);
+    IntermediateInstruction returnInstruction = fillInstruction(INTERMEDIATE_RETURN, 0, node->location);
 
     status = intermediateProgramAppend(generator->program, &returnInstruction);
     if (status != COMPILER_OK) {
@@ -7081,8 +6713,7 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator,
     return COMPILER_OK;
 }
 
-CompilerStatus intermediateCodeGenerate(const SourceProgram *program,
-                                        IntermediateProgram *outProgram) {
+CompilerStatus intermediateCodeGenerate(const SourceProgram *program, IntermediateProgram *outProgram) {
     if (program == NULL || outProgram == NULL) {
         return COMPILER_INTERNAL_ERROR;
     }
@@ -7137,8 +6768,7 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program,
         counter++;
     }
 
-    if (entryFunction == NULL || entryFunction->childCount != 1 ||
-        descriptorDataType(&entryFunction->type) != DATA_TYPE_UNIT) {
+    if (entryFunction == NULL || entryFunction->childCount != 1 || descriptorDataType(&entryFunction->type) != DATA_TYPE_UNIT) {
         return COMPILER_INTERNAL_ERROR;
     }
 
@@ -7146,8 +6776,7 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program,
     generator.program = outProgram;
     generator.sourceProgram = program;
 
-    IntermediateInstruction createFrameInstruction =
-        fillInstruction(INTERMEDIATE_CREATE_FRAME, 0, entryFunction->location);
+    IntermediateInstruction createFrameInstruction = fillInstruction(INTERMEDIATE_CREATE_FRAME, 0, entryFunction->location);
 
     CompilerStatus status = intermediateProgramAppend(generator.program, &createFrameInstruction);
     if (status != COMPILER_OK) {
@@ -7161,8 +6790,7 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program,
         return COMPILER_INTERNAL_ERROR;
     }
 
-    IntermediateInstruction callInstruction =
-        fillInstruction(INTERMEDIATE_CALL, 1, entryFunction->location);
+    IntermediateInstruction callInstruction = fillInstruction(INTERMEDIATE_CALL, 1, entryFunction->location);
     callInstruction.operands[0] = entryLabel;
 
     status = intermediateProgramAppend(generator.program, &callInstruction);
@@ -7171,8 +6799,7 @@ CompilerStatus intermediateCodeGenerate(const SourceProgram *program,
         return status;
     }
 
-    IntermediateInstruction exitInstruction =
-        fillInstruction(INTERMEDIATE_EXIT, 1, entryFunction->location);
+    IntermediateInstruction exitInstruction = fillInstruction(INTERMEDIATE_EXIT, 1, entryFunction->location);
     exitInstruction.operands[0].kind = INTERMEDIATE_OPERAND_INT;
     exitInstruction.operands[0].value.intValue = 0;
 
