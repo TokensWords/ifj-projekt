@@ -1,6 +1,6 @@
 /*
  * Project: IFJ26 compiler
- * Authors: xhajeka00
+ * Authors: Albert Hajek xhajeka00
  * AI-assisted scaffold.
  * Prompt: Implement intermediate-code helpers and a generator boundary.
  */
