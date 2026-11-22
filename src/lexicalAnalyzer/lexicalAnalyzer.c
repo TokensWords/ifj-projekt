@@ -41,7 +41,7 @@ enum State {
     ZERO_CHECK_ONE_,
     INT_FINAL,
     DOUBLE,
-    COMMENT,
+    DIV_OPERATOR_FINAL,
     STRING,
     ID_FINAL2,
     INT_,
@@ -187,7 +187,7 @@ static bool isFinal(enum State state) {
             state == LESS_OP_FINAL || state == UNIFICATION_OPERATOR_FINAL ||
             state == EQUAL_OPERATOR_FINAL || state == UNDERSCORE_FINAL ||
             state == LEFT_SHARP_PAREN_FINAL || state == RIGHT_SHARP_PAREN_FINAL ||
-            state == PLUS_OPERATOR_FINAL);
+            state == PLUS_OPERATOR_FINAL || state == DIV_OPERATOR_FINAL);
 }
 
 /**
@@ -563,7 +563,7 @@ static enum State startCases(int character, LexicalAnalyzer *lexicalAnalyzer, To
         // Not sure if '/' is start of comment or real token - if inside brackets, might need it
         // slashWasPending = continuationPending
         lexicalAnalyzer->slashWasPending = lexicalAnalyzer->continuationPending;
-        return COMMENT;
+        return DIV_OPERATOR_FINAL;
     } else if (character == '"') {
         return STRING;
     } else if (character == '\n') // LF - newline
@@ -1257,7 +1257,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                 lexicalAnalyzer->lineHasToken = true;
             }
             break;
-        case COMMENT:
+        case DIV_OPERATOR_FINAL:
             if (currentChar == '/') {
                 lexicalAnalyzer->state = ONE_LINE_COMMENT;
             } else if (currentChar == '*') {
@@ -2202,15 +2202,7 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     compilerStatus = COMPILER_OK;
                 }
                 break;
-            default:
-                lexicalAnalyzer->state = START;
-                (*outToken)->type = TOKEN_EOF;
-                compilerStatus = COMPILER_OK;
-                break;
-            }
-        } else {
-            if (lexicalAnalyzer->state == COMMENT) // '/' operator
-            {
+            case DIV_OPERATOR_FINAL: // '/' operator
                 if (!beginRealToken(lexicalAnalyzer, lexicalAnalyzer->slashIndent,
                                     lexicalAnalyzer->slashWasPending)) {
                     lexicalAnalyzer->state = INVALID;
@@ -2225,7 +2217,15 @@ CompilerStatus lexicalAnalyzerNextToken(LexicalAnalyzer *lexicalAnalyzer, Token 
                     tokenAndLexemeDestroy(outToken, tokenLexeme);
                     return COMPILER_INTERNAL_ERROR;
                 }
-            } else if (lexicalAnalyzer->state == AFTER_COMMENT_CHECK) {
+                break;
+            default:
+                lexicalAnalyzer->state = START;
+                (*outToken)->type = TOKEN_EOF;
+                compilerStatus = COMPILER_OK;
+                break;
+            }
+        } else {
+            if (lexicalAnalyzer->state == AFTER_COMMENT_CHECK) {
                 if (lexicalAnalyzer->lineHasToken && lexicalAnalyzer->parenDepth == 0) {
                     lexicalAnalyzer->logicalIndentKnown = false;
                     lexicalAnalyzer->continuationPending = false;
