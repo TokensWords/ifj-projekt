@@ -542,24 +542,35 @@ int main(void) {
     assert(strcmp(forClauses->children[1]->children[0]->text, ">") == 0);
     abstractSyntaxNodeDestroy(forNode);
 
-    static const TestToken multiLineForTokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "for", 1, 1), TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 4), TEST_TOKEN(TOKEN_INDENT, NULL, 2, 5), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 2, 5), TEST_TOKEN(TOKEN_OPERATOR, "<-", 2, 7), {TOKEN_INT_LITERAL, "0", 2, 10, 0}, TEST_TOKEN(TOKEN_KEYWORD, "until", 2, 12), TEST_TOKEN(TOKEN_IDENTIFIER, "limit", 2, 18), TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 23), TEST_TOKEN(TOKEN_IDENTIFIER, "j", 3, 5), TEST_TOKEN(TOKEN_OPERATOR, "<-", 3, 7), {TOKEN_INT_LITERAL, "1", 3, 10, 1}, TEST_TOKEN(TOKEN_KEYWORD, "to", 3, 12), {TOKEN_INT_LITERAL, "10", 3, 15, 10}, TEST_TOKEN(TOKEN_KEYWORD, "by", 3, 18), {TOKEN_INT_LITERAL, "2", 3, 21, 2}, TEST_TOKEN(TOKEN_NEWLINE, NULL, 3, 22), TEST_TOKEN(TOKEN_KEYWORD, "if", 4, 5), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 4, 8), TEST_TOKEN(TOKEN_OPERATOR, "!=", 4, 10), {TOKEN_INT_LITERAL, "3", 4, 13, 3}, TEST_TOKEN(TOKEN_NEWLINE, NULL, 4, 14), TEST_TOKEN(TOKEN_KEYWORD, "if", 5, 5), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 5, 8), TEST_TOKEN(TOKEN_OPERATOR, "<", 5, 10), {TOKEN_INT_LITERAL, "8", 5, 12, 8}, TEST_TOKEN(TOKEN_NEWLINE, NULL, 5, 13), TEST_TOKEN(TOKEN_DEDENT, NULL, 6, 1), TEST_TOKEN(TOKEN_KEYWORD, "do", 6, 1), TEST_TOKEN(TOKEN_NEWLINE, NULL, 6, 3), TEST_TOKEN(TOKEN_INDENT, NULL, 7, 5), TEST_TOKEN(TOKEN_IDENTIFIER, "print", 7, 5), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 7, 10), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 7, 11), TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 7, 12), TEST_TOKEN(TOKEN_NEWLINE, NULL, 7, 13), TEST_TOKEN(TOKEN_DEDENT, NULL, 8, 1), TEST_TOKEN(TOKEN_EOF, NULL, 8, 1)};
+    static const TestToken multiLineForTokens[] = {TEST_TOKEN(TOKEN_KEYWORD, "for", 1, 1), TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 4), TEST_TOKEN(TOKEN_INDENT, NULL, 2, 5), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 2, 5), TEST_TOKEN(TOKEN_OPERATOR, "<-", 2, 7), {TOKEN_INT_LITERAL, "0", 2, 10, 0}, TEST_TOKEN(TOKEN_KEYWORD, "until", 2, 12), TEST_TOKEN(TOKEN_IDENTIFIER, "limit", 2, 18), TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 23), TEST_TOKEN(TOKEN_KEYWORD, "if", 3, 5), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 3, 8), TEST_TOKEN(TOKEN_OPERATOR, "!=", 3, 10), {TOKEN_INT_LITERAL, "3", 3, 13, 3}, TEST_TOKEN(TOKEN_NEWLINE, NULL, 3, 14), TEST_TOKEN(TOKEN_KEYWORD, "if", 4, 5), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 4, 8), TEST_TOKEN(TOKEN_OPERATOR, "<", 4, 10), {TOKEN_INT_LITERAL, "8", 4, 12, 8}, TEST_TOKEN(TOKEN_NEWLINE, NULL, 4, 13), TEST_TOKEN(TOKEN_DEDENT, NULL, 6, 1), TEST_TOKEN(TOKEN_KEYWORD, "do", 6, 1), TEST_TOKEN(TOKEN_NEWLINE, NULL, 6, 3), TEST_TOKEN(TOKEN_INDENT, NULL, 7, 5), TEST_TOKEN(TOKEN_IDENTIFIER, "print", 7, 5), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 7, 10), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 7, 11), TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 7, 12), TEST_TOKEN(TOKEN_NEWLINE, NULL, 7, 13), TEST_TOKEN(TOKEN_DEDENT, NULL, 8, 1), TEST_TOKEN(TOKEN_EOF, NULL, 8, 1)};
     forNode = NULL;
     assert(parseForTokens(multiLineForTokens, sizeof(multiLineForTokens) / sizeof(multiLineForTokens[0]), &forNode) == COMPILER_OK);
     assert(forNode->kind == ABSTRACT_SYNTAX_FOR);
     forClauses = forNode->children[0];
     assert(forClauses->kind == ABSTRACT_SYNTAX_FOR_CLAUSES);
-    assert(forClauses->childCount == 4);
+    assert(forClauses->childCount == 3);
     assert(forClauses->children[0]->kind == ABSTRACT_SYNTAX_FOR_GENERATOR);
     assert(strcmp(forClauses->children[0]->text, "i") == 0);
     assert(strcmp(forClauses->children[0]->children[0]->text, "until") == 0);
     assert(forClauses->children[0]->children[0]->childCount == 2);
-    assert(forClauses->children[1]->kind == ABSTRACT_SYNTAX_FOR_GENERATOR);
-    assert(strcmp(forClauses->children[1]->text, "j") == 0);
-    assert(forClauses->children[1]->children[0]->childCount == 3);
+    assert(forClauses->children[1]->kind == ABSTRACT_SYNTAX_FOR_GUARD);
     assert(forClauses->children[2]->kind == ABSTRACT_SYNTAX_FOR_GUARD);
-    assert(forClauses->children[3]->kind == ABSTRACT_SYNTAX_FOR_GUARD);
     assert(forNode->children[1]->kind == ABSTRACT_SYNTAX_BLOCK);
     abstractSyntaxNodeDestroy(forNode);
+
+    static const TestToken multipleForGeneratorsTokens[] = {
+        TEST_TOKEN(TOKEN_KEYWORD, "for", 1, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "i", 1, 5),
+        TEST_TOKEN(TOKEN_OPERATOR, "<-", 1, 7), TEST_TOKEN(TOKEN_IDENTIFIER, "xs", 1, 10),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "j", 1, 13), TEST_TOKEN(TOKEN_OPERATOR, "<-", 1, 15),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "ys", 1, 18), TEST_TOKEN(TOKEN_KEYWORD, "do", 1, 21),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "print", 1, 24), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 1, 29),
+        TEST_TOKEN(TOKEN_IDENTIFIER, "i", 1, 30), TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 1, 31),
+        TEST_TOKEN(TOKEN_EOF, NULL, 1, 32)};
+    forNode = NULL;
+    assert(parseForTokens(multipleForGeneratorsTokens,
+                          sizeof(multipleForGeneratorsTokens) / sizeof(multipleForGeneratorsTokens[0]),
+                          &forNode) == COMPILER_SYNTAX_ERROR);
+    assert(forNode == NULL);
 
     static const TestToken ifExpressionBlockTokens[] = {TEST_TOKEN(TOKEN_INDENT, NULL, 1, 1),         TEST_TOKEN(TOKEN_KEYWORD, "var", 1, 1),         TEST_TOKEN(TOKEN_IDENTIFIER, "x", 1, 5),         TEST_TOKEN(TOKEN_OPERATOR, "=", 1, 7),      TEST_TOKEN(TOKEN_OPERATOR, "-", 1, 9),    {TOKEN_INT_LITERAL, "5", 1, 10, 5},     TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 11),
 
