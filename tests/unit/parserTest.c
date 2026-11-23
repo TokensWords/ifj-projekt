@@ -611,6 +611,8 @@ int main(void) {
     assert(expression->children[1]->childCount == 2);
     assert(expression->children[1]->children[0]->kind == ABSTRACT_SYNTAX_VARIABLE_DECLARATION);
     assert(expression->children[1]->children[1]->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT);
+    assert(expression->children[1]->children[1]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(strcmp(expression->children[1]->children[1]->children[0]->text, "+") == 0);
     assert(expression->children[2]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
     abstractSyntaxNodeDestroy(expression);
 
@@ -642,6 +644,64 @@ int main(void) {
     assert(ifExpressionFollowingBlock->children[0]->children[0]->children[2]->kind == ABSTRACT_SYNTAX_BLOCK);
     assert(ifExpressionFollowingBlock->children[1]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
     abstractSyntaxNodeDestroy(ifExpressionFollowingBlock);
+
+    static const TestToken nestedIfExpressionBlockTokens[] = {TEST_TOKEN(TOKEN_INDENT, NULL, 1, 1), TEST_TOKEN(TOKEN_KEYWORD, "val", 1, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "n", 1, 5), TEST_TOKEN(TOKEN_OPERATOR, "=", 1, 7), TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 9), {TOKEN_BOOL_LITERAL, "true", 1, 12, 1}, TEST_TOKEN(TOKEN_KEYWORD, "then", 1, 17), TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 21), TEST_TOKEN(TOKEN_INDENT, NULL, 2, 3), TEST_TOKEN(TOKEN_KEYWORD, "if", 2, 3), {TOKEN_BOOL_LITERAL, "true", 2, 6, 1}, TEST_TOKEN(TOKEN_KEYWORD, "then", 2, 11), TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 15), TEST_TOKEN(TOKEN_INDENT, NULL, 3, 5), {TOKEN_INT_LITERAL, "1", 3, 5, 1}, TEST_TOKEN(TOKEN_NEWLINE, NULL, 3, 6), TEST_TOKEN(TOKEN_DEDENT, NULL, 4, 3), TEST_TOKEN(TOKEN_KEYWORD, "else", 4, 3), TEST_TOKEN(TOKEN_NEWLINE, NULL, 4, 7), TEST_TOKEN(TOKEN_INDENT, NULL, 5, 5), {TOKEN_INT_LITERAL, "2", 5, 5, 2}, TEST_TOKEN(TOKEN_NEWLINE, NULL, 5, 6), TEST_TOKEN(TOKEN_DEDENT, NULL, 6, 3), TEST_TOKEN(TOKEN_DEDENT, NULL, 6, 1), TEST_TOKEN(TOKEN_KEYWORD, "else", 6, 1), TEST_TOKEN(TOKEN_NEWLINE, NULL, 6, 5), TEST_TOKEN(TOKEN_INDENT, NULL, 7, 3), {TOKEN_INT_LITERAL, "3", 7, 3, 3}, TEST_TOKEN(TOKEN_NEWLINE, NULL, 7, 4), TEST_TOKEN(TOKEN_DEDENT, NULL, 8, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "print", 8, 1), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 8, 6), TEST_TOKEN(TOKEN_IDENTIFIER, "n", 8, 7), TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 8, 8), TEST_TOKEN(TOKEN_NEWLINE, NULL, 8, 9), TEST_TOKEN(TOKEN_DEDENT, NULL, 9, 1), TEST_TOKEN(TOKEN_EOF, NULL, 9, 1)};
+    AbstractSyntaxNode *nestedIfBlock = NULL;
+    assert(parseBlockTokens(nestedIfExpressionBlockTokens, sizeof(nestedIfExpressionBlockTokens) / sizeof(nestedIfExpressionBlockTokens[0]), &nestedIfBlock) == COMPILER_OK);
+    assert(nestedIfBlock->childCount == 2);
+    AbstractSyntaxNode *nestedOuterIf = nestedIfBlock->children[0]->children[0];
+    assert(nestedOuterIf->kind == ABSTRACT_SYNTAX_IF_EXPRESSION);
+    assert(nestedOuterIf->children[1]->kind == ABSTRACT_SYNTAX_BLOCK);
+    AbstractSyntaxNode *nestedInnerIf = nestedOuterIf->children[1]->children[0];
+    assert(nestedInnerIf->kind == ABSTRACT_SYNTAX_IF_EXPRESSION);
+    assert(nestedInnerIf->children[1]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(nestedInnerIf->children[1]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT);
+    assert(nestedInnerIf->children[2]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(nestedInnerIf->children[2]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT);
+    assert(nestedOuterIf->children[2]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(nestedOuterIf->children[2]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT);
+    assert(nestedIfBlock->children[1]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
+    abstractSyntaxNodeDestroy(nestedIfBlock);
+
+    static const TestToken nestedMixedIfExpressionBlockTokens[] = {TEST_TOKEN(TOKEN_INDENT, NULL, 1, 1), TEST_TOKEN(TOKEN_KEYWORD, "val", 1, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "n", 1, 5), TEST_TOKEN(TOKEN_OPERATOR, "=", 1, 7), TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 9), {TOKEN_BOOL_LITERAL, "true", 1, 12, 1}, TEST_TOKEN(TOKEN_KEYWORD, "then", 1, 17), TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 21), TEST_TOKEN(TOKEN_INDENT, NULL, 2, 3), TEST_TOKEN(TOKEN_KEYWORD, "if", 2, 3), {TOKEN_BOOL_LITERAL, "true", 2, 6, 1}, TEST_TOKEN(TOKEN_KEYWORD, "then", 2, 11), {TOKEN_INT_LITERAL, "1", 2, 16, 1}, TEST_TOKEN(TOKEN_KEYWORD, "else", 2, 18), TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 22), TEST_TOKEN(TOKEN_INDENT, NULL, 3, 5), {TOKEN_INT_LITERAL, "2", 3, 5, 2}, TEST_TOKEN(TOKEN_NEWLINE, NULL, 3, 6), TEST_TOKEN(TOKEN_DEDENT, NULL, 4, 3), TEST_TOKEN(TOKEN_DEDENT, NULL, 4, 1), TEST_TOKEN(TOKEN_KEYWORD, "else", 4, 1), {TOKEN_INT_LITERAL, "3", 4, 6, 3}, TEST_TOKEN(TOKEN_NEWLINE, NULL, 4, 7), TEST_TOKEN(TOKEN_IDENTIFIER, "print", 5, 1), TEST_TOKEN(TOKEN_LEFT_PAREN, "(", 5, 6), TEST_TOKEN(TOKEN_IDENTIFIER, "n", 5, 7), TEST_TOKEN(TOKEN_RIGHT_PAREN, ")", 5, 8), TEST_TOKEN(TOKEN_NEWLINE, NULL, 5, 9), TEST_TOKEN(TOKEN_DEDENT, NULL, 6, 1), TEST_TOKEN(TOKEN_EOF, NULL, 6, 1)};
+    AbstractSyntaxNode *nestedMixedIfBlock = NULL;
+    assert(parseBlockTokens(nestedMixedIfExpressionBlockTokens, sizeof(nestedMixedIfExpressionBlockTokens) / sizeof(nestedMixedIfExpressionBlockTokens[0]), &nestedMixedIfBlock) == COMPILER_OK);
+    assert(nestedMixedIfBlock->childCount == 2);
+    AbstractSyntaxNode *mixedOuterIf = nestedMixedIfBlock->children[0]->children[0];
+    assert(mixedOuterIf->kind == ABSTRACT_SYNTAX_IF_EXPRESSION);
+    assert(mixedOuterIf->children[1]->kind == ABSTRACT_SYNTAX_BLOCK);
+    AbstractSyntaxNode *mixedInnerIf = mixedOuterIf->children[1]->children[0];
+    assert(mixedInnerIf->kind == ABSTRACT_SYNTAX_IF_EXPRESSION);
+    assert(mixedInnerIf->children[1]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(mixedInnerIf->children[1]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT);
+    assert(mixedInnerIf->children[2]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(mixedInnerIf->children[2]->children[0]->kind == ABSTRACT_SYNTAX_EXPRESSION_STATEMENT);
+    assert(mixedOuterIf->children[2]->kind == ABSTRACT_SYNTAX_INT_LITERAL);
+    assert(nestedMixedIfBlock->children[1]->kind == ABSTRACT_SYNTAX_FUNCTION_CALL);
+    abstractSyntaxNodeDestroy(nestedMixedIfBlock);
+
+    static const TestToken ifExpressionAsBinaryOperandBlockTokens[] = {{TOKEN_INT_LITERAL, "5", 1, 1, 5}, TEST_TOKEN(TOKEN_OPERATOR, "+", 1, 3), TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 5), {TOKEN_BOOL_LITERAL, "true", 1, 8, 1}, TEST_TOKEN(TOKEN_KEYWORD, "then", 1, 13), TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 17), TEST_TOKEN(TOKEN_INDENT, NULL, 2, 3), TEST_TOKEN(TOKEN_KEYWORD, "val", 2, 3), TEST_TOKEN(TOKEN_IDENTIFIER, "a", 2, 7), TEST_TOKEN(TOKEN_OPERATOR, "=", 2, 9), {TOKEN_INT_LITERAL, "10", 2, 11, 10}, TEST_TOKEN(TOKEN_NEWLINE, NULL, 2, 13), TEST_TOKEN(TOKEN_IDENTIFIER, "a", 3, 3), TEST_TOKEN(TOKEN_OPERATOR, "+", 3, 5), {TOKEN_INT_LITERAL, "1", 3, 7, 1}, TEST_TOKEN(TOKEN_NEWLINE, NULL, 3, 8), TEST_TOKEN(TOKEN_DEDENT, NULL, 4, 1), TEST_TOKEN(TOKEN_KEYWORD, "else", 4, 1), {TOKEN_INT_LITERAL, "22", 4, 6, 22}, TEST_TOKEN(TOKEN_EOF, NULL, 4, 8)};
+    expression = NULL;
+    assert(parseExpressionTokens(ifExpressionAsBinaryOperandBlockTokens, sizeof(ifExpressionAsBinaryOperandBlockTokens) / sizeof(ifExpressionAsBinaryOperandBlockTokens[0]), &expression) == COMPILER_OK);
+    assert(expression->kind == ABSTRACT_SYNTAX_EXPRESSION_BINARY);
+    assert(strcmp(expression->text, "+") == 0);
+    assert(expression->children[1]->kind == ABSTRACT_SYNTAX_IF_EXPRESSION);
+    assert(expression->children[1]->children[1]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(expression->children[1]->children[1]->childCount == 2);
+    abstractSyntaxNodeDestroy(expression);
+
+    static const TestToken nestedIfBranchesMixedLayoutsTokens[] = {TEST_TOKEN(TOKEN_INDENT, NULL, 1, 1), TEST_TOKEN(TOKEN_KEYWORD, "val", 1, 1), TEST_TOKEN(TOKEN_IDENTIFIER, "n", 1, 5), TEST_TOKEN(TOKEN_OPERATOR, "=", 1, 7), TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 9), {TOKEN_BOOL_LITERAL, "true", 1, 12, 1}, TEST_TOKEN(TOKEN_KEYWORD, "then", 1, 17), TEST_TOKEN(TOKEN_NEWLINE, NULL, 1, 21), TEST_TOKEN(TOKEN_INDENT, NULL, 2, 3), TEST_TOKEN(TOKEN_KEYWORD, "if", 2, 3), {TOKEN_BOOL_LITERAL, "true", 2, 6, 1}, TEST_TOKEN(TOKEN_KEYWORD, "then", 2, 11), {TOKEN_INT_LITERAL, "1", 2, 16, 1}, TEST_TOKEN(TOKEN_KEYWORD, "else", 2, 18), {TOKEN_INT_LITERAL, "2", 2, 23, 2}, TEST_TOKEN(TOKEN_DEDENT, NULL, 3, 1), TEST_TOKEN(TOKEN_KEYWORD, "else", 3, 1), TEST_TOKEN(TOKEN_NEWLINE, NULL, 3, 5), TEST_TOKEN(TOKEN_INDENT, NULL, 4, 3), TEST_TOKEN(TOKEN_KEYWORD, "if", 4, 3), {TOKEN_BOOL_LITERAL, "false", 4, 6, 0}, TEST_TOKEN(TOKEN_KEYWORD, "then", 4, 12), TEST_TOKEN(TOKEN_NEWLINE, NULL, 4, 16), TEST_TOKEN(TOKEN_INDENT, NULL, 5, 5), {TOKEN_INT_LITERAL, "3", 5, 5, 3}, TEST_TOKEN(TOKEN_NEWLINE, NULL, 5, 6), TEST_TOKEN(TOKEN_DEDENT, NULL, 6, 3), TEST_TOKEN(TOKEN_KEYWORD, "else", 6, 3), {TOKEN_INT_LITERAL, "4", 6, 8, 4}, TEST_TOKEN(TOKEN_DEDENT, NULL, 7, 1), TEST_TOKEN(TOKEN_DEDENT, NULL, 7, 1), TEST_TOKEN(TOKEN_EOF, NULL, 7, 1)};
+    AbstractSyntaxNode *mixedLayoutsBlock = NULL;
+    assert(parseBlockTokens(nestedIfBranchesMixedLayoutsTokens, sizeof(nestedIfBranchesMixedLayoutsTokens) / sizeof(nestedIfBranchesMixedLayoutsTokens[0]), &mixedLayoutsBlock) == COMPILER_OK);
+    AbstractSyntaxNode *mixedLayoutsOuterIf = mixedLayoutsBlock->children[0]->children[0];
+    assert(mixedLayoutsOuterIf->kind == ABSTRACT_SYNTAX_IF_EXPRESSION);
+    assert(mixedLayoutsOuterIf->children[1]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(mixedLayoutsOuterIf->children[2]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(mixedLayoutsOuterIf->children[1]->children[0]->kind == ABSTRACT_SYNTAX_IF_EXPRESSION);
+    assert(mixedLayoutsOuterIf->children[2]->children[0]->kind == ABSTRACT_SYNTAX_IF_EXPRESSION);
+    assert(mixedLayoutsOuterIf->children[1]->children[0]->children[1]->kind == ABSTRACT_SYNTAX_BLOCK);
+    assert(mixedLayoutsOuterIf->children[2]->children[0]->children[1]->kind == ABSTRACT_SYNTAX_BLOCK);
+    abstractSyntaxNodeDestroy(mixedLayoutsBlock);
 
     static const TestToken ifExpressionAsOperandTokens[] = {{TOKEN_INT_LITERAL, "1", 1, 1, 1}, TEST_TOKEN(TOKEN_OPERATOR, "+", 1, 3), TEST_TOKEN(TOKEN_KEYWORD, "if", 1, 5), {TOKEN_BOOL_LITERAL, "true", 1, 8, 1}, TEST_TOKEN(TOKEN_KEYWORD, "then", 1, 13), {TOKEN_INT_LITERAL, "2", 1, 18, 2}, TEST_TOKEN(TOKEN_KEYWORD, "else", 1, 20), {TOKEN_INT_LITERAL, "3", 1, 25, 3}, TEST_TOKEN(TOKEN_OPERATOR, "*", 1, 27), {TOKEN_INT_LITERAL, "4", 1, 29, 4}, TEST_TOKEN(TOKEN_EOF, NULL, 1, 30)};
     expression = NULL;

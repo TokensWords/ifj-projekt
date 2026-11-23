@@ -44,6 +44,12 @@ static CompilerStatus parseIfExpressionBranch(SyntaxAnalyzer *syntaxAnalyzer, Ab
         if (status != COMPILER_OK) {
             return status;
         }
+        if ((*outNode)->childCount > 0) {
+            AbstractSyntaxNode *lastStatement = (*outNode)->children[(*outNode)->childCount - 1];
+            if (lastStatement->kind == ABSTRACT_SYNTAX_IF && lastStatement->childCount == 3) {
+                lastStatement->kind = ABSTRACT_SYNTAX_IF_EXPRESSION;
+            }
+        }
         if (isElseBranch) {
             syntaxAnalyzer->newlineConsumed = true;
         }
