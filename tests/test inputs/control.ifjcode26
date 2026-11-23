@@ -1,0 +1,133 @@
+.IFJcode26
+CREATEFRAME
+CALL $function_controlExample
+EXIT int@0
+LABEL $function_controlExample
+PUSHFRAME
+DEFVAR LF@$variable1
+DEFVAR LF@$variable2
+DEFVAR LF@$temporary0
+DEFVAR LF@$temporary1
+DEFVAR LF@$temporary2
+DEFVAR LF@$temporary3
+DEFVAR LF@$temporary4
+DEFVAR LF@$variable3
+DEFVAR LF@$variable4
+DEFVAR LF@$variable5
+DEFVAR LF@$temporary5
+DEFVAR LF@$temporary6
+DEFVAR LF@$temporary7
+DEFVAR LF@$temporary8
+DEFVAR LF@$temporary9
+DEFVAR LF@$temporary10
+DEFVAR LF@$temporary11
+DEFVAR LF@$variable6
+DEFVAR LF@$temporary12
+DEFVAR LF@$temporary13
+DEFVAR LF@$temporary14
+DEFVAR LF@$temporary15
+DEFVAR LF@$temporary16
+DEFVAR LF@$variable7
+DEFVAR LF@$temporary17
+DEFVAR LF@$temporary18
+DEFVAR LF@$temporary19
+MOVE LF@$variable1 int@9
+MOVE LF@$variable2 int@2
+LT LF@$temporary1 LF@$variable1 int@0
+JUMPIFEQ $label0 LF@$temporary1 bool@false
+MUL LF@$temporary2 int@1 int@-1
+MOVE LF@$temporary0 LF@$temporary2
+JUMP $label1
+LABEL $label0
+EQ LF@$temporary4 LF@$variable1 int@0
+JUMPIFEQ $label2 LF@$temporary4 bool@false
+MOVE LF@$temporary3 int@0
+JUMP $label3
+LABEL $label2
+MOVE LF@$temporary3 int@1
+LABEL $label3
+MOVE LF@$temporary0 LF@$temporary3
+LABEL $label1
+MOVE LF@$variable3 LF@$temporary0
+MOVE LF@$variable4 int@0
+MOVE LF@$variable5 int@1
+MOVE LF@$temporary5 LF@$variable1
+MOVE LF@$temporary6 LF@$variable2
+JUMPIFNEQ $label4 LF@$temporary6 int@0
+EXIT int@40
+LABEL $label4
+LT LF@$temporary8 int@0 LF@$temporary6
+LABEL $label5
+JUMPIFEQ $label7 LF@$temporary8 bool@true
+LT LF@$temporary7 LF@$variable5 LF@$temporary5
+JUMP $label6
+LABEL $label7
+LT LF@$temporary7 LF@$temporary5 LF@$variable5
+LABEL $label6
+JUMPIFEQ $label9 LF@$temporary7 bool@true
+EQ LF@$temporary9 LF@$variable5 int@5
+NOT LF@$temporary9 LF@$temporary9
+JUMPIFEQ $label8 LF@$temporary9 bool@false
+LT LF@$temporary10 LF@$variable5 int@9
+JUMPIFEQ $label8 LF@$temporary10 bool@false
+ADD LF@$temporary11 LF@$variable4 LF@$variable5
+MOVE LF@$variable4 LF@$temporary11
+LABEL $label8
+JUMPIFEQ $label9 LF@$variable5 LF@$temporary5
+ADD LF@$variable5 LF@$variable5 LF@$temporary6
+JUMP $label5
+LABEL $label9
+WRITE string@sign:\032
+WRITE LF@$variable3
+WRITE string@\010sum:\032
+WRITE LF@$variable4
+WRITE string@\010descending:
+MOVE LF@$variable6 int@6
+MOVE LF@$temporary12 int@2
+MUL LF@$temporary14 int@2 int@-1
+MOVE LF@$temporary13 LF@$temporary14
+JUMPIFNEQ $label10 LF@$temporary13 int@0
+EXIT int@40
+LABEL $label10
+LT LF@$temporary16 int@0 LF@$temporary13
+LABEL $label11
+JUMPIFEQ $label13 LF@$temporary16 bool@true
+LT LF@$temporary15 LF@$variable6 LF@$temporary12
+JUMP $label12
+LABEL $label13
+LT LF@$temporary15 LF@$temporary12 LF@$variable6
+LABEL $label12
+JUMPIFEQ $label15 LF@$temporary15 bool@true
+WRITE string@\032
+WRITE LF@$variable6
+LABEL $label14
+JUMPIFEQ $label15 LF@$variable6 LF@$temporary12
+ADD LF@$variable6 LF@$variable6 LF@$temporary13
+JUMP $label11
+LABEL $label15
+WRITE string@\010
+WRITE string@exclusive:
+MOVE LF@$variable7 int@0
+MOVE LF@$temporary17 int@3
+LABEL $label16
+LT LF@$temporary19 int@0 int@1
+LABEL $label17
+JUMPIFEQ $label19 LF@$temporary19 bool@true
+LT LF@$temporary18 LF@$variable7 LF@$temporary17
+JUMP $label18
+LABEL $label19
+LT LF@$temporary18 LF@$temporary17 LF@$variable7
+LABEL $label18
+JUMPIFEQ $label21 LF@$temporary18 bool@true
+JUMPIFEQ $label21 LF@$variable7 LF@$temporary17
+WRITE string@\032
+WRITE LF@$variable7
+LABEL $label20
+JUMPIFEQ $label21 LF@$variable7 LF@$temporary17
+ADD LF@$variable7 LF@$variable7 int@1
+JUMP $label17
+LABEL $label21
+WRITE string@\010
+PUSHS nil@nil
+POPFRAME
+RETURN
