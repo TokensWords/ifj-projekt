@@ -72,9 +72,9 @@ typedef enum {
     ABSTRACT_SYNTAX_IF,
 
     /**
-     * Represents an if expression in assigment statement
-     * @children - condition, then expression, else expression. example: [condition, thenExpression,
-     * elseExpression]
+     * Represents an if expression
+     * @children - condition, then branch, else branch. A branch is either an expression or an
+     * AST_BLOCK when written across multiple lines. example: [condition, thenBranch, elseBranch]
      */
     ABSTRACT_SYNTAX_IF_EXPRESSION,
 
@@ -261,7 +261,6 @@ void abstractSyntaxNodeDestroy(AbstractSyntaxNode *node);
 CompilerStatus abstractSyntaxNodeSetText(AbstractSyntaxNode *node, const char *text);
 CompilerStatus abstractSyntaxNodeAddChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *child);
 CompilerStatus abstractSyntaxNodeSetInferredType(AbstractSyntaxNode *node, DataType type);
-CompilerStatus abstractSyntaxNodeCopyInferredType(AbstractSyntaxNode *node,
-                                                  const TypeDescriptor *type);
+CompilerStatus abstractSyntaxNodeCopyInferredType(AbstractSyntaxNode *node, const TypeDescriptor *type);
 CompilerStatus abstractSyntaxNodeSetVariableType(AbstractSyntaxNode *node, DataType type);
 #endif

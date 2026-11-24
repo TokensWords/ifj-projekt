@@ -1,0 +1,119 @@
+.IFJcode26
+CREATEFRAME
+CALL $function_factorialExample
+EXIT int@0
+LABEL $function_factorialIterative
+PUSHFRAME
+DEFVAR LF@$variable1
+DEFVAR LF@$variable2
+DEFVAR LF@$variable3
+DEFVAR LF@$temporary0
+DEFVAR LF@$temporary1
+DEFVAR LF@$temporary2
+DEFVAR LF@$temporary3
+POPS LF@$variable1
+MOVE LF@$variable2 int@1
+MOVE LF@$variable3 int@2
+LABEL $label0
+LT LF@$temporary0 LF@$variable3 LF@$variable1
+EQ LF@$temporary1 LF@$variable3 LF@$variable1
+OR LF@$temporary0 LF@$temporary0 LF@$temporary1
+JUMPIFEQ $label1 LF@$temporary0 bool@false
+MUL LF@$temporary2 LF@$variable2 LF@$variable3
+MOVE LF@$variable2 LF@$temporary2
+ADD LF@$temporary3 LF@$variable3 int@1
+MOVE LF@$variable3 LF@$temporary3
+JUMP $label0
+LABEL $label1
+PUSHS LF@$variable2
+POPFRAME
+RETURN
+LABEL $function_factorialRecursive
+PUSHFRAME
+DEFVAR LF@$variable4
+DEFVAR LF@$temporary4
+DEFVAR LF@$temporary5
+DEFVAR LF@$temporary6
+DEFVAR LF@$temporary7
+DEFVAR LF@$variable5
+DEFVAR LF@$temporary8
+DEFVAR LF@$variable6
+DEFVAR LF@$temporary9
+POPS LF@$variable4
+LT LF@$temporary5 LF@$variable4 int@1
+EQ LF@$temporary6 LF@$variable4 int@1
+OR LF@$temporary5 LF@$temporary5 LF@$temporary6
+JUMPIFEQ $label2 LF@$temporary5 bool@false
+PUSHS int@1
+POPFRAME
+RETURN
+MOVE LF@$temporary4 nil@nil
+JUMP $label3
+LABEL $label2
+SUB LF@$temporary7 LF@$variable4 int@1
+MOVE LF@$variable5 LF@$temporary7
+PUSHS LF@$variable5
+CREATEFRAME
+CALL $function_factorialRecursive
+POPS LF@$temporary8
+MOVE LF@$variable6 LF@$temporary8
+MUL LF@$temporary9 LF@$variable4 LF@$variable6
+PUSHS LF@$temporary9
+POPFRAME
+RETURN
+MOVE LF@$temporary4 nil@nil
+LABEL $label3
+PUSHS LF@$temporary4
+POPFRAME
+RETURN
+LABEL $function_factorialExample
+PUSHFRAME
+DEFVAR LF@$temporary10
+DEFVAR LF@$temporary11
+DEFVAR LF@$variable7
+DEFVAR LF@$temporary12
+DEFVAR LF@$temporary13
+DEFVAR LF@$temporary14
+DEFVAR LF@$variable8
+DEFVAR LF@$temporary15
+DEFVAR LF@$variable9
+READ LF@$temporary10 int
+JUMPIFEQ $label5 LF@$temporary10 nil@nil
+LT LF@$temporary11 LF@$temporary10 int@-2147483648
+JUMPIFEQ $label5 LF@$temporary11 bool@true
+GT LF@$temporary11 LF@$temporary10 int@2147483647
+JUMPIFNEQ $label4 LF@$temporary11 bool@true
+LABEL $label5
+MOVE LF@$temporary10 int@0
+LABEL $label4
+MOVE LF@$variable7 LF@$temporary10
+LT LF@$temporary12 LF@$variable7 int@0
+JUMPIFEQ $label6 LF@$temporary12 bool@false
+WRITE string@Use\032an\032integer\032from\0320\032to\03212.\010
+JUMP $label7
+LABEL $label6
+GT LF@$temporary13 LF@$variable7 int@12
+JUMPIFEQ $label8 LF@$temporary13 bool@false
+WRITE string@Use\032an\032integer\032from\0320\032to\03212.\010
+JUMP $label9
+LABEL $label8
+PUSHS LF@$variable7
+CREATEFRAME
+CALL $function_factorialIterative
+POPS LF@$temporary14
+MOVE LF@$variable8 LF@$temporary14
+PUSHS LF@$variable7
+CREATEFRAME
+CALL $function_factorialRecursive
+POPS LF@$temporary15
+MOVE LF@$variable9 LF@$temporary15
+WRITE string@iterative:\032
+WRITE LF@$variable8
+WRITE string@\010recursive:\032
+WRITE LF@$variable9
+WRITE string@\010
+LABEL $label9
+LABEL $label7
+PUSHS nil@nil
+POPFRAME
+RETURN

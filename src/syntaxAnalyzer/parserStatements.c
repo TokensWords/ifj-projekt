@@ -430,6 +430,7 @@ CompilerStatus parseFor(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **out
     }
 
     bool headerIndented = false;
+    size_t generatorCount = 0;
     status = advanceToken(syntaxAnalyzer);
     if (status != COMPILER_OK) {
         goto cleanup;
@@ -453,7 +454,14 @@ CompilerStatus parseFor(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **out
         if (currentIsWord(syntaxAnalyzer, SYNTAX_KW_IF)) {
             status = parseForGuard(syntaxAnalyzer, &clause);
         } else if (isIdentifierToken(syntaxAnalyzer->currentToken)) {
+            if (generatorCount > 0) {
+                status = COMPILER_SYNTAX_ERROR;
+                goto cleanup;
+            }
             status = parseForGenerator(syntaxAnalyzer, &clause);
+            if (status == COMPILER_OK) {
+                generatorCount++;
+            }
         } else {
             status = COMPILER_SYNTAX_ERROR;
         }
@@ -497,7 +505,7 @@ CompilerStatus parseFor(SyntaxAnalyzer *syntaxAnalyzer, AbstractSyntaxNode **out
         }
     }
 
-    if (clauses->childCount == 0) {
+    if (generatorCount != 1) {
         status = COMPILER_SYNTAX_ERROR;
         goto cleanup;
     }

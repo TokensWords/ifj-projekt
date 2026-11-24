@@ -1,0 +1,47 @@
+.IFJcode26
+CREATEFRAME
+CALL $function_funexpExample
+EXIT int@0
+LABEL $function_traced
+PUSHFRAME
+DEFVAR LF@$variable1
+POPS LF@$variable1
+WRITE string@[
+WRITE LF@$variable1
+WRITE string@]
+PUSHS LF@$variable1
+POPFRAME
+RETURN
+LABEL $function_funexpExample
+PUSHFRAME
+DEFVAR LF@$temporary0
+DEFVAR LF@$temporary1
+DEFVAR LF@$temporary2
+DEFVAR LF@$temporary3
+DEFVAR LF@$temporary4
+DEFVAR LF@$temporary5
+DEFVAR LF@$variable2
+DEFVAR LF@$temporary6
+PUSHS int@2
+CREATEFRAME
+CALL $function_traced
+POPS LF@$temporary0
+PUSHS int@4
+CREATEFRAME
+CALL $function_traced
+POPS LF@$temporary1
+ADD LF@$temporary2 LF@$temporary1 int@1
+PUSHS LF@$temporary2
+CREATEFRAME
+CALL $function_traced
+POPS LF@$temporary3
+MUL LF@$temporary4 int@3 LF@$temporary3
+ADD LF@$temporary5 LF@$temporary0 LF@$temporary4
+MOVE LF@$variable2 LF@$temporary5
+WRITE string@\010result:\032
+INT2STR LF@$temporary6 LF@$variable2
+WRITE LF@$temporary6
+WRITE string@\010
+PUSHS nil@nil
+POPFRAME
+RETURN
