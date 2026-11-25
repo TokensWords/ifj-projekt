@@ -1,6 +1,12 @@
-/*
- * Project: IFJ26 compiler
- * Authors: Václav Krytinář xkrytiv00
+/**
+ * @file bst.h
+ * @brief Declares the generic AVL-tree interface and tree helpers.
+ *
+ * @details The tree stores opaque keys and data, orders keys using a caller-
+ * supplied comparator, and invokes an optional callback when entries are
+ * removed or destroyed. The recursive and balancing functions are exposed
+ * for use by this module's implementation.
+ * @author Václav Krytinář xkrytiv00
  */
 
 #ifndef BST_H

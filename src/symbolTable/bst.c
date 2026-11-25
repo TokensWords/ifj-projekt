@@ -1,6 +1,11 @@
-/*
- * Project: IFJ26 compiler
- * Authors: Václav Krytinář xkrytiv00
+/**
+ * @file bst.c
+ * @brief Implements the generic AVL search tree.
+ *
+ * @details Provides insertion, removal, lookup, node cleanup, and AVL
+ * rotations and height balancing. Tree keys and data are opaque; removal
+ * callbacks control cleanup of the associated values.
+ * @author Václav Krytinář xkrytiv00
  */
 
 #include "bst.h"

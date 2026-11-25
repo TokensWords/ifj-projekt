@@ -1,6 +1,11 @@
-/*
- * Project: IFJ26 compiler
- * Authors: Václav Krytinář xkrytiv00
+/**
+ * @file symtablePrivate.h
+ * @brief Internal declarations shared by symbol-table implementation files.
+ *
+ * @details Declares key comparison, key construction, cleanup callbacks, and
+ * remove-list support used to implement scoped symbol storage. This header is
+ * intended for the symbol-table implementation, not general clients.
+ * @author Václav Krytinář xkrytiv00
  */
 
 #ifndef SYMBOL_TABLE_PRIVATE_H

@@ -1,7 +1,11 @@
-/*
- * Project: IFJ26 compiler
- * Authors: Václav Krytinář xkrytiv00
- * This file intentionally contains no AI-generated tree implementation.
+/**
+ * @file symtable.c
+ * @brief Implements scoped symbol-table operations.
+ *
+ * @details Stores symbols in an AVL tree keyed by identifier and scope depth.
+ * Tracks scope insertions so leaving a scope removes its symbols and releases
+ * the associated symbol data.
+ * @author Václav Krytinář xkrytiv00
  */
 
 #include "symtable.h"

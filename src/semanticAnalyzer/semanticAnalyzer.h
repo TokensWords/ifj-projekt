@@ -1,8 +1,12 @@
-/*
- * Project: IFJ26 compiler
- * Authors: Václav Krytinář xkrytiv00
- * AI-assisted scaffold.
- * Prompt: Define semantic-analysis inputs, outputs, and status reporting.
+/**
+ * @file semanticAnalyzer.h
+ * @brief Public interface for semantic analysis.
+ *
+ * @details Declares semantic-analysis operations, type-resolution helpers, and
+ * the opaque state used while checking a parsed program. Analysis annotates
+ * the caller-owned abstract syntax tree and reports errors as CompilerStatus
+ * values.
+ * @author Václav Krytinář xkrytiv00
  */
 
 #ifndef SEMANTIC_ANALYZER_H
@@ -90,9 +94,10 @@ CompilerStatus semAnalListsSmaller(SemAnalData *data);
 void semAnalDataDestroy(SemAnalData *data);
 
 /**
- * @brief goes through functions in AST and checks semantics
- * @param program sorce program AST got from syntax analyser
- * @return status of the program - error codes
+ * @brief Analyzes a parsed source program and annotates its abstract syntax tree.
+ * @param program The parsed program to analyze. The caller retains ownership.
+ * @return COMPILER_OK on success, or the status describing the semantic or
+ * internal error.
  */
 CompilerStatus semanticAnalyzerAnalyze(SourceProgram *program);
 
@@ -210,12 +215,76 @@ CompilerStatus semAnalDefineFunction(AbstractSyntaxNode *functionNode, SemAnalDa
 CompilerStatus semAnalDeclareParameter(AbstractSyntaxNode *parameterNode, SemAnalData *data);
 
 /**
- * @brief Resolves the statements in a block.
+ * @brief Resolves the statements and inferred result type of a block.
  * @param blockNode The block AST node to resolve.
+ * @param data The semantic-analysis data to use.
+ * @param expected The expected result type, or NULL when there is no contextual type.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *data, TypeDescriptor *expected);
+
+/**
+ * @brief Sets the inferred type of a list node from its element type.
+ * @param node The AST node whose inferred list type is to be set.
+ * @param elementType The type of each element in the list.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalSetListType(AbstractSyntaxNode *node, const TypeDescriptor *elementType);
+
+/**
+ * @brief Checks whether a type descriptor represents a list without a known element type.
+ * @param type The type descriptor to inspect; must not be NULL.
+ * @return true if type is a list with no element type, otherwise false.
+ */
+bool semAnalIsUntypedList(const TypeDescriptor *type);
+
+/**
+ * @brief Applies an expected list type to a node whose list element type is unknown.
+ * @param node The AST node to update.
+ * @param expected The expected type descriptor, containing one list element type.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalApplyListContext(AbstractSyntaxNode *node, const TypeDescriptor *expected);
+
+/**
+ * @brief Checks whether a node is a call to the list constructor.
+ * @param node The AST node to inspect.
+ * @return true if node represents a call whose callee is the identifier "List".
+ */
+bool semAnalIsListConstructor(const AbstractSyntaxNode *node);
+
+/**
+ * @brief Checks whether a node is a list-concatenation expression.
+ * @param node The AST node to inspect.
+ * @return true if node is a binary expression using the "++" operator.
+ */
+bool semAnalIsListConcatenation(const AbstractSyntaxNode *node);
+
+/**
+ * @brief Resolves a node using an expected type to infer list element types.
+ * @param node The AST node to resolve.
+ * @param expected The expected type, or NULL if no contextual type is available.
+ * @param data The semantic-analysis data to use.
+ * @param mismatchStatus The status to return when the resolved value does not match the expected type.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveWithListContext(AbstractSyntaxNode *node, TypeDescriptor *expected, SemAnalData *data, CompilerStatus mismatchStatus);
+
+/**
+ * @brief Resolves the expressions in a range and checks their bounds.
+ * @param node The range-expression AST node to resolve.
  * @param data The semantic-analysis data to use.
  * @return status of the program - error codes
  */
-CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *data);
+CompilerStatus semAnalResolveRange(AbstractSyntaxNode *node, SemAnalData *data);
+
+/**
+ * @brief Resolves a list-indexing call and determines the element type.
+ * @param call The call AST node, with a list receiver and one integer index.
+ * @param data The semantic-analysis data to use.
+ * @return status of the program - error codes
+ */
+CompilerStatus semAnalResolveListAccess(AbstractSyntaxNode *call, SemAnalData *data);
 
 /**
  * @brief Resolves an AST node and performs semantic checks.
