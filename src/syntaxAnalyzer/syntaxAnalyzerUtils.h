@@ -14,72 +14,143 @@
 #include "abstractSyntaxTree.h"
 #include "lexicalAnalyzer.h"
 
-/** @brief State holder representing parser.
- * @newlineConsumed is needed to parse inline 'if' expressions correctly, because
- * it's body expression can be on a new line.
- */
+/** @brief Parser state and its buffered tokens. */
 typedef struct SyntaxAnalyzer {
     LexicalAnalyzer *lexicalAnalyzer;
     Token *currentToken;
     Token *nextToken;
-    bool newlineConsumed;
+    bool newlineConsumed; /**< Tracks a newline already consumed by expression parsing. */
 } SyntaxAnalyzer;
 
 /* --- Loading and Advancing Tokens Functions --- */
 
-/** @brief If currentToken is NULL, load next token from lexicalAnalyzer, else does nothing. */
+/**
+ * @brief Loads the current token if the buffer is empty.
+ * @param syntaxAnalyzer The syntax analyzer to use.
+ * @return COMPILER_OK on success, or the corresponding compiler error code.
+ */
 CompilerStatus ensureCurrentToken(SyntaxAnalyzer *syntaxAnalyzer);
 
-/** @brief If nextToken is NULL, runs ensureCurrentToken then loads next one from lexicalAnalyzer,
- * else does nothing. */
+/**
+ * @brief Loads the current token if needed and buffers the next token.
+ * @param syntaxAnalyzer The syntax analyzer to use.
+ * @return COMPILER_OK on success, or the corresponding compiler error code.
+ * @note At EOF, the next token stays empty.
+ */
 CompilerStatus ensureNextToken(SyntaxAnalyzer *syntaxAnalyzer);
 
-/** @brief Consumes the current token and loads next. */
+/**
+ * @brief Destroys the current token and replaces it with the next one.
+ * @param syntaxAnalyzer The syntax analyzer to use.
+ * @return COMPILER_OK on success, COMPILER_SYNTAX_ERROR at EOF, or a token read error.
+ * @note If reading fails, the current token may be NULL.
+ */
 CompilerStatus advanceToken(SyntaxAnalyzer *syntaxAnalyzer);
 
-/** @brief Consumes consecutive newline tokens. */
+/**
+ * @brief Consumes consecutive newline tokens.
+ * @param syntaxAnalyzer The syntax analyzer to use.
+ * @return COMPILER_OK with the first non-newline token buffered, or a token read error.
+ */
 CompilerStatus skipNewlines(SyntaxAnalyzer *syntaxAnalyzer);
 
 /* --- Current Token Validation Functions --- */
 
-/** @brief Tests the current token's lexeme without consuming it. */
+/**
+ * @brief Compares the buffered token's spelling to a word.
+ * @param syntaxAnalyzer The syntax analyzer to use.
+ * @param word NUL-terminated spelling to match.
+ * @return True if the current token has that spelling, or false otherwise.
+ * @note The check uses the token text only.
+ */
 bool currentIsWord(const SyntaxAnalyzer *syntaxAnalyzer, const char *word);
 
-/** @brief Tests the current token's operator spelling without consuming it. */
+/**
+ * @brief Compares the buffered token's spelling to an operator.
+ * @param syntaxAnalyzer The syntax analyzer to use.
+ * @param operatorText NUL-terminated operator spelling to match.
+ * @return True if the current token has that spelling, or false otherwise.
+ * @note The check uses the token text only.
+ */
 bool currentIsOperator(const SyntaxAnalyzer *syntaxAnalyzer, const char *operatorText);
 
-/** @brief Tests the current token category without consuming it. */
+/**
+ * @brief Checks the category of the buffered current token.
+ * @param syntaxAnalyzer The syntax analyzer to use.
+ * @param type Expected token category.
+ * @return True if a current token is buffered and has the given category.
+ */
 bool currentIsType(const SyntaxAnalyzer *syntaxAnalyzer, TokenType type);
 
-/** @brief Requires the current lexeme to match word and consumes it. */
+/**
+ * @brief Loads the current token if needed and consumes it when its spelling matches.
+ * @param syntaxAnalyzer The syntax analyzer to use.
+ * @param word NUL-terminated spelling to match.
+ * @return COMPILER_OK on success, COMPILER_SYNTAX_ERROR on a mismatch or at EOF,
+ *     or a token read error.
+ */
 CompilerStatus expectWord(SyntaxAnalyzer *syntaxAnalyzer, const char *word);
 
-/** @brief Requires the current token type and consumes the token. */
+/**
+ * @brief Loads the current token if needed and consumes it when its category matches.
+ * @param syntaxAnalyzer The syntax analyzer to use.
+ * @param type Expected token category.
+ * @return COMPILER_OK on success, COMPILER_SYNTAX_ERROR on a mismatch or at EOF,
+ *     or a token read error.
+ */
 CompilerStatus expectType(SyntaxAnalyzer *syntaxAnalyzer, TokenType type);
 
 /* --- Token Validation Functions --- */
 
-/** @brief Returns whether token is a valid identifier token with a lexeme. */
+/**
+ * @brief Checks for an identifier token with a lexeme.
+ * @param token The token to check. Can be NULL.
+ * @return True if the token is a TOKEN_IDENTIFIER and has a lexeme.
+ */
 bool isIdentifierToken(const Token *token);
 
-/** @brief Tests whether a token has the given lexeme. */
+/**
+ * @brief Compares a token's lexeme with the given text.
+ * @param token The token to check. Can be NULL.
+ * @param text NUL-terminated spelling to match.
+ * @return True if the token has a lexeme equal to text.
+ */
 bool tokenHasText(const Token *token, const char *text);
 
-/** @brief Tests whether token terminates an expression. */
+/**
+ * @brief Checks for a delimiter that can end an expression.
+ * @param token Token to inspect. NULL is treated as a terminator.
+ * @return True for an absent token, EOF, a newline, a dedent, a comma, a semicolon,
+ *     a closing parenthesis, or the spelling `then` or `do`.
+ */
 bool isExpressionTerminator(const Token *token);
 
 /* --- AST Node Functions wrappers with guaranteed cleanup after failure --- */
 
 /**
- * @brief Appends child to parent and transfers ownership on success.
- * @note Destroys child if appending fails.
+ * @brief Adds a child node to its parent and takes ownership of the child.
+ * @param parent Node that takes ownership on success.
+ * @param child Caller-owned node to append.
+ * @return COMPILER_OK on success, or COMPILER_INTERNAL_ERROR on failure.
+ * @note If adding the child fails, this function destroys it.
  */
 CompilerStatus appendOwnedChild(AbstractSyntaxNode *parent, AbstractSyntaxNode *child);
 
-/** @brief Creates an AST node with kind and source location initialized. */
+/**
+ * @brief Creates an AST node with the given kind and source location.
+ * @param type Kind of node to create.
+ * @param location Source location to store.
+ * @return Caller-owned node, or NULL if allocation fails.
+ */
 AbstractSyntaxNode *createNode(AbstractSyntaxNodeKind type, SourceLocation location);
 
-/** @brief Copies text into the node using AST-owned storage. */
+/**
+ * @brief Copies the text and stores it in the AST node.
+ * @param node Node whose text is updated.
+ * @param text NUL-terminated source text to copy.
+ * @return COMPILER_OK on success, or COMPILER_INTERNAL_ERROR on failure.
+ * @note If copying fails, the node keeps its previous text.
+ */
 CompilerStatus setNodeText(AbstractSyntaxNode *node, const char *text);
 
 #endif

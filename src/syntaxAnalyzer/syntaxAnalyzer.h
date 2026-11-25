@@ -17,23 +17,27 @@
 #include "syntaxAnalyzerUtils.h"
 
 /**
- * @brief Creates a new syntax analyzer instance.
- * @param lexicalAnalyzer lexical analyzer provides tokes. Borrowed.
+ * @brief Creates a syntax analyzer with an empty token buffer.
+ * @param lexicalAnalyzer The lexical analyzer that provides tokens. It must stay valid
+ *     until the parser is destroyed.
+ * @return An owned syntax analyzer, or NULL if the lexer is NULL or allocation fails.
  */
 SyntaxAnalyzer *syntaxAnalyzerCreate(LexicalAnalyzer *lexicalAnalyzer);
 
 /**
- * @brief Destroys a syntax analyzer instance and it's buffered tokens.
- * @param syntaxAnalyzer the syntax analyzer to destroy. Can be NULL.
+ * @brief Releases the analyzer and its buffered tokens.
+ * @param syntaxAnalyzer The syntax analyzer to destroy. Can be NULL.
+ * @note The caller still owns the lexical analyzer.
  */
 void syntaxAnalyzerDestroy(SyntaxAnalyzer *syntaxAnalyzer);
 
 /**
- * @brief Parses a source program into an abstract syntax tree.
- * @param syntaxAnalyzer the syntax analyzer to use for parsing.
- * @param outProgram Receives an owned source program on success, set to NULL on failure.
- * @return COMPILER_OK on success else coresponding compiler error message.
- * @note Parser fails on invalid syntax programs.
+ * @brief Parses a complete source program into an abstract syntax tree.
+ * @param syntaxAnalyzer The syntax analyzer at the start of the source program.
+ * @param outProgram Receives an owned source program on success. With valid arguments,
+ *     the parser sets it to NULL before parsing.
+ * @return COMPILER_OK on success, or the corresponding compiler error code.
+ * @note The program must declare exactly one `@main` function.
  */
 CompilerStatus syntaxAnalyzerParseProgram(SyntaxAnalyzer *syntaxAnalyzer,
                                           SourceProgram **outProgram);

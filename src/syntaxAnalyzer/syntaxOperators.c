@@ -33,253 +33,44 @@ static const OperatorDefinition operators[] = {
     {EXPR_TERMINAL_RANGE_UNTIL, SYNTAX_KW_UNTIL},
     {EXPR_TERMINAL_RANGE_BY, SYNTAX_KW_BY}};
 
-/* Unspecified entries are invalid precedence relations. */
+#define S PRECEDENCE_SHIFT
+#define E PRECEDENCE_EQUAL
+#define R PRECEDENCE_REDUCE
+#define X PRECEDENCE_ERROR
+
+/* Rows are stacked terminals. Columns follow the order of ExpressionTerminal. */
+// clang-format off
 static const PrecedenceRelation precedenceTable[EXPR_TERMINAL_COUNT][EXPR_TERMINAL_COUNT] = {
-    [EXPR_TERMINAL_END] = {[EXPR_TERMINAL_OPERAND] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_LEFT_PAREN] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_ADD] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_UNARY_PLUS] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_UNARY_MINUS] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_LESS] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_GREATER] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_EQUAL] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_SHIFT},
-    [EXPR_TERMINAL_OPERAND] = {[EXPR_TERMINAL_END] = PRECEDENCE_REDUCE,
-                               [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_REDUCE,
-                               [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_REDUCE,
-                               [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_REDUCE,
-                               [EXPR_TERMINAL_ADD] = PRECEDENCE_REDUCE,
-                               [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_REDUCE,
-                               [EXPR_TERMINAL_LESS] = PRECEDENCE_REDUCE,
-                               [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_REDUCE,
-                               [EXPR_TERMINAL_GREATER] = PRECEDENCE_REDUCE,
-                               [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_REDUCE,
-                               [EXPR_TERMINAL_EQUAL] = PRECEDENCE_REDUCE,
-                               [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_REDUCE},
-    [EXPR_TERMINAL_LEFT_PAREN] = {[EXPR_TERMINAL_OPERAND] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_LEFT_PAREN] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_EQUAL,
-                                  [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_ADD] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_UNARY_PLUS] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_UNARY_MINUS] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_LESS] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_GREATER] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_EQUAL] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_SHIFT},
-    [EXPR_TERMINAL_RIGHT_PAREN] = {[EXPR_TERMINAL_END] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_ADD] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_LESS] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_GREATER] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_EQUAL] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_REDUCE},
-    [EXPR_TERMINAL_MULTIPLY] = {[EXPR_TERMINAL_OPERAND] = PRECEDENCE_SHIFT,
-                                [EXPR_TERMINAL_LEFT_PAREN] = PRECEDENCE_SHIFT,
-                                [EXPR_TERMINAL_UNARY_PLUS] = PRECEDENCE_SHIFT,
-                                [EXPR_TERMINAL_UNARY_MINUS] = PRECEDENCE_SHIFT,
-                                [EXPR_TERMINAL_END] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_ADD] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_LESS] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_GREATER] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_EQUAL] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_REDUCE},
-    [EXPR_TERMINAL_DIVIDE] = {[EXPR_TERMINAL_OPERAND] = PRECEDENCE_SHIFT,
-                              [EXPR_TERMINAL_LEFT_PAREN] = PRECEDENCE_SHIFT,
-                              [EXPR_TERMINAL_UNARY_PLUS] = PRECEDENCE_SHIFT,
-                              [EXPR_TERMINAL_UNARY_MINUS] = PRECEDENCE_SHIFT,
-                              [EXPR_TERMINAL_END] = PRECEDENCE_REDUCE,
-                              [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_REDUCE,
-                              [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_REDUCE,
-                              [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_REDUCE,
-                              [EXPR_TERMINAL_ADD] = PRECEDENCE_REDUCE,
-                              [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_REDUCE,
-                              [EXPR_TERMINAL_LESS] = PRECEDENCE_REDUCE,
-                              [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_REDUCE,
-                              [EXPR_TERMINAL_GREATER] = PRECEDENCE_REDUCE,
-                              [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_REDUCE,
-                              [EXPR_TERMINAL_EQUAL] = PRECEDENCE_REDUCE,
-                              [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_REDUCE},
-    [EXPR_TERMINAL_ADD] = {[EXPR_TERMINAL_OPERAND] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_LEFT_PAREN] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_UNARY_PLUS] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_UNARY_MINUS] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_SHIFT,
-                           [EXPR_TERMINAL_END] = PRECEDENCE_REDUCE,
-                           [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_REDUCE,
-                           [EXPR_TERMINAL_ADD] = PRECEDENCE_REDUCE,
-                           [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_REDUCE,
-                           [EXPR_TERMINAL_LESS] = PRECEDENCE_REDUCE,
-                           [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_REDUCE,
-                           [EXPR_TERMINAL_GREATER] = PRECEDENCE_REDUCE,
-                           [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_REDUCE,
-                           [EXPR_TERMINAL_EQUAL] = PRECEDENCE_REDUCE,
-                           [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_REDUCE},
-    [EXPR_TERMINAL_SUBTRACT] = {[EXPR_TERMINAL_OPERAND] = PRECEDENCE_SHIFT,
-                                [EXPR_TERMINAL_LEFT_PAREN] = PRECEDENCE_SHIFT,
-                                [EXPR_TERMINAL_UNARY_PLUS] = PRECEDENCE_SHIFT,
-                                [EXPR_TERMINAL_UNARY_MINUS] = PRECEDENCE_SHIFT,
-                                [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_SHIFT,
-                                [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_SHIFT,
-                                [EXPR_TERMINAL_END] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_ADD] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_LESS] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_GREATER] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_EQUAL] = PRECEDENCE_REDUCE,
-                                [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_REDUCE},
-    [EXPR_TERMINAL_UNARY_PLUS] = {[EXPR_TERMINAL_OPERAND] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_LEFT_PAREN] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_UNARY_PLUS] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_UNARY_MINUS] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_END] = PRECEDENCE_REDUCE,
-                                  [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_REDUCE,
-                                  [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_REDUCE,
-                                  [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_REDUCE,
-                                  [EXPR_TERMINAL_ADD] = PRECEDENCE_REDUCE,
-                                  [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_REDUCE,
-                                  [EXPR_TERMINAL_LESS] = PRECEDENCE_REDUCE,
-                                  [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_REDUCE,
-                                  [EXPR_TERMINAL_GREATER] = PRECEDENCE_REDUCE,
-                                  [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_REDUCE,
-                                  [EXPR_TERMINAL_EQUAL] = PRECEDENCE_REDUCE,
-                                  [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_REDUCE},
-    [EXPR_TERMINAL_UNARY_MINUS] = {[EXPR_TERMINAL_OPERAND] = PRECEDENCE_SHIFT,
-                                   [EXPR_TERMINAL_LEFT_PAREN] = PRECEDENCE_SHIFT,
-                                   [EXPR_TERMINAL_UNARY_PLUS] = PRECEDENCE_SHIFT,
-                                   [EXPR_TERMINAL_UNARY_MINUS] = PRECEDENCE_SHIFT,
-                                   [EXPR_TERMINAL_END] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_ADD] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_LESS] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_GREATER] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_EQUAL] = PRECEDENCE_REDUCE,
-                                   [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_REDUCE},
-    [EXPR_TERMINAL_LESS] = {[EXPR_TERMINAL_OPERAND] = PRECEDENCE_SHIFT,
-                            [EXPR_TERMINAL_LEFT_PAREN] = PRECEDENCE_SHIFT,
-                            [EXPR_TERMINAL_UNARY_PLUS] = PRECEDENCE_SHIFT,
-                            [EXPR_TERMINAL_UNARY_MINUS] = PRECEDENCE_SHIFT,
-                            [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_SHIFT,
-                            [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_SHIFT,
-                            [EXPR_TERMINAL_ADD] = PRECEDENCE_SHIFT,
-                            [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_SHIFT,
-                            [EXPR_TERMINAL_END] = PRECEDENCE_REDUCE,
-                            [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_REDUCE,
-                            [EXPR_TERMINAL_LESS] = PRECEDENCE_ERROR,
-                            [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_ERROR,
-                            [EXPR_TERMINAL_GREATER] = PRECEDENCE_ERROR,
-                            [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_ERROR,
-                            [EXPR_TERMINAL_EQUAL] = PRECEDENCE_REDUCE,
-                            [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_REDUCE},
-    [EXPR_TERMINAL_LESS_EQUAL] = {[EXPR_TERMINAL_OPERAND] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_LEFT_PAREN] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_UNARY_PLUS] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_UNARY_MINUS] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_ADD] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_SHIFT,
-                                  [EXPR_TERMINAL_END] = PRECEDENCE_REDUCE,
-                                  [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_REDUCE,
-                                  [EXPR_TERMINAL_LESS] = PRECEDENCE_ERROR,
-                                  [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_ERROR,
-                                  [EXPR_TERMINAL_GREATER] = PRECEDENCE_ERROR,
-                                  [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_ERROR,
-                                  [EXPR_TERMINAL_EQUAL] = PRECEDENCE_REDUCE,
-                                  [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_REDUCE},
-    [EXPR_TERMINAL_GREATER] = {[EXPR_TERMINAL_OPERAND] = PRECEDENCE_SHIFT,
-                               [EXPR_TERMINAL_LEFT_PAREN] = PRECEDENCE_SHIFT,
-                               [EXPR_TERMINAL_UNARY_PLUS] = PRECEDENCE_SHIFT,
-                               [EXPR_TERMINAL_UNARY_MINUS] = PRECEDENCE_SHIFT,
-                               [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_SHIFT,
-                               [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_SHIFT,
-                               [EXPR_TERMINAL_ADD] = PRECEDENCE_SHIFT,
-                               [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_SHIFT,
-                               [EXPR_TERMINAL_END] = PRECEDENCE_REDUCE,
-                               [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_REDUCE,
-                               [EXPR_TERMINAL_LESS] = PRECEDENCE_ERROR,
-                               [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_ERROR,
-                               [EXPR_TERMINAL_GREATER] = PRECEDENCE_ERROR,
-                               [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_ERROR,
-                               [EXPR_TERMINAL_EQUAL] = PRECEDENCE_REDUCE,
-                               [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_REDUCE},
-    [EXPR_TERMINAL_GREATER_EQUAL] = {[EXPR_TERMINAL_OPERAND] = PRECEDENCE_SHIFT,
-                                     [EXPR_TERMINAL_LEFT_PAREN] = PRECEDENCE_SHIFT,
-                                     [EXPR_TERMINAL_UNARY_PLUS] = PRECEDENCE_SHIFT,
-                                     [EXPR_TERMINAL_UNARY_MINUS] = PRECEDENCE_SHIFT,
-                                     [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_SHIFT,
-                                     [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_SHIFT,
-                                     [EXPR_TERMINAL_ADD] = PRECEDENCE_SHIFT,
-                                     [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_SHIFT,
-                                     [EXPR_TERMINAL_END] = PRECEDENCE_REDUCE,
-                                     [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_REDUCE,
-                                     [EXPR_TERMINAL_LESS] = PRECEDENCE_ERROR,
-                                     [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_ERROR,
-                                     [EXPR_TERMINAL_GREATER] = PRECEDENCE_ERROR,
-                                     [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_ERROR,
-                                     [EXPR_TERMINAL_EQUAL] = PRECEDENCE_REDUCE,
-                                     [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_REDUCE},
-    [EXPR_TERMINAL_EQUAL] = {[EXPR_TERMINAL_OPERAND] = PRECEDENCE_SHIFT,
-                             [EXPR_TERMINAL_LEFT_PAREN] = PRECEDENCE_SHIFT,
-                             [EXPR_TERMINAL_UNARY_PLUS] = PRECEDENCE_SHIFT,
-                             [EXPR_TERMINAL_UNARY_MINUS] = PRECEDENCE_SHIFT,
-                             [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_SHIFT,
-                             [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_SHIFT,
-                             [EXPR_TERMINAL_ADD] = PRECEDENCE_SHIFT,
-                             [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_SHIFT,
-                             [EXPR_TERMINAL_LESS] = PRECEDENCE_SHIFT,
-                             [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_SHIFT,
-                             [EXPR_TERMINAL_GREATER] = PRECEDENCE_SHIFT,
-                             [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_SHIFT,
-                             [EXPR_TERMINAL_END] = PRECEDENCE_REDUCE,
-                             [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_REDUCE,
-                             [EXPR_TERMINAL_EQUAL] = PRECEDENCE_ERROR,
-                             [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_ERROR},
-    [EXPR_TERMINAL_NOT_EQUAL] = {[EXPR_TERMINAL_OPERAND] = PRECEDENCE_SHIFT,
-                                 [EXPR_TERMINAL_LEFT_PAREN] = PRECEDENCE_SHIFT,
-                                 [EXPR_TERMINAL_UNARY_PLUS] = PRECEDENCE_SHIFT,
-                                 [EXPR_TERMINAL_UNARY_MINUS] = PRECEDENCE_SHIFT,
-                                 [EXPR_TERMINAL_MULTIPLY] = PRECEDENCE_SHIFT,
-                                 [EXPR_TERMINAL_DIVIDE] = PRECEDENCE_SHIFT,
-                                 [EXPR_TERMINAL_ADD] = PRECEDENCE_SHIFT,
-                                 [EXPR_TERMINAL_SUBTRACT] = PRECEDENCE_SHIFT,
-                                 [EXPR_TERMINAL_LESS] = PRECEDENCE_SHIFT,
-                                 [EXPR_TERMINAL_LESS_EQUAL] = PRECEDENCE_SHIFT,
-                                 [EXPR_TERMINAL_GREATER] = PRECEDENCE_SHIFT,
-                                 [EXPR_TERMINAL_GREATER_EQUAL] = PRECEDENCE_SHIFT,
-                                 [EXPR_TERMINAL_END] = PRECEDENCE_REDUCE,
-                                 [EXPR_TERMINAL_RIGHT_PAREN] = PRECEDENCE_REDUCE,
-                                 [EXPR_TERMINAL_EQUAL] = PRECEDENCE_ERROR,
-                                 [EXPR_TERMINAL_NOT_EQUAL] = PRECEDENCE_ERROR}};
+                                     /*   end    val      (      )      *      /      +      -     u+     u-      <     <=      >     >=     ==     !=      !     &&     ||     to  until     by */
+    [EXPR_TERMINAL_END] = {                 X,     S,     S,     X,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S },
+    [EXPR_TERMINAL_OPERAND] = {             R,     X,     X,     R,     R,     R,     R,     R,     X,     X,     R,     R,     R,     R,     R,     R,     X,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_LEFT_PAREN] = {          X,     S,     S,     E,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     X },
+    [EXPR_TERMINAL_RIGHT_PAREN] = {         R,     X,     X,     R,     R,     R,     R,     R,     X,     X,     R,     R,     R,     R,     R,     R,     X,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_MULTIPLY] = {            R,     S,     S,     R,     R,     R,     R,     R,     S,     S,     R,     R,     R,     R,     R,     R,     S,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_DIVIDE] = {              R,     S,     S,     R,     R,     R,     R,     R,     S,     S,     R,     R,     R,     R,     R,     R,     S,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_ADD] = {                 R,     S,     S,     R,     S,     S,     R,     R,     S,     S,     R,     R,     R,     R,     R,     R,     S,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_SUBTRACT] = {            R,     S,     S,     R,     S,     S,     R,     R,     S,     S,     R,     R,     R,     R,     R,     R,     S,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_UNARY_PLUS] = {          R,     S,     S,     R,     R,     R,     R,     R,     S,     S,     R,     R,     R,     R,     R,     R,     S,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_UNARY_MINUS] = {         R,     S,     S,     R,     R,     R,     R,     R,     S,     S,     R,     R,     R,     R,     R,     R,     S,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_LESS] = {                R,     S,     S,     R,     S,     S,     S,     S,     S,     S,     X,     X,     X,     X,     R,     R,     S,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_LESS_EQUAL] = {          R,     S,     S,     R,     S,     S,     S,     S,     S,     S,     X,     X,     X,     X,     R,     R,     S,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_GREATER] = {             R,     S,     S,     R,     S,     S,     S,     S,     S,     S,     X,     X,     X,     X,     R,     R,     S,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_GREATER_EQUAL] = {       R,     S,     S,     R,     S,     S,     S,     S,     S,     S,     X,     X,     X,     X,     R,     R,     S,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_EQUAL] = {               R,     S,     S,     R,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     X,     X,     S,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_NOT_EQUAL] = {           R,     S,     S,     R,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     X,     X,     S,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_LOGICAL_NOT] = {         R,     S,     S,     R,     R,     R,     R,     R,     S,     S,     R,     R,     R,     R,     R,     R,     S,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_LOGICAL_AND] = {         R,     S,     S,     R,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     R,     R,     R,     R,     R },
+    [EXPR_TERMINAL_LOGICAL_OR] = {          R,     S,     S,     R,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     R,     R,     R,     R },
+    [EXPR_TERMINAL_RANGE_TO] = {            R,     S,     S,     R,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     R,     R,     S,     R,     R,     X,     X,     R },
+    [EXPR_TERMINAL_RANGE_UNTIL] = {         R,     S,     S,     R,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     R,     R,     S,     R,     R,     X,     X,     R },
+    [EXPR_TERMINAL_RANGE_BY] = {            R,     S,     S,     R,     S,     S,     S,     S,     S,     S,     S,     S,     S,     S,     R,     R,     S,     R,     R,     R,     R,     X },
+};
+// clang-format on
+
+#undef S
+#undef E
+#undef R
+#undef X
 
 static const OperatorDefinition *operatorDefinition(ExpressionTerminal terminal) {
     for (size_t index = 0; index < sizeof(operators) / sizeof(operators[0]); index++) {
@@ -316,154 +107,9 @@ const char *syntaxOperatorText(ExpressionTerminal terminal) {
     return definition == NULL ? "" : definition->text;
 }
 
-static bool isPrefixOperator(ExpressionTerminal terminal) {
-    return terminal == EXPR_TERMINAL_UNARY_PLUS || terminal == EXPR_TERMINAL_UNARY_MINUS ||
-           terminal == EXPR_TERMINAL_LOGICAL_NOT;
-}
-
-static bool isBinaryOperator(ExpressionTerminal terminal) {
-    return (terminal >= EXPR_TERMINAL_MULTIPLY && terminal <= EXPR_TERMINAL_SUBTRACT) ||
-           (terminal >= EXPR_TERMINAL_LESS && terminal <= EXPR_TERMINAL_NOT_EQUAL) ||
-           terminal == EXPR_TERMINAL_LOGICAL_AND || terminal == EXPR_TERMINAL_LOGICAL_OR ||
-           terminal == EXPR_TERMINAL_RANGE_TO || terminal == EXPR_TERMINAL_RANGE_UNTIL;
-}
-
-static int binaryOperatorPrecedence(ExpressionTerminal terminal) {
-    switch (terminal) {
-    case EXPR_TERMINAL_MULTIPLY:
-    case EXPR_TERMINAL_DIVIDE:
-        return 5;
-    case EXPR_TERMINAL_ADD:
-    case EXPR_TERMINAL_SUBTRACT:
-        return 4;
-    case EXPR_TERMINAL_LESS:
-    case EXPR_TERMINAL_LESS_EQUAL:
-    case EXPR_TERMINAL_GREATER:
-    case EXPR_TERMINAL_GREATER_EQUAL:
-        return 3;
-    case EXPR_TERMINAL_EQUAL:
-    case EXPR_TERMINAL_NOT_EQUAL:
-        return 2;
-    case EXPR_TERMINAL_RANGE_TO:
-    case EXPR_TERMINAL_RANGE_UNTIL:
-        return 2;
-    case EXPR_TERMINAL_LOGICAL_AND:
-        return 1;
-    case EXPR_TERMINAL_LOGICAL_OR:
-        return 0;
-    default:
-        return -1;
-    }
-}
-
-PrecedenceRelation syntaxPrecedenceRelation(ExpressionTerminal stacked,
-                                            ExpressionTerminal incoming) {
-    if (stacked >= EXPR_TERMINAL_COUNT || incoming >= EXPR_TERMINAL_COUNT) {
+PrecedenceRelation syntaxPrecedenceRelation(ExpressionTerminal stacked, ExpressionTerminal incoming) {
+    if ((unsigned)stacked >= EXPR_TERMINAL_COUNT || (unsigned)incoming >= EXPR_TERMINAL_COUNT) {
         return PRECEDENCE_ERROR;
     }
-
-    bool stackedRange = stacked == EXPR_TERMINAL_RANGE_TO || stacked == EXPR_TERMINAL_RANGE_UNTIL;
-    bool incomingRange =
-        incoming == EXPR_TERMINAL_RANGE_TO || incoming == EXPR_TERMINAL_RANGE_UNTIL;
-    if (incoming == EXPR_TERMINAL_RANGE_BY) {
-        if (stacked == EXPR_TERMINAL_END) {
-            return PRECEDENCE_SHIFT;
-        }
-        if (isPrefixOperator(stacked)) {
-            return PRECEDENCE_REDUCE;
-        }
-        if (stacked == EXPR_TERMINAL_OPERAND || stacked == EXPR_TERMINAL_RIGHT_PAREN ||
-            stackedRange || isBinaryOperator(stacked)) {
-            return PRECEDENCE_REDUCE;
-        }
-        return PRECEDENCE_ERROR;
-    }
-    if (stacked == EXPR_TERMINAL_RANGE_BY) {
-        if (incoming == EXPR_TERMINAL_OPERAND || incoming == EXPR_TERMINAL_LEFT_PAREN ||
-            isPrefixOperator(incoming)) {
-            return PRECEDENCE_SHIFT;
-        }
-        if (incoming == EXPR_TERMINAL_END || incoming == EXPR_TERMINAL_RIGHT_PAREN) {
-            return PRECEDENCE_REDUCE;
-        }
-        if (isBinaryOperator(incoming)) {
-            return binaryOperatorPrecedence(incoming) > 2 ? PRECEDENCE_SHIFT : PRECEDENCE_REDUCE;
-        }
-        return PRECEDENCE_ERROR;
-    }
-    if (stackedRange || incomingRange) {
-        if (stackedRange && incomingRange) {
-            return PRECEDENCE_ERROR;
-        }
-        if (stackedRange) {
-            if (incoming == EXPR_TERMINAL_OPERAND || incoming == EXPR_TERMINAL_LEFT_PAREN ||
-                isPrefixOperator(incoming)) {
-                return PRECEDENCE_SHIFT;
-            }
-            if (incoming == EXPR_TERMINAL_END || incoming == EXPR_TERMINAL_RIGHT_PAREN) {
-                return PRECEDENCE_REDUCE;
-            }
-            if (isBinaryOperator(incoming)) {
-                return binaryOperatorPrecedence(incoming) > 2 ? PRECEDENCE_SHIFT
-                                                              : PRECEDENCE_REDUCE;
-            }
-            return PRECEDENCE_ERROR;
-        }
-        if (isPrefixOperator(stacked)) {
-            return PRECEDENCE_REDUCE;
-        }
-        if (stacked == EXPR_TERMINAL_END || stacked == EXPR_TERMINAL_LEFT_PAREN) {
-            return PRECEDENCE_SHIFT;
-        }
-        if (stacked == EXPR_TERMINAL_OPERAND || stacked == EXPR_TERMINAL_RIGHT_PAREN ||
-            isBinaryOperator(stacked)) {
-            return PRECEDENCE_REDUCE;
-        }
-        return PRECEDENCE_ERROR;
-    }
-
-    if (incoming == EXPR_TERMINAL_LOGICAL_NOT) {
-        return stacked == EXPR_TERMINAL_END || stacked == EXPR_TERMINAL_LEFT_PAREN ||
-                       isPrefixOperator(stacked) || isBinaryOperator(stacked)
-                   ? PRECEDENCE_SHIFT
-                   : PRECEDENCE_ERROR;
-    }
-    if (isPrefixOperator(stacked)) {
-        return incoming == EXPR_TERMINAL_OPERAND || incoming == EXPR_TERMINAL_LEFT_PAREN ||
-                       isPrefixOperator(incoming)
-                   ? PRECEDENCE_SHIFT
-               : incoming == EXPR_TERMINAL_END || incoming == EXPR_TERMINAL_RIGHT_PAREN ||
-                       isBinaryOperator(incoming)
-                   ? PRECEDENCE_REDUCE
-                   : PRECEDENCE_ERROR;
-    }
-
-    if (stacked == EXPR_TERMINAL_LOGICAL_AND || stacked == EXPR_TERMINAL_LOGICAL_OR) {
-        if (incoming == EXPR_TERMINAL_END || incoming == EXPR_TERMINAL_RIGHT_PAREN) {
-            return PRECEDENCE_REDUCE;
-        }
-        if (incoming == EXPR_TERMINAL_OPERAND || incoming == EXPR_TERMINAL_LEFT_PAREN ||
-            isPrefixOperator(incoming)) {
-            return PRECEDENCE_SHIFT;
-        }
-        if (isBinaryOperator(incoming)) {
-            return binaryOperatorPrecedence(stacked) < binaryOperatorPrecedence(incoming)
-                       ? PRECEDENCE_SHIFT
-                       : PRECEDENCE_REDUCE;
-        }
-        return PRECEDENCE_ERROR;
-    }
-
-    if (incoming == EXPR_TERMINAL_LOGICAL_AND || incoming == EXPR_TERMINAL_LOGICAL_OR) {
-        if (stacked == EXPR_TERMINAL_END || stacked == EXPR_TERMINAL_LEFT_PAREN) {
-            return PRECEDENCE_SHIFT;
-        }
-        if (stacked == EXPR_TERMINAL_OPERAND || stacked == EXPR_TERMINAL_RIGHT_PAREN ||
-            isBinaryOperator(stacked)) {
-            return PRECEDENCE_REDUCE;
-        }
-        return PRECEDENCE_ERROR;
-    }
-
     return precedenceTable[stacked][incoming];
 }

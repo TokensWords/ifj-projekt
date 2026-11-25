@@ -45,15 +45,28 @@ typedef enum {
     EXPR_TERMINAL_COUNT,
 } ExpressionTerminal;
 
-/** @brief Maps a supported binary operator token to its expression terminal. */
+/**
+ * @brief Maps a supported operator token to its expression terminal.
+ * @param token The token to check. Can be NULL.
+ * @param outTerminal Receives the terminal on success.
+ * @return True if the terminal was set, or false otherwise.
+ * @note The parser uses the expression context to tell unary and binary plus or minus apart.
+ */
 bool syntaxOperatorFromToken(const Token *token, ExpressionTerminal *outTerminal);
 
-/** @brief Returns the spelling stored in the corresponding AST node. */
+/**
+ * @brief Gets the spelling used for an operator in the AST.
+ * @param terminal Expression terminal to look up.
+ * @return The operator text, or an empty string if the terminal has no spelling. The string
+ *     has static storage.
+ */
 const char *syntaxOperatorText(ExpressionTerminal terminal);
 
 /**
- * @brief Looks up the relation between stacked and incoming terminals.
- * @return The table relation: shift (<), equal (=), reduce (>), or error.
+ * @brief Determines how the parser should handle the incoming terminal.
+ * @param stacked The top terminal on the expression stack.
+ * @param incoming Terminal for the current input token.
+ * @return The shift, equal, or reduce relation, or PRECEDENCE_ERROR for an invalid pair.
  */
 PrecedenceRelation syntaxPrecedenceRelation(ExpressionTerminal stacked,
                                             ExpressionTerminal incoming);
