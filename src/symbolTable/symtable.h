@@ -1,8 +1,11 @@
-/*
- * Project: IFJ26 compiler
- * Authors: Václav Krytinář xkrytiv00
- * AI-assisted interface only.
- * Prompt: Define the symbol-table boundary without tree algorithms.
+/**
+ * @file symtable.h
+ * @brief Public interface and data types for scoped symbol tables.
+ *
+ * @details Provides symbol and function-signature records together with
+ * operations for creating a table, managing nested scopes, and looking up
+ * symbols. The table implementation and its backing tree remain opaque.
+ * @author Václav Krytinář xkrytiv00
  */
 
 #ifndef SYMBOL_TABLE_H
