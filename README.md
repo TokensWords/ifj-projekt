@@ -39,10 +39,6 @@ Lexical analyzer --Token--> Syntax analyzer --SourceProgram--> Semantic analyzer
                                                                       |
                                                                       | IntermediateProgram
                                                                       v
-                                                                 Optimizer
-                                                                      |
-                                                                      | IntermediateProgram
-                                                                      v
                                                                IFJcode26 generator
                                                                       |
                                                                       v
@@ -52,8 +48,7 @@ Semantic analyzer <--> Symbol table
 All blocks ---------> Common types and allocation helpers
 ```
 
-The optimizer is optional. Its initial valid implementation may be a semantics-preserving
-no-op. Every other block participates in one integrated executable.
+All blocks participate in one integrated executable.
 
 ## Repository layout
 
@@ -66,7 +61,6 @@ no-op. Every other block participates in one integrated executable.
 | `src/semanticAnalyzer` | Names, scopes, types, returns, calls | Mutable `Program *` | Typed tree or error |
 | `src/symbolTable` | Scoped symbols using vv-BVS | `Symbol` records | Borrowed symbol lookups |
 | `src/intermediateCode` | Three-address representation and lowering | Typed `Program *` | Owned `IntermediateProgram *` |
-| `src/optimizer` | Optional intermediate-code transformations | Mutable `IntermediateProgram *` | Equivalent `IntermediateProgram *` |
 | `src/generator` | IFJcode26 text emission | Borrowed `IntermediateProgram *` | Text written into `FILE *` |
 | `tests` | AI-authored verification | Modules or executable | Pass/fail process status |
 
@@ -249,14 +243,6 @@ instruction and all textual operands.
   expression evaluation order, and runtime-error exits.
 - Exclusion: no source-language validation.
 
-### Optimizer
-
-- Input: mutable `IntermediateProgram *`.
-- Output: same program, behavior preserved.
-- Initial implementation: return `COMPILER_OK` unchanged.
-- Later candidates: constant propagation, copy propagation, dead-code removal.
-- Exclusion: never alter observable evaluation order.
-
 ### Code generator
 
 - Input: borrowed `const IntermediateProgram *` and borrowed `FILE *output`.
@@ -361,7 +347,7 @@ Suggested ownership:
 1. Lexical analyzer and token stream.
 2. Syntax analyzer and abstract-syntax tree construction.
 3. Semantic analysis and symbol-table integration.
-4. Intermediate code, optimizer, and IFJcode26 generation.
+4. Intermediate code and IFJcode26 generation.
 
 The vv-BVS implementation remains shared knowledge despite individual ownership. Use focused
 branches, small commits, required reviews, and continuously buildable pull requests.

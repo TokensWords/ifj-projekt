@@ -7,7 +7,7 @@ BUILD_DIR := build
 
 CPPFLAGS := -Isrc -Isrc/shared -Isrc/lexicalAnalyzer -Isrc/syntaxAnalyzer \
             -Isrc/abstractSyntaxTree -Isrc/semanticAnalyzer -Isrc/symbolTable \
-            -Isrc/intermediateCode -Isrc/optimizer -Isrc/generator
+            -Isrc/intermediateCode -Isrc/generator
 CFLAGS ?= -std=c17 -O2
 CFLAGS += -Wall -Wextra -Wpedantic
 LDFLAGS ?=
