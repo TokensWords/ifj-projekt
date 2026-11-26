@@ -8,6 +8,12 @@
 #include "generator.h"
 #include <inttypes.h>
 
+/**
+ * @brief writes a string with IFJcode26 escape sequences
+ * @param text input string
+ * @param output output stream
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus writeEscapedString(const char *text, FILE *output) {
     if (text == NULL || output == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -34,6 +40,12 @@ static CompilerStatus writeEscapedString(const char *text, FILE *output) {
     return COMPILER_OK;
 }
 
+/**
+ * @brief writes an operand in IFJcode26 format
+ * @param operand intermediate operand
+ * @param output output stream
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus writeOperand(const IntermediateOperand *operand, FILE *output) {
     if (operand == NULL || output == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -136,6 +148,13 @@ static CompilerStatus writeOperand(const IntermediateOperand *operand, FILE *out
     }
 }
 
+/**
+ * @brief writes the instruction name and operands on a line
+ * @param instructionName instruction in IFJcode26
+ * @param instruction intermediate instruction
+ * @param output output stream
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus writeInstructionLine(const char *instructionName, const IntermediateInstruction *instruction, FILE *output) {
     if (instructionName == NULL || instruction == NULL || output == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -171,6 +190,11 @@ static CompilerStatus writeInstructionLine(const char *instructionName, const In
     return COMPILER_OK;
 }
 
+/**
+ * @brief checks if the operand kind represents a variable or literal
+ * @param kind operand kind
+ * @return true or false
+ */
 static bool isValueOperand(IntermediateOperandKind kind) {
     switch (kind) {
     case INTERMEDIATE_OPERAND_VARIABLE:
@@ -185,6 +209,12 @@ static bool isValueOperand(IntermediateOperandKind kind) {
     }
 }
 
+/**
+ * @brief validates and writes one IFJcode26 instruction
+ * @param instruction intermediate instruction
+ * @param output output stream
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus writeInstruction(const IntermediateInstruction *instruction, FILE *output) {
     if (instruction == NULL || output == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -494,6 +524,12 @@ static CompilerStatus writeInstruction(const IntermediateInstruction *instructio
     }
 }
 
+/**
+ * @brief writes the IFJcode26 header and instructions, handles the stream
+ * @param program intermediate program
+ * @param output output stream
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 CompilerStatus generatorWrite(const IntermediateProgram *program, FILE *output) {
     if (program == NULL || output == NULL) {
         return COMPILER_INTERNAL_ERROR;

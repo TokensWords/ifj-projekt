@@ -24,22 +24,39 @@ typedef struct {
     bool needsListString;
 } IntermediateGenerator;
 
+/**
+ * @brief gets flags stored in a type descriptor
+ * @param type type descriptor
+ * @return type flags or DATA_TYPE_UNKNOWN
+ */
 static DataType descriptorDataType(const TypeDescriptor *type) {
     return type == NULL ? DATA_TYPE_UNKNOWN : type->datatypeBitflag;
 }
 
+/**
+ * @brief frees operand text and resets its kind
+ * @param operand intermediate operand
+ */
 static void intermediateOperandClear(IntermediateOperand *operand) {
     free(operand->text);
     operand->text = NULL;
     operand->kind = INTERMEDIATE_OPERAND_NONE;
 }
 
+/**
+ * @brief clears every operand in instruction
+ * @param instruction intermediate instruction
+ */
 static void intermediateInstructionClear(IntermediateInstruction *instruction) {
     for (size_t index = 0; index < instruction->operandCount; index++) {
         intermediateOperandClear(&instruction->operands[index]);
     }
 }
 
+/**
+ * @brief creates an empty intermediate program
+ * @return pointer to program or NULL
+ */
 IntermediateProgram *intermediateProgramCreate(void) {
     IntermediateProgram *program = memoryAllocate(sizeof(IntermediateProgram));
     if (program == NULL) {
@@ -52,6 +69,10 @@ IntermediateProgram *intermediateProgramCreate(void) {
     return program;
 }
 
+/**
+ * @brief frees intermediate program and its instructions
+ * @param program intermediate program
+ */
 void intermediateProgramDestroy(IntermediateProgram *program) {
     if (program == NULL) {
         return;
@@ -65,6 +86,12 @@ void intermediateProgramDestroy(IntermediateProgram *program) {
     free(program);
 }
 
+/**
+ * @brief appends a copy of an instruction and its operand text
+ * @param program intermediate program
+ * @param instruction intermediate instruction
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 CompilerStatus intermediateProgramAppend(IntermediateProgram *program, const IntermediateInstruction *instruction) {
     if (program == NULL || instruction == NULL || instruction->operandCount > 3) {
         return COMPILER_INTERNAL_ERROR;
@@ -101,6 +128,13 @@ CompilerStatus intermediateProgramAppend(IntermediateProgram *program, const Int
     return COMPILER_OK;
 }
 
+/**
+ * @brief initializes an instruction with its opcode, operand count and source location
+ * @param opcode intermediate opcode
+ * @param operandCount number of operands
+ * @param origin source location
+ * @return initialized instruction
+ */
 static IntermediateInstruction fillInstruction(IntermediateOpcode opcode, size_t operandCount, SourceLocation origin) {
     IntermediateInstruction instruction = {0};
 
@@ -111,6 +145,11 @@ static IntermediateInstruction fillInstruction(IntermediateOpcode opcode, size_t
     return instruction;
 }
 
+/**
+ * @brief counts decimal digits in a number
+ * @param number number to count digits on
+ * @return digit count
+ */
 static int numberLength(size_t number) {
     size_t counter = 0;
 
@@ -126,6 +165,11 @@ static int numberLength(size_t number) {
     return counter;
 }
 
+/**
+ * @brief converts a number to a string
+ * @param number number to convert
+ * @return allocated string or NULL
+ */
 static char *numberToString(size_t number) {
     size_t counter = 0;
     int length = numberLength(number);
@@ -150,6 +194,12 @@ static char *numberToString(size_t number) {
     return string;
 }
 
+/**
+ * @brief creates a name from a prefix and a number
+ * @param type name prefix
+ * @param number number to append to prefix
+ * @return allocated name or NULL
+ */
 static char *generateStringName(const char *type, size_t number) {
     if (type == NULL) {
         return NULL;
@@ -174,6 +224,13 @@ static char *generateStringName(const char *type, size_t number) {
     return name;
 }
 
+/**
+ * @brief adds a variable declaration to function
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus appendVariableDeclaration(IntermediateGenerator *generator, const IntermediateOperand *operand, SourceLocation origin) {
     if (generator == NULL || operand == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -193,6 +250,13 @@ static CompilerStatus appendVariableDeclaration(IntermediateGenerator *generator
     return intermediateProgramAppend(generator->functionDeclarations, &instruction);
 }
 
+/**
+ * @brief creates a temporary variable operand and adds its declaration
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateTemporary(IntermediateGenerator *generator, IntermediateOperand *operand, SourceLocation origin) {
     if (generator == NULL || operand == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -218,6 +282,12 @@ static CompilerStatus generateTemporary(IntermediateGenerator *generator, Interm
     return COMPILER_OK;
 }
 
+/**
+ * @brief creates a unique label operand
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateLabel(IntermediateGenerator *generator, IntermediateOperand *operand) {
     if (generator == NULL || operand == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -237,6 +307,12 @@ static CompilerStatus generateLabel(IntermediateGenerator *generator, Intermedia
     return COMPILER_OK;
 }
 
+/**
+ * @brief creates a variable operand from variable ID on an AST node
+ * @param operand intermediate operand
+ * @param node source AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateVariable(IntermediateOperand *operand, const AbstractSyntaxNode *node) {
     if (operand == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -258,10 +334,22 @@ static CompilerStatus generateVariable(IntermediateOperand *operand, const Abstr
     return COMPILER_OK;
 }
 
+/**
+ * @brief checks if type is Int or Double
+ * @param dataType type flags
+ * @return true or false
+ */
 static bool isNumericType(DataType dataType) {
     return dataType == DATA_TYPE_INT || dataType == DATA_TYPE_DOUBLE;
 }
 
+/**
+ * @brief generates conversion from Int oprand to Double
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus convertIntToDouble(IntermediateGenerator *generator, IntermediateOperand *operand, SourceLocation origin) {
     if (generator == NULL || operand == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -289,6 +377,11 @@ static CompilerStatus convertIntToDouble(IntermediateGenerator *generator, Inter
     return COMPILER_OK;
 }
 
+/**
+ * @brief clears operands in an array
+ * @param operands operands
+ * @param count number of entries
+ */
 static void clearOperandArray(IntermediateOperand *operands, size_t count) {
     if (operands == NULL) {
         return;
@@ -302,6 +395,11 @@ static void clearOperandArray(IntermediateOperand *operands, size_t count) {
     }
 }
 
+/**
+ * @brief clears operands referenced by an array of pointers
+ * @param operands operands
+ * @param count number of entries
+ */
 static void clearOperandPointers(IntermediateOperand *const *operands, size_t count) {
     size_t counter = 0;
     while (counter < count) {
@@ -310,6 +408,13 @@ static void clearOperandPointers(IntermediateOperand *const *operands, size_t co
     }
 }
 
+/**
+ * @brief appends instructions from an array
+ * @param generator generator state
+ * @param instructions instructions to append
+ * @param count number of entries
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus appendInstructionArray(IntermediateGenerator *generator, const IntermediateInstruction *instructions, size_t count) {
     if (generator == NULL || generator->program == NULL || (count > 0 && instructions == NULL)) {
         return COMPILER_INTERNAL_ERROR;
@@ -329,6 +434,15 @@ static CompilerStatus appendInstructionArray(IntermediateGenerator *generator, c
     return COMPILER_OK;
 }
 
+/**
+ * @brief generates code for ord, returns -1 if the index is out of bounds
+ * @param generator generator state
+ * @param resultOperand destination operand
+ * @param stringOperand string operand
+ * @param indexOperand character index operand
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateOrdinal(IntermediateGenerator *generator, const IntermediateOperand *resultOperand, const IntermediateOperand *stringOperand, const IntermediateOperand *indexOperand, SourceLocation origin) {
     if (generator == NULL || resultOperand == NULL || stringOperand == NULL || indexOperand == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -405,6 +519,16 @@ static CompilerStatus generateOrdinal(IntermediateGenerator *generator, const In
     return status;
 }
 
+/**
+ * @brief generates code for subStr that checks the range before copying the characters
+ * @param generator generator state
+ * @param resultOperand destination operand
+ * @param stringOperand string operand
+ * @param startOperand inclusive start index
+ * @param endOperand exclusive end index
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateSubstring(IntermediateGenerator *generator, const IntermediateOperand *resultOperand, const IntermediateOperand *stringOperand, const IntermediateOperand *startOperand, const IntermediateOperand *endOperand, SourceLocation origin) {
     if (generator == NULL || resultOperand == NULL || stringOperand == NULL || startOperand == NULL || endOperand == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -563,6 +687,11 @@ static CompilerStatus generateSubstring(IntermediateGenerator *generator, const 
     return status;
 }
 
+/**
+ * @brief creates intermediate label name for source function
+ * @param functionName source function name
+ * @return allocated label name or NULL
+ */
 static char *createFunctionLabel(const char *functionName) {
     if (functionName == NULL) {
         return NULL;
@@ -583,6 +712,12 @@ static char *createFunctionLabel(const char *functionName) {
     return labelName;
 }
 
+/**
+ * @brief finds top-level function by name
+ * @param program source program
+ * @param functionName source function name
+ * @return function node or NULL
+ */
 static const AbstractSyntaxNode *findFunction(const SourceProgram *program, const char *functionName) {
     if (program == NULL || program->root == NULL || functionName == NULL) {
         return NULL;
@@ -613,6 +748,13 @@ static const AbstractSyntaxNode *findFunction(const SourceProgram *program, cons
     return NULL;
 }
 
+/**
+ * @brief finds top-level type declaration by name and kind
+ * @param program source program
+ * @param name declaration name
+ * @param kind declaration kind
+ * @return type declaration node or NULL
+ */
 static const AbstractSyntaxNode *findTypeDeclaration(const SourceProgram *program, const char *name, AbstractSyntaxNodeKind kind) {
     size_t counter = 0;
     while (counter < program->root->childCount) {
@@ -626,6 +768,13 @@ static const AbstractSyntaxNode *findTypeDeclaration(const SourceProgram *progra
     return NULL;
 }
 
+/**
+ * @brief resolves type aliases and collects their type flags
+ * @param program source program
+ * @param type type descriptor
+ * @param remaining remaining recursion depth
+ * @return resolved type flags or DATA_TYPE_UNKNOWN
+ */
 static DataType resolvedDataTypes(const SourceProgram *program, const TypeDescriptor *type, size_t remaining) {
     if (remaining == 0) {
         return DATA_TYPE_UNKNOWN;
@@ -646,6 +795,14 @@ static DataType resolvedDataTypes(const SourceProgram *program, const TypeDescri
     return flags;
 }
 
+/**
+ * @brief generates code to convert a Boolean to string saying "true" or "false"
+ * @param generator generator state
+ * @param resultOperand destination operand
+ * @param valueOperand value to convert
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateBooleanString(IntermediateGenerator *generator, const IntermediateOperand *resultOperand, const IntermediateOperand *valueOperand, SourceLocation origin) {
     IntermediateOperand endLabel = {0};
     CompilerStatus status = generateLabel(generator, &endLabel);
@@ -680,6 +837,14 @@ static CompilerStatus generateBooleanString(IntermediateGenerator *generator, co
     return status;
 }
 
+/**
+ * @brief builds instruction from opcode and its operands
+ * @param opcode intermediate opcode
+ * @param origin source location
+ * @param operandCount number of operands
+ * @param operands operands
+ * @return initialized instruction
+ */
 static IntermediateInstruction controlInstruction(IntermediateOpcode opcode, SourceLocation origin, size_t operandCount, const IntermediateOperand *operands) {
     IntermediateInstruction instruction = fillInstruction(opcode, operandCount, origin);
 
@@ -692,6 +857,15 @@ static IntermediateInstruction controlInstruction(IntermediateOpcode opcode, Sou
     return instruction;
 }
 
+/**
+ * @brief builds and appends instruction with the given operands
+ * @param generator generator state
+ * @param opcode intermediate opcode
+ * @param origin source location
+ * @param operandCount number of operands
+ * @param operands operands
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus appendControlInstruction(IntermediateGenerator *generator, IntermediateOpcode opcode, SourceLocation origin, size_t operandCount, const IntermediateOperand *operands) {
     IntermediateInstruction instruction = controlInstruction(opcode, origin, operandCount, operands);
 
@@ -702,6 +876,15 @@ static CompilerStatus appendControlInstruction(IntermediateGenerator *generator,
 * AI-generated code
 * could you please give me the necessary remaining construction for this part so that i can finish it faster
 */
+/**
+ * @brief generates code for integer division that rounds towards zero
+ * @param generator generator state
+ * @param resultOperand destination operand
+ * @param leftOperand left operand
+ * @param rightOperand right operand
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateIntegerDivision(IntermediateGenerator *generator, const IntermediateOperand *resultOperand, const IntermediateOperand *leftOperand, const IntermediateOperand *rightOperand, SourceLocation origin) {
     if (generator == NULL || resultOperand == NULL || leftOperand == NULL || rightOperand == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -829,6 +1012,16 @@ static CompilerStatus generateIntegerDivision(IntermediateGenerator *generator, 
 * AI-generated code
 * could you please create me the skeleton for the class jump 
 */
+/**
+ * @brief generates code to jump if the subject has the expected array tag
+ * @param generator generator state
+ * @param subject value being matched
+ * @param runtimeType runtime type operand
+ * @param className expected class tag
+ * @param matchedLabel label for a successful match
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateClassJump(IntermediateGenerator *generator, const IntermediateOperand *subject, const IntermediateOperand *runtimeType, const char *className, const IntermediateOperand *matchedLabel, SourceLocation origin) {
     IntermediateOperand tag = {0};
     IntermediateOperand skipLabel = {0};
@@ -878,6 +1071,12 @@ static CompilerStatus generateClassJump(IntermediateGenerator *generator, const 
     return COMPILER_OK;
 }
 
+/**
+ * @brief resolves type flags for descriptor in the current source program
+ * @param generator generator state
+ * @param type type descriptor
+ * @return resolved type flags
+ */
 static DataType valueTypes(IntermediateGenerator *generator, const TypeDescriptor *type) {
     return resolvedDataTypes(generator->sourceProgram, type, generator->sourceProgram->root->childCount + 1);
 }
@@ -889,16 +1088,37 @@ static const struct {
     {DATA_TYPE_INT, "int"}, {DATA_TYPE_DOUBLE, "float"}, {DATA_TYPE_STRING, "string"}, {DATA_TYPE_BOOLEAN, "bool"}, {DATA_TYPE_UNIT, "nil"}, {DATA_TYPE_LIST, "array"},
 };
 
+/**
+ * @brief generates a conditional jump that checks runtime type name
+ * @param generator generator state
+ * @param opcode intermediate opcode
+ * @param label jump target
+ * @param typeOperand runtime type operand
+ * @param typeName expected runtime type name
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus appendTypeJump(IntermediateGenerator *generator, IntermediateOpcode opcode, const IntermediateOperand *label, const IntermediateOperand *typeOperand, const char *typeName, SourceLocation origin) {
     IntermediateOperand name = {.kind = INTERMEDIATE_OPERAND_STRING, .text = (char *)typeName};
     return appendControlInstruction(generator, opcode, origin, 3, (IntermediateOperand[]){*label, *typeOperand, name});
 }
 
+/**
+ * @brief checks if given flags represent supported value types
+ * @param type type flags to check
+ * @return true or false
+ */
 static bool isValueType(DataType type) {
     DataType supported = DATA_TYPE_INT | DATA_TYPE_DOUBLE | DATA_TYPE_STRING | DATA_TYPE_UNIT | DATA_TYPE_BOOLEAN | DATA_TYPE_CASE_CLASS | DATA_TYPE_LIST;
     return type != DATA_TYPE_UNKNOWN && (type & supported) == type;
 }
 
+/**
+ * @brief checks if the destination accepts the values as-is or after converting from Int to Double
+ * @param from source type flags
+ * @param to destination type flags
+ * @return true or false
+ */
 static bool canConvertValue(DataType from, DataType to) {
     if (!isValueType(from) || !isValueType(to)) {
         return false;
@@ -914,6 +1134,15 @@ static bool canConvertValue(DataType from, DataType to) {
 * AI-generated code
 * ok can you write the convert value function, should be really simple, just checking compatibility, leave as is if accepted, resute other convert functon for int, do the union correctly with all scenarios considered, will check afterwards
 */
+/**
+ * @brief generates code to convert Int to Double when needed and check union types at runtime
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param from source type flags
+ * @param to destination type flags
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus convertValue(IntermediateGenerator *generator, IntermediateOperand *operand, DataType from, DataType to, SourceLocation origin) {
     if (!canConvertValue(from, to)) {
         return COMPILER_INTERNAL_ERROR;
@@ -989,6 +1218,17 @@ static CompilerStatus convertValue(IntermediateGenerator *generator, Intermediat
     return COMPILER_OK;
 }
 
+/**
+ * @brief generates jumps to check if the value matches a typed pattern
+ * @param generator generator state
+ * @param type type descriptor
+ * @param subject value being matched
+ * @param runtimeType runtime type operand
+ * @param matchedLabel label for a successful match
+ * @param origin source location
+ * @param remaining remaining recursion depth
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateTypedPatternJumps(IntermediateGenerator *generator, const TypeDescriptor *type, const IntermediateOperand *subject, const IntermediateOperand *runtimeType, const IntermediateOperand *matchedLabel, SourceLocation origin, size_t remaining) {
     if (remaining == 0) {
         return COMPILER_INTERNAL_ERROR;
@@ -1040,6 +1280,14 @@ static CompilerStatus generateTypedPatternJumps(IntermediateGenerator *generator
     return COMPILER_OK;
 }
 
+/**
+ * @brief assigns the matched value or one of its fields to the pattern variable
+ * @param generator generator state
+ * @param pattern pattern AST node
+ * @param subject value being matched
+ * @param fieldIndex field index, or zero to bind the whole subject
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus bindPatternValue(IntermediateGenerator *generator, const AbstractSyntaxNode *pattern, const IntermediateOperand *subject, size_t fieldIndex) {
     if (pattern->kind != ABSTRACT_SYNTAX_IDENTIFIER || pattern->text == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -1073,6 +1321,15 @@ static CompilerStatus generateListString(IntermediateGenerator *generator, const
 * AI-generated code
 * could you please make me a skeleton for the instructions that will turn some given value into a string even tho the original value type is not necessarilly known
 */
+/**
+ * @brief generates code to convert a value to string based on its runtime type
+ * @param generator generator state
+ * @param result destination operand
+ * @param value value operand
+ * @param types supported type flags
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateUnionString(IntermediateGenerator *generator, IntermediateOperand *result, const IntermediateOperand *value, DataType types, SourceLocation origin) {
     IntermediateOperand type = {0};
     IntermediateOperand endLabel = {0};
@@ -1174,6 +1431,14 @@ static CompilerStatus generateUnionString(IntermediateGenerator *generator, Inte
 * AI-generated code
 * ok, could you now please make me the blueprint for the fun tht makes the print(val) instructions
 */
+/**
+ * @brief generates code to print a value according to its runtime type
+ * @param generator generator state
+ * @param value value operand
+ * @param type supported type flags
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateUnionPrint(IntermediateGenerator *generator, const IntermediateOperand *value, DataType type, SourceLocation origin) {
     if (type & DATA_TYPE_LIST) {
         IntermediateOperand translated = {0};
@@ -1307,6 +1572,14 @@ static CompilerStatus generateUnionPrint(IntermediateGenerator *generator, const
 * AI-generated code
 * please make me a function skelet which runs after the generated read for reading ints and doubles and replaces nils with either 0 or 0.0
 */
+/**
+ * @brief generates code to use zero if numeric read fails or integer is out of range
+ * @param generator generator state
+ * @param result destination operand
+ * @param type numeric input type
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateNumericReadDefault(IntermediateGenerator *generator, const IntermediateOperand *result, DataType type, SourceLocation origin) {
     IntermediateOperand end = {0};
     IntermediateOperand useDefault = {0};
@@ -1403,6 +1676,15 @@ static CompilerStatus generateNumericReadDefault(IntermediateGenerator *generato
 * AI-generated code
 * ok, we will need to implement the maybe reads for int and double datatypes, could you please make me the common ancestor function prototype for those so i can reuse at least the first step of them in one function
 */
+/**
+ * @brief generates code to read a line and handle an optional sign
+ * @param generator generator state
+ * @param result destination operand
+ * @param origin source location
+ * @param variables temporary operands
+ * @param labels control-flow labels
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateOptionalReadInput(IntermediateGenerator *generator, const IntermediateOperand *result, SourceLocation origin, const IntermediateOperand *variables, const IntermediateOperand *labels) {
     IntermediateOperand line = variables[0];
     IntermediateOperand length = variables[1];
@@ -1506,6 +1788,15 @@ static CompilerStatus generateOptionalReadInput(IntermediateGenerator *generator
 /*
  * AI-generated code
  * so, i believe that generateReadIntMaybeBody will be kind of similar to the other maybe functions so could you once again please write me the skeleton and necessary vars in there
+ */
+/**
+ * @brief generates code for readIntMaybe to parse integer and check its range
+ * @param generator generator state
+ * @param result destination operand
+ * @param origin source location
+ * @param variables temporary operands
+ * @param labels control-flow labels
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
  */
 static CompilerStatus generateReadIntMaybeBody(IntermediateGenerator *generator, const IntermediateOperand *result, SourceLocation origin, const IntermediateOperand *variables, const IntermediateOperand *labels) {
     IntermediateOperand line = variables[0];
@@ -1624,6 +1915,15 @@ static CompilerStatus generateReadIntMaybeBody(IntermediateGenerator *generator,
 /*
  * AI-generated code
  * ok could you please create the skeleton for generateReadDoubleMaybeBody fun so i can go in and just finish the logic in there pls
+ */
+/**
+ * @brief generates code for readDoubleMaybe to parse and round floating-point number
+ * @param generator generator state
+ * @param result destination operand
+ * @param origin source location
+ * @param variables temporary operands
+ * @param labels control-flow labels
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
  */
 static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generator, const IntermediateOperand *result, SourceLocation origin, const IntermediateOperand *variables, const IntermediateOperand *labels) {
     IntermediateOperand line = variables[0];
@@ -2735,6 +3035,14 @@ static CompilerStatus generateReadDoubleMaybeBody(IntermediateGenerator *generat
     return COMPILER_OK;
 }
 
+/**
+ * @brief generates code to read optional Int or Double
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param origin source location
+ * @param isDouble whether to read a Double
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateOptionalRead(IntermediateGenerator *generator, IntermediateOperand *operand, SourceLocation origin, bool isDouble) {
     IntermediateOperand variables[26] = {0};
     IntermediateOperand labels[48] = {0};
@@ -2784,6 +3092,15 @@ static CompilerStatus generateOptionalRead(IntermediateGenerator *generator, Int
 
 static CompilerStatus generateExpression(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node);
 
+/**
+ * @brief generates code to check a match pattern and bind its variables
+ * @param generator generator state
+ * @param pattern pattern AST node
+ * @param subject value being matched
+ * @param runtimeType runtime type operand
+ * @param nextLabel label for the next match case
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateMatchPattern(IntermediateGenerator *generator, const AbstractSyntaxNode *pattern, const IntermediateOperand *subject, const IntermediateOperand *runtimeType, const IntermediateOperand *nextLabel) {
     SourceLocation origin = pattern->location;
     if (pattern->kind == ABSTRACT_SYNTAX_IDENTIFIER && pattern->text != NULL && strcmp(pattern->text, "_") == 0) {
@@ -2877,6 +3194,13 @@ static CompilerStatus generateMatchPattern(IntermediateGenerator *generator, con
 
 static CompilerStatus generateStatement(IntermediateGenerator *generator, const AbstractSyntaxNode *node);
 
+/**
+ * @brief generates code for a block and provides its final value or Unit
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param body body AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateBlockValue(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *body) {
     if (body == NULL || body->kind != ABSTRACT_SYNTAX_BLOCK) {
         return generateExpression(generator, operand, body);
@@ -2922,6 +3246,17 @@ static CompilerStatus generateBlockValue(IntermediateGenerator *generator, Inter
 /*
  * AI-generated code
  * ok could you please generate one match case, if pattern matches then jump, if not false, in other cases create the body value and convert it to match and jump
+ */
+/**
+ * @brief generates code for a match case
+ * @param generator generator state
+ * @param branch match case AST node
+ * @param subject value being matched
+ * @param runtimeType runtime type operand
+ * @param result destination operand
+ * @param resultType expected result type
+ * @param endLabel label after the match
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
  */
 static CompilerStatus generateMatchCase(IntermediateGenerator *generator, const AbstractSyntaxNode *branch, const IntermediateOperand *subject, const IntermediateOperand *runtimeType, const IntermediateOperand *result, DataType resultType, const IntermediateOperand *endLabel) {
     if (branch == NULL || branch->kind != ABSTRACT_SYNTAX_MATCH_CASE || (branch->childCount != 2 && branch->childCount != 3) || branch->children == NULL || branch->children[0] == NULL || branch->children[branch->childCount - 1] == NULL) {
@@ -3011,6 +3346,13 @@ static CompilerStatus generateMatchCase(IntermediateGenerator *generator, const 
  * AI-generated code
  * please ake me the scaffold for a function that checks for a matching expression
  */
+/**
+ * @brief generates code for a match expression and stores the selected case result
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param node source AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateMatch(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
     if (node->childCount < 2 || node->children == NULL || node->children[0] == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -3084,6 +3426,14 @@ static CompilerStatus generateMatch(IntermediateGenerator *generator, Intermedia
  * AI-generated code
  * make me a scaffolding for a function that generates the constructor for a given class please
  */
+/**
+ * @brief generates code to build case-class array with its tag and field values
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param node source AST node
+ * @param declaration case-class declaration
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateClassConstructor(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node, const AbstractSyntaxNode *declaration) {
     if (declaration->childCount != node->childCount - 1 || declaration->childCount > INT64_MAX - 1 || (declaration->childCount != 0 && declaration->children == NULL)) {
         return COMPILER_INTERNAL_ERROR;
@@ -3150,6 +3500,13 @@ static CompilerStatus generateClassConstructor(IntermediateGenerator *generator,
     return COMPILER_OK;
 }
 
+/**
+ * @brief evaluates a range component and stores it in the destination
+ * @param generator generator state
+ * @param destination destination operand
+ * @param node source AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateRangeValue(IntermediateGenerator *generator, const IntermediateOperand *destination, const AbstractSyntaxNode *node) {
     IntermediateOperand valueOperand = {0};
     CompilerStatus status = generateExpression(generator, &valueOperand, node);
@@ -3163,10 +3520,20 @@ static CompilerStatus generateRangeValue(IntermediateGenerator *generator, const
     return status;
 }
 
+/**
+ * @brief creates an integer literal operand
+ * @param value value operand
+ * @return integer operand
+ */
 static IntermediateOperand integerOperand(int64_t value) {
     return (IntermediateOperand){.kind = INTERMEDIATE_OPERAND_INT, .value.intValue = value};
 }
 
+/**
+ * @brief creates a string operand that references the given text
+ * @param value value operand
+ * @return string operand
+ */
 static IntermediateOperand stringOperand(char *value) {
     return (IntermediateOperand){.kind = INTERMEDIATE_OPERAND_STRING, .text = value};
 }
@@ -3174,6 +3541,14 @@ static IntermediateOperand stringOperand(char *value) {
 /*
  * AI-generated code
  * ok, can you please write the scaffold for generateListArray so that i can only add the necessary thing in there and not bother with bs checks
+ */
+/**
+ * @brief generates code to allocate list array and set its tag and length
+ * @param generator generator state
+ * @param result destination operand
+ * @param length list length operand
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
  */
 static CompilerStatus generateListArray(IntermediateGenerator *generator, const IntermediateOperand *result, const IntermediateOperand *length, SourceLocation origin) {
     IntermediateOperand size = {0};
@@ -3211,10 +3586,25 @@ static CompilerStatus generateListArray(IntermediateGenerator *generator, const 
     return COMPILER_OK;
 }
 
+/**
+ * @brief generates code to read the list length from its header
+ * @param generator generator state
+ * @param result destination operand
+ * @param list list operand
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateListLength(IntermediateGenerator *generator, const IntermediateOperand *result, const IntermediateOperand *list, SourceLocation origin) {
     return appendControlInstruction(generator, INTERMEDIATE_ARRAY_GET, origin, 3, (IntermediateOperand[]){*result, *list, integerOperand(1)});
 }
 
+/**
+ * @brief generates code to build a list and convert its elements as needed
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param node source AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateListConstructor(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
     IntermediateOperand result = {0};
     CompilerStatus status = generateTemporary(generator, &result, node->location);
@@ -3250,6 +3640,16 @@ static CompilerStatus generateListConstructor(IntermediateGenerator *generator, 
 /*
  * AI-generated code
  * ok could you please implement list indexing and head? use index 0 for head, emit EXIT 40 for out-of-range indices, and read from index + 2. widen Int to Double if the result type needs it.
+ */
+/**
+ * @brief generates code to check bounds and read a list element by index or via head
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param receiver receiver AST node
+ * @param indexNode index expression or NULL for head
+ * @param type expected element type
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
  */
 static CompilerStatus generateListIndex(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *receiver, const AbstractSyntaxNode *indexNode, const TypeDescriptor *type, SourceLocation origin) {
     IntermediateOperand list = {0};
@@ -3384,6 +3784,13 @@ static CompilerStatus generateListIndex(IntermediateGenerator *generator, Interm
     return COMPILER_OK;
 }
 
+/**
+ * @brief counts the list levels for an Int to Double conversion
+ * @param generator generator state
+ * @param source source type descriptor
+ * @param destination destination type descriptor
+ * @return nesting depth or zero if no conversion is needed
+ */
 static size_t listWideningDepth(IntermediateGenerator *generator, const TypeDescriptor *source, const TypeDescriptor *destination) {
     size_t depth = 0;
 
@@ -3409,6 +3816,18 @@ static size_t listWideningDepth(IntermediateGenerator *generator, const TypeDesc
 
 static CompilerStatus generateWidenedList(IntermediateGenerator *generator, IntermediateOperand *operand, size_t wideningDepth, SourceLocation origin);
 
+/**
+ * @brief generates a loop to copy part of a list and realocate elements as needed
+ * @param generator generator state
+ * @param result destination operand
+ * @param destinationStart starting index in destination list
+ * @param source source operand
+ * @param start inclusive source index
+ * @param end exclusive source index
+ * @param wideningDepth remaining list levels to widen
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateListCopy(IntermediateGenerator *generator, const IntermediateOperand *result, const IntermediateOperand *destinationStart, const IntermediateOperand *source, const IntermediateOperand *start, const IntermediateOperand *end, size_t wideningDepth, SourceLocation origin) {
     IntermediateOperand position = {0};
     IntermediateOperand destination = {0};
@@ -3552,6 +3971,14 @@ static CompilerStatus generateListCopy(IntermediateGenerator *generator, const I
     return COMPILER_OK;
 }
 
+/**
+ * @brief generates code to copy a list and widen its elements
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param wideningDepth remaining list levels to widen
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateWidenedList(IntermediateGenerator *generator, IntermediateOperand *operand, size_t wideningDepth, SourceLocation origin) {
     IntermediateOperand result = {0};
     IntermediateOperand length = {0};
@@ -3595,6 +4022,15 @@ static CompilerStatus generateWidenedList(IntermediateGenerator *generator, Inte
     return COMPILER_OK;
 }
 
+/**
+ * @brief generates code to convert value or list for initialization or assignment
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param source source type descriptor
+ * @param destination destination type descriptor
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus convertAssignedValue(IntermediateGenerator *generator, IntermediateOperand *operand, const TypeDescriptor *source, const TypeDescriptor *destination, SourceLocation origin) {
     DataType destinationType = valueTypes(generator, destination);
     if (destinationType == DATA_TYPE_UNKNOWN) {
@@ -3611,6 +4047,13 @@ static CompilerStatus convertAssignedValue(IntermediateGenerator *generator, Int
 /*
  * AI-generated code
  * ok could you please implement ++? evaluate both lists left to right, allocate a list with length of first plus second, and copy the left and right lists into it at 0 and leftLength.
+ */
+/**
+ * @brief generates code to join two lists and widen elements as needed
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param node source AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
  */
 static CompilerStatus generateListConcat(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
     SourceLocation origin = node->location;
@@ -3709,6 +4152,15 @@ static CompilerStatus generateListConcat(IntermediateGenerator *generator, Inter
  * AI-generated code
  * ok could you please clamp the index in place? use the limit as a maximum when upperLimit is true and as a minimum otherwise.
  */
+/**
+ * @brief generates code to keep a list index within the given range
+ * @param generator generator state
+ * @param index index operand to clamp
+ * @param limit range operand
+ * @param upperLimit if the range is the upper limit
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus capListIndex(IntermediateGenerator *generator, const IntermediateOperand *index, const IntermediateOperand *limit, bool upperLimit, SourceLocation origin) {
     IntermediateOperand condition = {0};
     IntermediateOperand done = {0};
@@ -3760,6 +4212,17 @@ static CompilerStatus capListIndex(IntermediateGenerator *generator, const Inter
 /*
  * AI-generated code
  * could you please finish the function so that there are the necessary list caps, instructions and lists generated, also make sure there are all necessary operands
+ */
+/**
+ * @brief generates code to copy the part of a list needed by slice, take, drop or tail
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param receiver receiver AST node
+ * @param from starting index expression or NULL for the default start
+ * @param until ending index expression or NULL for the list length
+ * @param isTail whether to generate tail access
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
  */
 static CompilerStatus generateListSlice(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *receiver, const AbstractSyntaxNode *from, const AbstractSyntaxNode *until, bool isTail, SourceLocation origin) {
     IntermediateOperand list = {0};
@@ -3914,6 +4377,16 @@ static CompilerStatus generateListSlice(IntermediateGenerator *generator, Interm
 /*
  * AI-generated code
  * ok can you please give me the scaffold for the generateListRange function and necessary operands/instructions that will be needed there
+ */
+/**
+ * @brief generates code to build a list from a range with the given bounds and step
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param parts range bounds and optional step
+ * @param count number of range components
+ * @param inclusive whether the end is inclusive
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
  */
 static CompilerStatus generateListRange(IntermediateGenerator *generator, IntermediateOperand *operand, AbstractSyntaxNode *const *parts, size_t count, bool inclusive, SourceLocation origin) {
     if (parts == NULL || (count != 2 && count != 3)) {
@@ -4201,6 +4674,14 @@ static CompilerStatus generateListRange(IntermediateGenerator *generator, Interm
     return COMPILER_OK;
 }
 
+/**
+ * @brief calls the list formatter in the generated code and marks it for including
+ * @param generator generator state
+ * @param result destination operand
+ * @param value value operand
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateListString(IntermediateGenerator *generator, const IntermediateOperand *result, const IntermediateOperand *value, SourceLocation origin) {
     generator->needsListString = true;
     IntermediateOperand label = {.kind = INTERMEDIATE_OPERAND_LABEL, .text = "$listToString"};
@@ -4228,6 +4709,12 @@ static CompilerStatus generateListString(IntermediateGenerator *generator, const
     return COMPILER_OK;
 }
 
+/**
+ * @brief appends copies of instructions from another intermediate program
+ * @param destination destination program
+ * @param source source program
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus appendProgramInstructions(IntermediateProgram *destination, const IntermediateProgram *source) {
     if (destination == NULL || source == NULL || destination == source) {
         return COMPILER_INTERNAL_ERROR;
@@ -4254,6 +4741,13 @@ static CompilerStatus appendProgramInstructions(IntermediateProgram *destination
     return COMPILER_OK;
 }
 
+/**
+ * @brief builds the function that formats lists and adds it to the program
+ * @param generator generator state
+ * @param function generator state for the helper function
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus appendListStringFunction(IntermediateGenerator *generator, IntermediateGenerator *function, SourceLocation origin) {
     IntermediateOperand list = {0};
     IntermediateOperand result = {0};
@@ -4476,6 +4970,12 @@ static CompilerStatus appendListStringFunction(IntermediateGenerator *generator,
  * AI-generated code
  * ok could you please make me the scaffold for generateListStringFunction so that i can jsut finish the logic in there
  */
+/**
+ * @brief sets up and generates the list-to-string helper
+ * @param generator generator state
+ * @param origin source location
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateListStringFunction(IntermediateGenerator *generator, SourceLocation origin) {
     IntermediateGenerator function = *generator;
     function.functionDeclarations = intermediateProgramCreate();
@@ -4498,6 +4998,13 @@ static CompilerStatus generateListStringFunction(IntermediateGenerator *generato
     return COMPILER_OK;
 }
 
+/**
+ * @brief generates code for head, tail or toString on a list
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param node source AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateListMember(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
     const AbstractSyntaxNode *receiver = node->children[0];
     if (strcmp(node->text, "head") == 0) {
@@ -4528,6 +5035,13 @@ static CompilerStatus generateListMember(IntermediateGenerator *generator, Inter
     return COMPILER_OK;
 }
 
+/**
+ * @brief generates code for list indexing, List.range or a list method call
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param node source AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateListCall(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
     const AbstractSyntaxNode *callee = node->children[0];
     if (valueTypes(generator, &callee->type) == DATA_TYPE_LIST) {
@@ -4562,6 +5076,13 @@ static CompilerStatus generateListCall(IntermediateGenerator *generator, Interme
 /*
  * AI-generated code
  * alright, please write me the generateMemberAccess function, for case class reading from 0, find requested field in matching class and read from there +1, reuse existing functions respectively
+ */
+/**
+ * @brief generates code for list members, range conversion or case-class fields
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param node source AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
  */
 static CompilerStatus generateMemberAccess(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
     if (node->text == NULL || node->childCount != 1 || node->children == NULL || node->children[0] == NULL) {
@@ -4689,6 +5210,13 @@ static CompilerStatus generateMemberAccess(IntermediateGenerator *generator, Int
     return COMPILER_OK;
 }
 
+/**
+ * @brief generates code for an expression and provides its result operand
+ * @param generator generator state
+ * @param operand intermediate operand
+ * @param node source AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateExpression(IntermediateGenerator *generator, IntermediateOperand *operand, const AbstractSyntaxNode *node) {
     if (generator == NULL || operand == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -5673,6 +6201,12 @@ static CompilerStatus generateExpression(IntermediateGenerator *generator, Inter
     return COMPILER_OK;
 }
 
+/**
+ * @brief generates code for an expression statement and discards its result
+ * @param generator generator state
+ * @param node source AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateExpressionStatement(IntermediateGenerator *generator, const AbstractSyntaxNode *node) {
     if (generator == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -5696,6 +6230,13 @@ static CompilerStatus generateExpressionStatement(IntermediateGenerator *generat
     return status;
 }
 
+/**
+ * @brief generates code to skip a for-loop iteration if a guard is false
+ * @param generator generator state
+ * @param clauses for-loop clauses
+ * @param advanceLabel label for the next iteration
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateForGuards(IntermediateGenerator *generator, const AbstractSyntaxNode *clauses, const IntermediateOperand *advanceLabel) {
     size_t counter = 1;
     while (counter < clauses->childCount) {
@@ -5726,6 +6267,14 @@ static CompilerStatus generateForGuards(IntermediateGenerator *generator, const 
 /*
  * AI-generated code
  * ok could you please generate the for loop for a list function scaffold and oprands and checks in there, also please tell me how you think the instructions should be handled
+ */
+/**
+ * @brief generates a loop that connects each list element, checks guards and runs the body
+ * @param generator generator state
+ * @param binding loop variable AST node
+ * @param clauses for-loop clauses
+ * @param body body AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
  */
 static CompilerStatus generateListFor(IntermediateGenerator *generator, const AbstractSyntaxNode *binding, const AbstractSyntaxNode *clauses, const AbstractSyntaxNode *body) {
     SourceLocation origin = binding->location;
@@ -5908,6 +6457,12 @@ static CompilerStatus generateListFor(IntermediateGenerator *generator, const Ab
     return COMPILER_OK;
 }
 
+/**
+ * @brief generates intermediate code for a statement
+ * @param generator generator state
+ * @param node source AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateStatement(IntermediateGenerator *generator, const AbstractSyntaxNode *node) {
     if (generator == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -6464,6 +7019,12 @@ static CompilerStatus generateStatement(IntermediateGenerator *generator, const 
     }
 }
 
+/**
+ * @brief declares parameters and pops their arguments in reverse order
+ * @param generator generator state
+ * @param function function AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateParameters(IntermediateGenerator *generator, const AbstractSyntaxNode *function) {
     if (generator == NULL || function == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -6515,6 +7076,12 @@ static CompilerStatus generateParameters(IntermediateGenerator *generator, const
     return COMPILER_OK;
 }
 
+/**
+ * @brief generates code for a function body and pushes any implicit return value
+ * @param generator generator state
+ * @param body body AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateFunctionBody(IntermediateGenerator *generator, const AbstractSyntaxNode *body) {
     if (generator == NULL || body == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -6588,6 +7155,12 @@ static CompilerStatus generateFunctionBody(IntermediateGenerator *generator, con
     return status;
 }
 
+/**
+ * @brief generates the function label, frame setup, declarations, body and return
+ * @param generator generator state
+ * @param node source AST node
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 static CompilerStatus generateFunction(IntermediateGenerator *generator, const AbstractSyntaxNode *node) {
     if (generator == NULL || node == NULL) {
         return COMPILER_INTERNAL_ERROR;
@@ -6713,6 +7286,12 @@ static CompilerStatus generateFunction(IntermediateGenerator *generator, const A
     return COMPILER_OK;
 }
 
+/**
+ * @brief generates the startup instructions, functions and any required list-to-string helper
+ * @param program typed source program
+ * @param outProgram destination intermediate program
+ * @return COMPILER_OK or COMPILER_INTERNAL_ERROR
+ */
 CompilerStatus intermediateCodeGenerate(const SourceProgram *program, IntermediateProgram *outProgram) {
     if (program == NULL || outProgram == NULL) {
         return COMPILER_INTERNAL_ERROR;
