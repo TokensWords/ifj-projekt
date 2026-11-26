@@ -36,14 +36,12 @@ Sémantický analyzátor <--> Tabulka symbolů
   |
   | typovaný SourceProgram
   v
-Generátor mezikódu --IntermediateProgram--> Optimalizátor
+Generátor mezikódu
   |
   | IntermediateProgram
   v
 Generátor IFJcode26 --> stdout
 ```
-
-Optimalizátor je nepovinný. První korektní verze může pouze vrátit vstup beze změny.
 
 ## Adresářová struktura
 
@@ -56,7 +54,6 @@ Optimalizátor je nepovinný. První korektní verze může pouze vrátit vstup 
 | `src/semanticAnalyzer` | Jména, rozsahy, typy a návraty | `SourceProgram *` | Otypovaný strom |
 | `src/symbolTable` | Tabulka symbolů pomocí vv-BVS | `Symbol` | Vypůjčený nalezený symbol |
 | `src/intermediateCode` | Tříadresný mezikód | Otypovaný `SourceProgram *` | `IntermediateProgram *` |
-| `src/optimizer` | Nepovinné optimalizace | `IntermediateProgram *` | Ekvivalentní mezikód |
 | `src/generator` | Text IFJcode26 | `IntermediateProgram *` | Zápis do `FILE *` |
 | `tests` | Testy vytvořené AI a kontrolované lidmi | Moduly nebo program | Úspěch či chyba |
 
@@ -209,7 +206,7 @@ Doporučené vlastnictví:
 1. Lexikální analyzátor a tokeny.
 2. Syntaktický analyzátor a abstraktní strom.
 3. Sémantická analýza a napojení tabulky symbolů.
-4. Mezikód, optimalizace a generátor IFJcode26.
+4. Mezikód a generátor IFJcode26.
 
 Všichni musí rozumět vv-BVS. Používejte malé commity, samostatné větve, kontrolu změn a vždy
 sestavitelný hlavní vývojový stav.
