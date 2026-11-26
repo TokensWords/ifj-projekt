@@ -12,6 +12,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+/**
+ * Creates new empty token structure with type TOKEN_INVALID
+ * @return NULL if there was a problem when creating token,
+ * otherwise return pointer to the created token
+ */
 Token *tokenCreate(void)
 {
     Token *token = memoryAllocate(sizeof(Token));
@@ -28,6 +33,10 @@ Token *tokenCreate(void)
     return token;
 }
 
+/**
+ * Deallocates the token lexeme and destroys the token
+ * @param token pointer to the token which will be destroyed
+ */
 void tokenDestroy(Token *token)
 {
     if (token == NULL) {
@@ -38,6 +47,14 @@ void tokenDestroy(Token *token)
     free(token);
 }
 
+/**
+ * Copies the lexeme, replaces the previous token lexeme,
+ * and updates lexemeLength.
+ * @param token pointer to the token whose lexeme will be changed
+ * @param lexeme new token lexeme
+ * @return COMPILER_INTERNAL_ERROR if token or lexeme are NULL, or when memory allocation failed,
+ * otherwise return COMPILER_OK
+ */
 CompilerStatus tokenSetLexeme(Token *token, const char *lexeme)
 {
     if (token == NULL || lexeme == NULL) {
