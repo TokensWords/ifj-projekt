@@ -917,8 +917,6 @@ CompilerStatus semAnalApplyListContext(AbstractSyntaxNode *node, const TypeDescr
     return semAnalSetListType(node, &expected->recursiveTypes->elementType);
 }
 
-CompilerStatus semAnalResolveBlock(AbstractSyntaxNode *blockNode, SemAnalData *data, TypeDescriptor *expected);
-
 bool semAnalIsListConstructor(const AbstractSyntaxNode *node) {
     if (node->kind != ABSTRACT_SYNTAX_CALL_EXPRESSION || node->childCount == 0) {
         return false;
